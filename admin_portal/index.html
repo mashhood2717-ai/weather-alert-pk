@@ -1,0 +1,1811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather Alert Pakistan - Admin Portal</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: #fff;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 20px 0 30px;
+        }
+
+        header h1 {
+            font-size: 2rem;
+            background: linear-gradient(90deg, #00d9ff, #00ff88);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            color: transparent;
+            margin-bottom: 5px;
+        }
+
+        header p {
+            color: #888;
+            font-size: 0.9rem;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 20px;
+        }
+
+        @media (max-width: 1024px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+        }
+
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card-title .icon {
+            font-size: 1.3rem;
+        }
+
+        #map {
+            height: 500px;
+            width: 100%;
+            border-radius: 12px;
+            z-index: 1;
+            background: #1a1a2e;
+        }
+
+        /* Fix Leaflet tiles display */
+        .leaflet-container {
+            background: #1a1a2e;
+        }
+
+        .leaflet-tile-pane {
+            z-index: 2;
+        }
+
+        .leaflet-control-zoom {
+            border: none !important;
+        }
+
+        .leaflet-control-zoom a {
+            background: rgba(255, 255, 255, 0.9) !important;
+            color: #333 !important;
+            border: 1px solid rgba(0, 0, 0, 0.2) !important;
+        }
+
+        .leaflet-control-zoom a:hover {
+            background: #fff !important;
+        }
+
+        /* Leaflet Draw controls styling - make them visible */
+        .leaflet-draw-section {
+            background: #fff !important;
+            border-radius: 4px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+
+        .leaflet-draw-toolbar {
+            background: #fff !important;
+            border: none !important;
+            margin-top: 0 !important;
+        }
+
+        .leaflet-draw-toolbar a {
+            background-color: #fff !important;
+            background-size: 24px 24px !important;
+            width: 30px !important;
+            height: 30px !important;
+            line-height: 30px !important;
+            border: none !important;
+            border-bottom: 1px solid #ddd !important;
+        }
+
+        .leaflet-draw-toolbar a:hover {
+            background-color: #e8f5e9 !important;
+        }
+
+        .leaflet-draw-toolbar a.leaflet-draw-draw-polygon {
+            background-position: -2px -2px !important;
+        }
+
+        .leaflet-draw-toolbar a.leaflet-draw-draw-rectangle {
+            background-position: -32px -2px !important;
+        }
+
+        .leaflet-draw-toolbar a.leaflet-draw-edit-edit {
+            background-position: -152px -2px !important;
+        }
+
+        .leaflet-draw-toolbar a.leaflet-draw-edit-remove {
+            background-position: -182px -2px !important;
+        }
+
+        .leaflet-draw-actions {
+            background: #1a1a2e !important;
+            border-radius: 4px !important;
+            padding-left: 0 !important;
+        }
+
+        .leaflet-draw-actions li:first-child a {
+            border-radius: 4px 0 0 4px !important;
+        }
+
+        .leaflet-draw-actions li:last-child a {
+            border-radius: 0 4px 4px 0 !important;
+        }
+
+        .leaflet-draw-actions a {
+            background: #00d9ff !important;
+            color: #1a1a2e !important;
+            font-weight: 600 !important;
+            border: none !important;
+            padding: 6px 12px !important;
+        }
+
+        .leaflet-draw-actions a:hover {
+            background: #00ff88 !important;
+        }
+
+        .leaflet-draw-tooltip {
+            background: rgba(26, 26, 46, 0.95) !important;
+            border: 1px solid #00d9ff !important;
+            color: #fff !important;
+            font-family: 'Inter', sans-serif !important;
+        }
+
+        .leaflet-draw-tooltip-single {
+            margin-top: -12px !important;
+        }
+
+        .map-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .map-mode-btn {
+            flex: 1;
+            padding: 10px 15px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.05);
+            color: #fff;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+        }
+
+        .map-mode-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .map-mode-btn.active {
+            background: linear-gradient(135deg, #00d9ff, #00ff88);
+            color: #1a1a2e;
+            border-color: transparent;
+            font-weight: 600;
+        }
+
+        .map-clear-btn {
+            padding: 10px 15px;
+            border: 1px solid rgba(255, 100, 100, 0.5);
+            background: rgba(255, 100, 100, 0.1);
+            color: #ff6464;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+        }
+
+        .map-clear-btn:hover {
+            background: rgba(255, 100, 100, 0.2);
+        }
+
+        .map-instructions {
+            margin-top: 10px;
+            padding: 10px 15px;
+            background: rgba(0, 217, 255, 0.1);
+            border-radius: 8px;
+            font-size: 0.85rem;
+            color: #00d9ff;
+        }
+
+        .polygon-info {
+            margin-top: 10px;
+        }
+
+        .polygon-info label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 0.85rem;
+            color: #888;
+        }
+
+        .polygon-stats {
+            display: flex;
+            gap: 20px;
+            padding: 10px;
+            background: rgba(0, 255, 136, 0.1);
+            border-radius: 8px;
+            color: #00ff88;
+        }
+
+        .polygon-stats strong {
+            color: #fff;
+        }
+
+        /* Saved Zones */
+        .saved-zones {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .saved-zones h4 {
+            font-size: 0.9rem;
+            color: #888;
+            margin-bottom: 10px;
+        }
+
+        .zone-list {
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .zone-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+            margin-bottom: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .zone-item:hover {
+            background: rgba(0, 217, 255, 0.2);
+        }
+
+        .zone-item.selected {
+            background: rgba(0, 255, 136, 0.2);
+            border: 1px solid #00ff88;
+        }
+
+        .zone-item-name {
+            font-size: 0.85rem;
+            color: #fff;
+        }
+
+        .zone-item-type {
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: rgba(0, 217, 255, 0.3);
+            color: #00d9ff;
+        }
+
+        .zone-item-delete {
+            color: #ff6464;
+            cursor: pointer;
+            padding: 2px 6px;
+            font-size: 0.8rem;
+        }
+
+        .zone-item-delete:hover {
+            color: #ff3333;
+        }
+
+        .save-zone-row {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .save-zone-row input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+            color: #fff;
+            font-size: 0.85rem;
+        }
+
+        .save-zone-row input::placeholder {
+            color: #666;
+        }
+
+        .save-zone-btn {
+            padding: 8px 15px;
+            background: linear-gradient(135deg, #00d9ff, #00ff88);
+            border: none;
+            border-radius: 6px;
+            color: #1a1a2e;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+
+        .save-zone-btn:hover {
+            opacity: 0.9;
+        }
+
+        .save-zone-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Drawing buttons */
+        .draw-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .draw-btn {
+            padding: 10px 16px;
+            border: 2px solid rgba(0, 217, 255, 0.5);
+            background: rgba(0, 217, 255, 0.1);
+            color: #00d9ff;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .draw-btn:hover {
+            background: rgba(0, 217, 255, 0.2);
+            border-color: #00d9ff;
+        }
+
+        .draw-btn.active {
+            background: #00d9ff;
+            color: #1a1a2e;
+            border-color: #00d9ff;
+        }
+
+        .draw-btn.finish {
+            border-color: rgba(0, 255, 136, 0.5);
+            background: rgba(0, 255, 136, 0.1);
+            color: #00ff88;
+        }
+
+        .draw-btn.finish:hover {
+            background: rgba(0, 255, 136, 0.2);
+        }
+
+        .form-group {
+            margin-bottom: 18px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 0.85rem;
+            color: #aaa;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px 15px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 10px;
+            color: #fff;
+            font-size: 0.95rem;
+            font-family: inherit;
+            transition: all 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #00d9ff;
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .form-group select option {
+            background: #1a1a2e;
+        }
+
+        .severity-options {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+
+        .severity-option {
+            position: relative;
+        }
+
+        .severity-option input {
+            position: absolute;
+            opacity: 0;
+        }
+
+        .severity-option label {
+            display: block;
+            padding: 10px;
+            text-align: center;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: 500;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+
+        .severity-option.low label {
+            background: rgba(76, 175, 80, 0.2);
+            color: #4CAF50;
+        }
+
+        .severity-option.medium label {
+            background: rgba(255, 193, 7, 0.2);
+            color: #FFC107;
+        }
+
+        .severity-option.high label {
+            background: rgba(255, 152, 0, 0.2);
+            color: #FF9800;
+        }
+
+        .severity-option.extreme label {
+            background: rgba(244, 67, 54, 0.2);
+            color: #F44336;
+        }
+
+        .severity-option input:checked + label {
+            border-color: currentColor;
+            transform: scale(1.05);
+        }
+
+        .location-info {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 18px;
+        }
+
+        .location-info h4 {
+            font-size: 0.85rem;
+            color: #888;
+            margin-bottom: 10px;
+        }
+
+        .location-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+            font-size: 0.9rem;
+        }
+
+        .location-row span:first-child {
+            color: #aaa;
+        }
+
+        .location-row span:last-child {
+            color: #00ff88;
+            font-weight: 500;
+        }
+
+        .radius-slider {
+            margin-top: 12px;
+        }
+
+        .radius-slider input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+            outline: none;
+        }
+
+        .radius-slider input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #00d9ff;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0, 217, 255, 0.5);
+        }
+
+        .radius-value {
+            text-align: center;
+            margin-top: 8px;
+            font-size: 1.1rem;
+            color: #00d9ff;
+            font-weight: 600;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px 20px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #00d9ff, #00ff88);
+            color: #1a1a2e;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 217, 255, 0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            margin-top: 10px;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .quick-cities {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 15px;
+        }
+
+        .quick-city {
+            padding: 8px 14px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 20px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .quick-city:hover {
+            background: rgba(0, 217, 255, 0.2);
+            border-color: #00d9ff;
+        }
+
+        .alert-history {
+            margin-top: 20px;
+        }
+
+        .history-item {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 12px 15px;
+            margin-bottom: 10px;
+            border-left: 3px solid;
+            position: relative;
+        }
+
+        .history-item.extreme { border-color: #F44336; }
+        .history-item.high { border-color: #FF9800; }
+        .history-item.medium { border-color: #FFC107; }
+        .history-item.low { border-color: #4CAF50; }
+
+        .history-item h5 {
+            font-size: 0.9rem;
+            margin-bottom: 4px;
+            padding-right: 30px;
+        }
+
+        .history-item p {
+            font-size: 0.8rem;
+            color: #888;
+        }
+
+        .history-item .meta {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 8px;
+            font-size: 0.75rem;
+            color: #666;
+        }
+
+        .history-item .delete-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(244, 67, 54, 0.2);
+            border: none;
+            color: #F44336;
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .history-item .delete-btn:hover {
+            background: #F44336;
+            color: white;
+        }
+
+        .history-item .view-map-btn {
+            background: rgba(0, 217, 255, 0.2);
+            border: none;
+            color: #00d9ff;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: all 0.2s;
+        }
+
+        .history-item .view-map-btn:hover {
+            background: #00d9ff;
+            color: #1a1a2e;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            padding: 15px 25px;
+            border-radius: 10px;
+            font-weight: 500;
+            transform: translateX(150%);
+            transition: transform 0.3s;
+            z-index: 1000;
+        }
+
+        .toast.show {
+            transform: translateX(0);
+        }
+
+        .toast.success {
+            background: linear-gradient(135deg, #00c853, #00e676);
+            color: #fff;
+        }
+
+        .toast.error {
+            background: linear-gradient(135deg, #ff1744, #ff5252);
+            color: #fff;
+        }
+
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .stat-card .number {
+            font-size: 1.8rem;
+            font-weight: 700;
+            background: linear-gradient(90deg, #00d9ff, #00ff88);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            color: transparent;
+        }
+
+        .stat-card .label {
+            font-size: 0.75rem;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🌦️ Weather Alert Pakistan</h1>
+            <p>Admin Portal - Send Manual Weather Alerts</p>
+        </header>
+
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="number" id="totalAlerts">0</div>
+                <div class="label">Alerts Sent Today</div>
+            </div>
+            <div class="stat-card">
+                <div class="number" id="totalUsers">--</div>
+                <div class="label">Active Users</div>
+            </div>
+            <div class="stat-card">
+                <div class="number" id="totalCities">12</div>
+                <div class="label">Cities Covered</div>
+            </div>
+        </div>
+
+        <div class="main-grid">
+            <div class="card">
+                <div class="card-title">
+                    <span class="icon">📍</span>
+                    Select Target Area
+                </div>
+                <div id="map"></div>
+                <div class="map-controls">
+                    <button class="map-mode-btn active" id="radiusModeBtn" onclick="setMapMode('radius')">
+                        ⭕ Radius Mode
+                    </button>
+                    <button class="map-mode-btn" id="polygonModeBtn" onclick="setMapMode('polygon')">
+                        📐 Polygon Mode
+                    </button>
+                    <button class="map-mode-btn" id="zoneModeBtn" onclick="setMapMode('zone')">
+                        📁 Saved Zones
+                    </button>
+                    <button class="map-clear-btn" onclick="clearDrawings()">
+                        🗑️ Clear
+                    </button>
+                </div>
+                
+                <!-- Drawing buttons for polygon mode -->
+                <div class="draw-buttons" id="drawButtons" style="display: none;">
+                    <button class="draw-btn" id="drawPolygonBtn" onclick="startDrawPolygon()">
+                        🔷 Draw Polygon
+                    </button>
+                    <button class="draw-btn" id="drawRectBtn" onclick="startDrawRectangle()">
+                        ⬜ Draw Rectangle
+                    </button>
+                    <button class="draw-btn finish" id="finishDrawBtn" onclick="finishDrawing()" style="display: none;">
+                        ✅ Finish Drawing
+                    </button>
+                    <button class="draw-btn" id="cancelDrawBtn" onclick="cancelDrawing()" style="display: none;">
+                        ❌ Cancel
+                    </button>
+                </div>
+
+                <!-- Saved zones section -->
+                <div class="saved-zones" id="savedZonesSection" style="display: none;">
+                    <h4>📁 Select a Saved Zone</h4>
+                    <div class="zone-list" id="zoneList">
+                        <p style="color: #666; font-size: 0.85rem; text-align: center;">Loading zones...</p>
+                    </div>
+                </div>
+
+                <!-- Save zone input -->
+                <div class="save-zone-row" id="saveZoneRow" style="display: none;">
+                    <input type="text" id="zoneNameInput" placeholder="Enter zone name...">
+                    <button class="save-zone-btn" id="saveZoneBtn" onclick="saveCurrentZone()" disabled>
+                        💾 Save Zone
+                    </button>
+                </div>
+
+                <div class="map-instructions" id="mapInstructions">
+                    💡 <strong>Radius Mode:</strong> Click on the map to set center point, then adjust radius slider.
+                </div>
+                <div class="quick-cities">
+                    <span class="quick-city" onclick="goToCity(33.6844, 73.0479, 'Islamabad')">Islamabad</span>
+                    <span class="quick-city" onclick="goToCity(31.5497, 74.3436, 'Lahore')">Lahore</span>
+                    <span class="quick-city" onclick="goToCity(24.8607, 67.0011, 'Karachi')">Karachi</span>
+                    <span class="quick-city" onclick="goToCity(33.9970, 71.5249, 'Peshawar')">Peshawar</span>
+                    <span class="quick-city" onclick="goToCity(30.1575, 66.9972, 'Quetta')">Quetta</span>
+                    <span class="quick-city" onclick="goToCity(31.4504, 73.1350, 'Faisalabad')">Faisalabad</span>
+                    <span class="quick-city" onclick="goToCity(30.1978, 71.4711, 'Multan')">Multan</span>
+                    <span class="quick-city" onclick="goToCity(25.3960, 68.3578, 'Hyderabad')">Hyderabad</span>
+                    <span class="quick-city" onclick="goToCity(32.1617, 74.1883, 'Sialkot')">Sialkot</span>
+                    <span class="quick-city" onclick="goToCity(25.1264, 62.3225, 'Gwadar')">Gwadar</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">
+                    <span class="icon">⚡</span>
+                    Alert Details
+                </div>
+
+                <div class="location-info">
+                    <h4>📍 Target Location</h4>
+                    <div class="location-row">
+                        <span>City/Area:</span>
+                        <span id="selectedCity">Click on map</span>
+                    </div>
+                    <div class="location-row">
+                        <span>Coordinates:</span>
+                        <span id="selectedCoords">--</span>
+                    </div>
+                    <div class="radius-slider" id="radiusControl">
+                        <label>Coverage Radius</label>
+                        <input type="range" id="radiusSlider" min="5" max="100" value="25" oninput="updateRadius(this.value)">
+                        <div class="radius-value"><span id="radiusValue">25</span> km</div>
+                    </div>
+                    <div class="polygon-info" id="polygonControl" style="display: none;">
+                        <label>Polygon Area</label>
+                        <div class="polygon-stats">
+                            <span>Points: <strong id="polygonPoints">0</strong></span>
+                            <span>Area: <strong id="polygonArea">--</strong> km²</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Alert Title</label>
+                    <input type="text" id="alertTitle" placeholder="e.g., Heavy Rain Warning">
+                </div>
+
+                <div class="form-group">
+                    <label>Alert Message</label>
+                    <textarea id="alertMessage" placeholder="Describe the weather condition and any precautions..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>Alert Type</label>
+                    <select id="alertType">
+                        <option value="rain">🌧️ Rain / Flooding</option>
+                        <option value="heat">🌡️ Extreme Heat</option>
+                        <option value="cold">❄️ Cold Wave</option>
+                        <option value="storm">⛈️ Thunderstorm</option>
+                        <option value="wind">💨 Strong Winds</option>
+                        <option value="fog">🌫️ Fog / Low Visibility</option>
+                        <option value="dust">🌪️ Dust Storm</option>
+                        <option value="snow">🌨️ Snowfall</option>
+                        <option value="other">⚠️ Other</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Severity Level</label>
+                    <div class="severity-options">
+                        <div class="severity-option low">
+                            <input type="radio" name="severity" id="sev-low" value="low">
+                            <label for="sev-low">Low</label>
+                        </div>
+                        <div class="severity-option medium">
+                            <input type="radio" name="severity" id="sev-medium" value="medium" checked>
+                            <label for="sev-medium">Medium</label>
+                        </div>
+                        <div class="severity-option high">
+                            <input type="radio" name="severity" id="sev-high" value="high">
+                            <label for="sev-high">High</label>
+                        </div>
+                        <div class="severity-option extreme">
+                            <input type="radio" name="severity" id="sev-extreme" value="extreme">
+                            <label for="sev-extreme">Extreme</label>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" id="sendBtn" onclick="sendAlert()">
+                    <span>🚀</span>
+                    Send Alert
+                </button>
+
+                <button class="btn btn-secondary" onclick="clearForm()">
+                    Clear Form
+                </button>
+
+                <div class="alert-history">
+                    <div class="card-title" style="margin-top: 20px;">
+                        <span class="icon">📋</span>
+                        Recent Alerts
+                    </div>
+                    <div id="historyList">
+                        <p style="color: #666; font-size: 0.85rem; text-align: center; padding: 20px;">No alerts sent yet</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+    <script>
+        // Firebase config - From your project
+        const firebaseConfig = {
+            apiKey: "AIzaSyA_feyKVjfagK2mWriK_u1zvLpHvZT8yE4",
+            authDomain: "weather-alert-pk.firebaseapp.com",
+            projectId: "weather-alert-pk",
+            storageBucket: "weather-alert-pk.firebasestorage.app",
+            messagingSenderId: "1033360052874",
+            appId: "1:1033360052874:web:99b260833000c48aea5373"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        // Map setup
+        let map, marker, circle;
+        let selectedLat = null, selectedLng = null;
+        let selectedCityName = '';
+        let alertHistory = [];
+        
+        // Cloudflare Worker URL for FCM notifications
+        const FCM_WORKER_URL = 'https://weather-alert-fcm.mashhood2717.workers.dev';
+        
+        // Polygon drawing
+        let drawnItems;
+        let drawControl;
+        let currentPolygon = null;
+        let polygonCoordinates = [];
+        let mapMode = 'radius'; // 'radius', 'polygon', or 'zone'
+        
+        // Custom drawing
+        let isDrawing = false;
+        let drawingPoints = [];
+        let tempPolyline = null;
+        let tempMarkers = [];
+        let drawingType = null; // 'polygon' or 'rectangle'
+        let rectStartPoint = null;
+        let tempRect = null;
+        
+        // Saved zones
+        let savedZones = [];
+        let selectedZone = null;
+
+        // Pakistan cities with coordinates
+        const cities = {
+            'Islamabad': { lat: 33.6844, lng: 73.0479 },
+            'Rawalpindi': { lat: 33.5651, lng: 73.0169 },
+            'Lahore': { lat: 31.5497, lng: 74.3436 },
+            'Karachi': { lat: 24.8607, lng: 67.0011 },
+            'Peshawar': { lat: 33.9970, lng: 71.5249 },
+            'Quetta': { lat: 30.1575, lng: 66.9972 },
+            'Faisalabad': { lat: 31.4504, lng: 73.1350 },
+            'Multan': { lat: 30.1978, lng: 71.4711 },
+            'Hyderabad': { lat: 25.3960, lng: 68.3578 },
+            'Sialkot': { lat: 32.1617, lng: 74.1883 },
+            'Gwadar': { lat: 25.1264, lng: 62.3225 },
+            'Mailsi': { lat: 29.8047, lng: 72.1736 }
+        };
+
+        // Initialize map
+        function initMap() {
+            // Ensure map container exists
+            const mapContainer = document.getElementById('map');
+            if (!mapContainer) {
+                console.error('Map container not found!');
+                return;
+            }
+            
+            map = L.map('map', {
+                center: [30.3753, 69.3451],
+                zoom: 5,
+                zoomControl: true
+            });
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap',
+                maxZoom: 19
+            }).addTo(map);
+
+            // Initialize drawn items layer for polygon
+            drawnItems = new L.FeatureGroup();
+            map.addLayer(drawnItems);
+
+            // Initialize draw control (hidden by default, shown in polygon mode)
+            drawControl = new L.Control.Draw({
+                position: 'topright',
+                draw: {
+                    polygon: {
+                        allowIntersection: false,
+                        showArea: true,
+                        shapeOptions: {
+                            color: '#00ff88',
+                            fillColor: '#00ff88',
+                            fillOpacity: 0.3
+                        }
+                    },
+                    polyline: false,
+                    rectangle: {
+                        shapeOptions: {
+                            color: '#00ff88',
+                            fillColor: '#00ff88',
+                            fillOpacity: 0.3
+                        }
+                    },
+                    circle: false,
+                    circlemarker: false,
+                    marker: false
+                },
+                edit: {
+                    featureGroup: drawnItems,
+                    remove: true
+                }
+            });
+
+            // Handle polygon creation
+            map.on(L.Draw.Event.CREATED, function(e) {
+                drawnItems.clearLayers();
+                currentPolygon = e.layer;
+                drawnItems.addLayer(currentPolygon);
+                
+                // Get polygon coordinates
+                const latlngs = currentPolygon.getLatLngs()[0];
+                polygonCoordinates = latlngs.map(ll => ({ lat: ll.lat, lng: ll.lng }));
+                
+                // Update UI
+                document.getElementById('polygonPoints').textContent = polygonCoordinates.length;
+                
+                // Calculate area (approximate)
+                const area = L.GeometryUtil ? L.GeometryUtil.geodesicArea(latlngs) : calculatePolygonArea(latlngs);
+                document.getElementById('polygonArea').textContent = (area / 1000000).toFixed(2);
+                
+                // Find center and nearest city
+                const bounds = currentPolygon.getBounds();
+                const center = bounds.getCenter();
+                selectedLat = center.lat;
+                selectedLng = center.lng;
+                findNearestCity(center.lat, center.lng);
+                document.getElementById('selectedCoords').textContent = `${center.lat.toFixed(4)}, ${center.lng.toFixed(4)}`;
+            });
+
+            map.on(L.Draw.Event.DELETED, function(e) {
+                currentPolygon = null;
+                polygonCoordinates = [];
+                document.getElementById('polygonPoints').textContent = '0';
+                document.getElementById('polygonArea').textContent = '--';
+            });
+
+            // Force map to recalculate size after load
+            setTimeout(() => {
+                map.invalidateSize();
+            }, 100);
+
+            map.on('click', function(e) {
+                if (mapMode === 'radius') {
+                    setLocation(e.latlng.lat, e.latlng.lng);
+                    findNearestCity(e.latlng.lat, e.latlng.lng);
+                }
+            });
+        }
+
+        // Calculate polygon area using Shoelace formula (approximate)
+        function calculatePolygonArea(latlngs) {
+            const R = 6371000; // Earth's radius in meters
+            let area = 0;
+            const n = latlngs.length;
+            
+            for (let i = 0; i < n; i++) {
+                const j = (i + 1) % n;
+                const lat1 = latlngs[i].lat * Math.PI / 180;
+                const lat2 = latlngs[j].lat * Math.PI / 180;
+                const lng1 = latlngs[i].lng * Math.PI / 180;
+                const lng2 = latlngs[j].lng * Math.PI / 180;
+                
+                area += (lng2 - lng1) * (2 + Math.sin(lat1) + Math.sin(lat2));
+            }
+            
+            return Math.abs(area * R * R / 2);
+        }
+
+        // Set map mode (radius, polygon, or zone)
+        function setMapMode(mode) {
+            mapMode = mode;
+            cancelDrawing(); // Cancel any active drawing
+            
+            // Update button styles
+            document.getElementById('radiusModeBtn').classList.toggle('active', mode === 'radius');
+            document.getElementById('polygonModeBtn').classList.toggle('active', mode === 'polygon');
+            document.getElementById('zoneModeBtn').classList.toggle('active', mode === 'zone');
+            
+            // Update controls visibility
+            document.getElementById('radiusControl').style.display = mode === 'radius' ? 'block' : 'none';
+            document.getElementById('polygonControl').style.display = mode === 'polygon' ? 'block' : 'none';
+            document.getElementById('drawButtons').style.display = mode === 'polygon' ? 'flex' : 'none';
+            document.getElementById('savedZonesSection').style.display = mode === 'zone' ? 'block' : 'none';
+            document.getElementById('saveZoneRow').style.display = mode === 'polygon' ? 'flex' : 'none';
+            
+            // Update instructions
+            const instructions = document.getElementById('mapInstructions');
+            if (mode === 'radius') {
+                instructions.innerHTML = '💡 <strong>Radius Mode:</strong> Click on the map to set center point, then adjust radius slider.';
+            } else if (mode === 'polygon') {
+                instructions.innerHTML = '💡 <strong>Polygon Mode:</strong> Click "Draw Polygon" or "Draw Rectangle", then click on map to draw. Save your zone for future use.';
+            } else if (mode === 'zone') {
+                instructions.innerHTML = '💡 <strong>Saved Zones:</strong> Select a previously saved zone to quickly target that area.';
+                loadSavedZones();
+            }
+        }
+
+        // Start drawing polygon
+        function startDrawPolygon() {
+            cancelDrawing();
+            isDrawing = true;
+            drawingType = 'polygon';
+            drawingPoints = [];
+            
+            document.getElementById('drawPolygonBtn').classList.add('active');
+            document.getElementById('finishDrawBtn').style.display = 'inline-flex';
+            document.getElementById('cancelDrawBtn').style.display = 'inline-flex';
+            
+            document.getElementById('mapInstructions').innerHTML = '💡 <strong>Drawing Polygon:</strong> Click on the map to add points. Click "Finish" when done (min 3 points).';
+            
+            map.on('click', handlePolygonClick);
+        }
+
+        // Start drawing rectangle
+        function startDrawRectangle() {
+            cancelDrawing();
+            isDrawing = true;
+            drawingType = 'rectangle';
+            rectStartPoint = null;
+            
+            document.getElementById('drawRectBtn').classList.add('active');
+            document.getElementById('cancelDrawBtn').style.display = 'inline-flex';
+            
+            document.getElementById('mapInstructions').innerHTML = '💡 <strong>Drawing Rectangle:</strong> Click to set first corner, then click again to set opposite corner.';
+            
+            map.on('click', handleRectangleClick);
+        }
+
+        // Handle polygon click
+        function handlePolygonClick(e) {
+            if (!isDrawing || drawingType !== 'polygon') return;
+            
+            drawingPoints.push(e.latlng);
+            
+            // Add marker at point
+            const pointMarker = L.circleMarker(e.latlng, {
+                radius: 6,
+                color: '#00ff88',
+                fillColor: '#00ff88',
+                fillOpacity: 1
+            }).addTo(map);
+            tempMarkers.push(pointMarker);
+            
+            // Update temp polyline
+            if (tempPolyline) map.removeLayer(tempPolyline);
+            if (drawingPoints.length > 1) {
+                tempPolyline = L.polyline(drawingPoints, {
+                    color: '#00ff88',
+                    weight: 2,
+                    dashArray: '5, 10'
+                }).addTo(map);
+            }
+            
+            // Update UI
+            document.getElementById('polygonPoints').textContent = drawingPoints.length;
+            document.getElementById('saveZoneBtn').disabled = drawingPoints.length < 3;
+        }
+
+        // Handle rectangle click
+        function handleRectangleClick(e) {
+            if (!isDrawing || drawingType !== 'rectangle') return;
+            
+            if (!rectStartPoint) {
+                rectStartPoint = e.latlng;
+                const startMarker = L.circleMarker(e.latlng, {
+                    radius: 6,
+                    color: '#00ff88',
+                    fillColor: '#00ff88',
+                    fillOpacity: 1
+                }).addTo(map);
+                tempMarkers.push(startMarker);
+                document.getElementById('mapInstructions').innerHTML = '💡 <strong>Drawing Rectangle:</strong> Now click to set the opposite corner.';
+            } else {
+                // Create rectangle
+                const bounds = L.latLngBounds(rectStartPoint, e.latlng);
+                drawnItems.clearLayers();
+                currentPolygon = L.rectangle(bounds, {
+                    color: '#00ff88',
+                    fillColor: '#00ff88',
+                    fillOpacity: 0.3
+                });
+                drawnItems.addLayer(currentPolygon);
+                
+                // Get coordinates
+                const latlngs = currentPolygon.getLatLngs()[0];
+                polygonCoordinates = latlngs.map(ll => ({ lat: ll.lat, lng: ll.lng }));
+                
+                updatePolygonUI(latlngs);
+                cancelDrawing();
+                document.getElementById('saveZoneBtn').disabled = false;
+            }
+        }
+
+        // Finish drawing polygon
+        function finishDrawing() {
+            if (drawingPoints.length < 3) {
+                showToast('Need at least 3 points to create a polygon', 'error');
+                return;
+            }
+            
+            // Close the polygon
+            drawnItems.clearLayers();
+            currentPolygon = L.polygon(drawingPoints, {
+                color: '#00ff88',
+                fillColor: '#00ff88',
+                fillOpacity: 0.3
+            });
+            drawnItems.addLayer(currentPolygon);
+            
+            polygonCoordinates = drawingPoints.map(ll => ({ lat: ll.lat, lng: ll.lng }));
+            updatePolygonUI(drawingPoints);
+            cancelDrawing();
+            document.getElementById('saveZoneBtn').disabled = false;
+        }
+
+        // Cancel drawing
+        function cancelDrawing() {
+            isDrawing = false;
+            drawingType = null;
+            drawingPoints = [];
+            rectStartPoint = null;
+            
+            // Remove temp elements
+            if (tempPolyline) {
+                map.removeLayer(tempPolyline);
+                tempPolyline = null;
+            }
+            if (tempRect) {
+                map.removeLayer(tempRect);
+                tempRect = null;
+            }
+            tempMarkers.forEach(m => map.removeLayer(m));
+            tempMarkers = [];
+            
+            // Reset button states
+            document.getElementById('drawPolygonBtn').classList.remove('active');
+            document.getElementById('drawRectBtn').classList.remove('active');
+            document.getElementById('finishDrawBtn').style.display = 'none';
+            document.getElementById('cancelDrawBtn').style.display = 'none';
+            
+            // Remove click handlers
+            map.off('click', handlePolygonClick);
+            map.off('click', handleRectangleClick);
+            
+            if (mapMode === 'polygon') {
+                document.getElementById('mapInstructions').innerHTML = '💡 <strong>Polygon Mode:</strong> Click "Draw Polygon" or "Draw Rectangle", then click on map to draw.';
+            }
+        }
+
+        // Update polygon UI after drawing
+        function updatePolygonUI(latlngs) {
+            document.getElementById('polygonPoints').textContent = latlngs.length;
+            
+            const area = calculatePolygonArea(latlngs);
+            document.getElementById('polygonArea').textContent = (area / 1000000).toFixed(2);
+            
+            const bounds = currentPolygon.getBounds();
+            const center = bounds.getCenter();
+            selectedLat = center.lat;
+            selectedLng = center.lng;
+            findNearestCity(center.lat, center.lng);
+            document.getElementById('selectedCoords').textContent = `${center.lat.toFixed(4)}, ${center.lng.toFixed(4)}`;
+        }
+
+        // Save current zone to Firestore
+        async function saveCurrentZone() {
+            const zoneName = document.getElementById('zoneNameInput').value.trim();
+            if (!zoneName) {
+                showToast('Please enter a zone name', 'error');
+                return;
+            }
+            if (polygonCoordinates.length < 3) {
+                showToast('Please draw a polygon first', 'error');
+                return;
+            }
+            
+            try {
+                const zoneData = {
+                    name: zoneName,
+                    type: 'polygon',
+                    coordinates: polygonCoordinates,
+                    center: { lat: selectedLat, lng: selectedLng },
+                    city: selectedCityName,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+                
+                await db.collection('saved_zones').add(zoneData);
+                showToast(`Zone "${zoneName}" saved successfully!`, 'success');
+                document.getElementById('zoneNameInput').value = '';
+                loadSavedZones();
+            } catch (error) {
+                console.error('Error saving zone:', error);
+                showToast('Failed to save zone: ' + error.message, 'error');
+            }
+        }
+
+        // Load saved zones from Firestore
+        async function loadSavedZones() {
+            const zoneList = document.getElementById('zoneList');
+            zoneList.innerHTML = '<p style="color: #666; font-size: 0.85rem; text-align: center;">Loading zones...</p>';
+            
+            try {
+                const snapshot = await db.collection('saved_zones').orderBy('createdAt', 'desc').get();
+                savedZones = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                
+                if (savedZones.length === 0) {
+                    zoneList.innerHTML = '<p style="color: #666; font-size: 0.85rem; text-align: center;">No saved zones yet. Draw a polygon and save it!</p>';
+                    return;
+                }
+                
+                zoneList.innerHTML = savedZones.map(zone => `
+                    <div class="zone-item ${selectedZone?.id === zone.id ? 'selected' : ''}" onclick="selectZone('${zone.id}')">
+                        <div>
+                            <span class="zone-item-name">${zone.name}</span>
+                            <span class="zone-item-type">${zone.city || 'Custom Area'}</span>
+                        </div>
+                        <span class="zone-item-delete" onclick="event.stopPropagation(); deleteZone('${zone.id}', '${zone.name}')">🗑️</span>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading zones:', error);
+                zoneList.innerHTML = '<p style="color: #ff6464; font-size: 0.85rem; text-align: center;">Failed to load zones</p>';
+            }
+        }
+
+        // Select a saved zone
+        function selectZone(zoneId) {
+            const zone = savedZones.find(z => z.id === zoneId);
+            if (!zone) return;
+            
+            selectedZone = zone;
+            
+            // Update UI
+            document.querySelectorAll('.zone-item').forEach(el => el.classList.remove('selected'));
+            event.currentTarget.classList.add('selected');
+            
+            // Draw the zone on map
+            drawnItems.clearLayers();
+            const latlngs = zone.coordinates.map(c => [c.lat, c.lng]);
+            currentPolygon = L.polygon(latlngs, {
+                color: '#00ff88',
+                fillColor: '#00ff88',
+                fillOpacity: 0.3
+            });
+            drawnItems.addLayer(currentPolygon);
+            
+            // Zoom to zone
+            map.fitBounds(currentPolygon.getBounds(), { padding: [50, 50] });
+            
+            // Update selection data
+            polygonCoordinates = zone.coordinates;
+            selectedLat = zone.center.lat;
+            selectedLng = zone.center.lng;
+            selectedCityName = zone.city || zone.name;
+            
+            document.getElementById('selectedCity').textContent = zone.name;
+            document.getElementById('selectedCoords').textContent = `${zone.center.lat.toFixed(4)}, ${zone.center.lng.toFixed(4)}`;
+            
+            showToast(`Zone "${zone.name}" selected`, 'success');
+        }
+
+        // Delete a saved zone
+        async function deleteZone(zoneId, zoneName) {
+            if (!confirm(`Delete zone "${zoneName}"?`)) return;
+            
+            try {
+                await db.collection('saved_zones').doc(zoneId).delete();
+                showToast(`Zone "${zoneName}" deleted`, 'success');
+                loadSavedZones();
+                
+                if (selectedZone?.id === zoneId) {
+                    selectedZone = null;
+                    drawnItems.clearLayers();
+                }
+            } catch (error) {
+                console.error('Error deleting zone:', error);
+                showToast('Failed to delete zone', 'error');
+            }
+        }
+
+        // Clear all drawings
+        function clearDrawings() {
+            cancelDrawing();
+            
+            if (marker) {
+                map.removeLayer(marker);
+                marker = null;
+            }
+            if (circle) {
+                map.removeLayer(circle);
+                circle = null;
+            }
+            if (drawnItems) {
+                drawnItems.clearLayers();
+            }
+            currentPolygon = null;
+            polygonCoordinates = [];
+            selectedLat = null;
+            selectedLng = null;
+            selectedZone = null;
+            
+            document.getElementById('selectedCity').textContent = 'Click on map';
+            document.getElementById('selectedCoords').textContent = '--';
+            document.getElementById('polygonPoints').textContent = '0';
+            document.getElementById('polygonArea').textContent = '--';
+            document.getElementById('zoneNameInput').value = '';
+            document.getElementById('saveZoneBtn').disabled = true;
+            
+            // Deselect any selected zone
+            document.querySelectorAll('.zone-item').forEach(el => el.classList.remove('selected'));
+        }
+
+        function setLocation(lat, lng) {
+            selectedLat = lat;
+            selectedLng = lng;
+
+            if (marker) {
+                marker.setLatLng([lat, lng]);
+            } else {
+                marker = L.marker([lat, lng]).addTo(map);
+            }
+
+            updateRadius(document.getElementById('radiusSlider').value);
+            document.getElementById('selectedCoords').textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+        }
+
+        function updateRadius(value) {
+            document.getElementById('radiusValue').textContent = value;
+            
+            if (selectedLat && selectedLng) {
+                if (circle) {
+                    circle.setRadius(value * 1000);
+                } else {
+                    circle = L.circle([selectedLat, selectedLng], {
+                        color: '#00d9ff',
+                        fillColor: '#00d9ff',
+                        fillOpacity: 0.2,
+                        radius: value * 1000
+                    }).addTo(map);
+                }
+                circle.setLatLng([selectedLat, selectedLng]);
+            }
+        }
+
+        function goToCity(lat, lng, name) {
+            map.setView([lat, lng], 10);
+            setLocation(lat, lng);
+            selectedCityName = name;
+            document.getElementById('selectedCity').textContent = name;
+        }
+
+        function findNearestCity(lat, lng) {
+            let nearest = null;
+            let minDist = Infinity;
+
+            for (const [name, coords] of Object.entries(cities)) {
+                const dist = Math.sqrt(
+                    Math.pow(lat - coords.lat, 2) + Math.pow(lng - coords.lng, 2)
+                );
+                if (dist < minDist) {
+                    minDist = dist;
+                    nearest = name;
+                }
+            }
+
+            // If within ~50km of a city, use that name
+            if (minDist < 0.5) {
+                selectedCityName = nearest;
+                document.getElementById('selectedCity').textContent = nearest;
+            } else {
+                selectedCityName = `Area (${lat.toFixed(2)}, ${lng.toFixed(2)})`;
+                document.getElementById('selectedCity').textContent = selectedCityName;
+            }
+        }
+
+        async function sendAlert() {
+            const title = document.getElementById('alertTitle').value.trim();
+            const message = document.getElementById('alertMessage').value.trim();
+            const type = document.getElementById('alertType').value;
+            const severity = document.querySelector('input[name="severity"]:checked').value;
+            const radius = parseInt(document.getElementById('radiusSlider').value);
+
+            // Validation
+            if (mapMode === 'radius' && (!selectedLat || !selectedLng)) {
+                showToast('Please select a location on the map', 'error');
+                return;
+            }
+            if (mapMode === 'polygon' && polygonCoordinates.length < 3) {
+                showToast('Please draw a polygon area on the map (at least 3 points)', 'error');
+                return;
+            }
+            if (mapMode === 'zone' && (!selectedZone && polygonCoordinates.length < 3)) {
+                showToast('Please select a saved zone', 'error');
+                return;
+            }
+            if (!title) {
+                showToast('Please enter an alert title', 'error');
+                return;
+            }
+            if (!message) {
+                showToast('Please enter an alert message', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('sendBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading"></span> Sending...';
+
+            try {
+                // Create alert document in Firestore
+                const alertData = {
+                    title: title,
+                    message: message,
+                    type: type,
+                    severity: severity,
+                    location: {
+                        lat: selectedLat,
+                        lng: selectedLng,
+                        city: selectedCityName,
+                        mode: mapMode === 'zone' ? 'polygon' : mapMode,
+                        radius: mapMode === 'radius' ? radius : null,
+                        polygon: (mapMode === 'polygon' || mapMode === 'zone') ? polygonCoordinates : null,
+                        zoneName: selectedZone?.name || null,
+                        zoneId: selectedZone?.id || null
+                    },
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    sentBy: 'admin',
+                    status: 'pending'
+                };
+
+                const docRef = await db.collection('manual_alerts').add(alertData);
+                
+                // Send FCM notification via Cloudflare Worker
+                try {
+                    await sendFCMNotification({
+                        alertId: docRef.id,
+                        title: title,
+                        message: message,
+                        type: type,
+                        severity: severity,
+                        city: selectedCityName,
+                        lat: selectedLat,
+                        lng: selectedLng,
+                        mode: mapMode === 'zone' ? 'polygon' : mapMode
+                    });
+                    console.log('FCM notification sent successfully');
+                } catch (fcmError) {
+                    console.error('FCM notification failed:', fcmError);
+                    // Don't fail the whole operation if FCM fails
+                }
+                
+                // Update local history
+                alertHistory.unshift({
+                    id: docRef.id,
+                    title: title,
+                    city: selectedCityName,
+                    severity: severity,
+                    time: new Date().toLocaleString()
+                });
+                updateHistoryUI();
+
+                // Update stats
+                const count = parseInt(document.getElementById('totalAlerts').textContent) + 1;
+                document.getElementById('totalAlerts').textContent = count;
+
+                showToast('Alert sent successfully! 🎉', 'success');
+                clearForm();
+
+            } catch (error) {
+                console.error('Error sending alert:', error);
+                showToast('Failed to send alert: ' + error.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<span>🚀</span> Send Alert';
+            }
+        }
+        
+        // Send FCM notification via Cloudflare Worker
+        async function sendFCMNotification(alertData) {
+            if (!FCM_WORKER_URL || FCM_WORKER_URL.includes('YOUR_SUBDOMAIN')) {
+                console.warn('FCM Worker URL not configured - skipping push notification');
+                return;
+            }
+            
+            const response = await fetch(FCM_WORKER_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(alertData)
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'FCM request failed');
+            }
+            
+            return response.json();
+        }
+
+        function updateHistoryUI() {
+            const historyList = document.getElementById('historyList');
+            
+            if (alertHistory.length === 0) {
+                historyList.innerHTML = '<p style="color: #666; font-size: 0.85rem; text-align: center; padding: 20px;">No alerts sent yet</p>';
+                return;
+            }
+
+            historyList.innerHTML = alertHistory.slice(0, 10).map(alert => `
+                <div class="history-item ${alert.severity}" id="alert-${alert.id}">
+                    <button class="delete-btn" onclick="deleteAlert('${alert.id}')" title="Delete alert">🗑️</button>
+                    <h5>${alert.title}</h5>
+                    <p>📍 ${alert.city} ${alert.radius ? '• ' + alert.radius + 'km' : ''}</p>
+                    <div class="meta">
+                        <span>${alert.severity.toUpperCase()}</span>
+                        <button class="view-map-btn" onclick="viewOnMap(${alert.lat || 33.6844}, ${alert.lng || 73.0479}, '${alert.city}')">📍 View Map</button>
+                        <span>${alert.time}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function deleteAlert(alertId) {
+            if (!confirm('Are you sure you want to delete this alert?')) {
+                return;
+            }
+
+            try {
+                await db.collection('manual_alerts').doc(alertId).delete();
+                
+                // Remove from local array
+                alertHistory = alertHistory.filter(a => a.id !== alertId);
+                updateHistoryUI();
+                
+                showToast('Alert deleted successfully', 'success');
+            } catch (error) {
+                console.error('Error deleting alert:', error);
+                showToast('Failed to delete alert: ' + error.message, 'error');
+            }
+        }
+
+        function viewOnMap(lat, lng, city) {
+            if (lat && lng) {
+                map.setView([lat, lng], 10);
+                if (marker) {
+                    marker.setLatLng([lat, lng]);
+                } else {
+                    marker = L.marker([lat, lng]).addTo(map);
+                }
+                marker.bindPopup(`<b>${city}</b>`).openPopup();
+            }
+        }
+
+        function clearForm() {
+            document.getElementById('alertTitle').value = '';
+            document.getElementById('alertMessage').value = '';
+            document.getElementById('alertType').value = 'rain';
+            document.getElementById('sev-medium').checked = true;
+            
+            // Clear map drawings
+            clearDrawings();
+        }
+
+        function showToast(message, type) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast ${type} show`;
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+
+        // Load alert history from Firestore
+        async function loadAlertHistory() {
+            try {
+                const snapshot = await db.collection('manual_alerts')
+                    .orderBy('timestamp', 'desc')
+                    .limit(20)
+                    .get();
+
+                alertHistory = snapshot.docs.map(doc => {
+                    const data = doc.data();
+                    return {
+                        id: doc.id,
+                        title: data.title,
+                        city: data.location?.city || 'Unknown',
+                        lat: data.location?.lat,
+                        lng: data.location?.lng,
+                        radius: data.location?.radius,
+                        severity: data.severity,
+                        time: data.timestamp?.toDate().toLocaleString() || 'Unknown'
+                    };
+                });
+
+                updateHistoryUI();
+
+                // Count today's alerts
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const todayAlerts = snapshot.docs.filter(doc => {
+                    const ts = doc.data().timestamp?.toDate();
+                    return ts && ts >= today;
+                }).length;
+                document.getElementById('totalAlerts').textContent = todayAlerts;
+
+            } catch (error) {
+                console.error('Error loading history:', error);
+            }
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            initMap();
+            loadAlertHistory();
+        });
+    </script>
+</body>
+</html>

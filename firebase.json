@@ -1,0 +1,49 @@
+{
+  "hosting": {
+    "public": "admin_portal",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": []
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log"
+      ]
+    }
+  ],
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "weather-alert-pk",
+          "appId": "1:1033360052874:android:807548735dca0a42ea5373",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "weather-alert-pk",
+          "configurations": {
+            "android": "1:1033360052874:android:807548735dca0a42ea5373",
+            "ios": "1:1033360052874:ios:810c1cf249e396c7ea5373",
+            "macos": "1:1033360052874:ios:810c1cf249e396c7ea5373",
+            "web": "1:1033360052874:web:99b260833000c48aea5373",
+            "windows": "1:1033360052874:web:2dc80ebf3ecf348aea5373"
+          }
+        }
+      }
+    }
+  }
+}

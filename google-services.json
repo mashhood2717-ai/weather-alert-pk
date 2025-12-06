@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1033360052874",
+    "project_id": "weather-alert-pk",
+    "storage_bucket": "weather-alert-pk.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1033360052874:android:807548735dca0a42ea5373",
+        "android_client_info": {
+          "package_name": "com.example.weather_alert_pakistan"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCNgPwwHRNwMMGGdZhNKbg4yf6vhy0oekY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

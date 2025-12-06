@@ -1,0 +1,10 @@
+name = "weather-alert-fcm"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+[vars]
+FCM_CLIENT_EMAIL = "firebase-adminsdk-fbsvc@weather-alert-pk.iam.gserviceaccount.com"
+
+# FCM_PRIVATE_KEY should be added as a secret:
+# wrangler secret put FCM_PRIVATE_KEY
+# Then paste the private key from your service account JSON
