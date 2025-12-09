@@ -15,6 +15,7 @@ class CurrentWeatherTile extends StatelessWidget {
   final String wind;
   final String pressure;
   final String windDir;
+  final String? streetAddress;
 
   const CurrentWeatherTile({
     super.key,
@@ -28,6 +29,7 @@ class CurrentWeatherTile extends StatelessWidget {
     required this.pressure,
     required this.windDir,
     this.isDay = true,
+    this.streetAddress,
   });
 
   @override
@@ -103,6 +105,22 @@ class CurrentWeatherTile extends StatelessWidget {
                         ),
                       ],
                     ),
+                    // Street address
+                    if (streetAddress != null && streetAddress!.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 20, top: 2),
+                        child: Text(
+                          streetAddress!,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w400,
+                            color: fg.withValues(alpha: 0.6),
+                            letterSpacing: 0.1,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     const SizedBox(height: 8),
                     // Temperature
                     Row(

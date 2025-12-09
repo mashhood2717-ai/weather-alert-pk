@@ -1,5 +1,6 @@
 // lib/screens/home_screen.dart - WITH SKELETON LOADER & CLEAR SEARCH
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../services/weather_controller.dart';
 import '../services/notification_service.dart';
 import '../services/favorites_service.dart';
+import '../services/places_service.dart';
 import '../utils/background_utils.dart';
 import '../utils/wind_utils.dart';
 import '../widgets/current_weather_tile.dart';
@@ -35,6 +37,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool loading = false;
   bool _isFavorite = false;
   List<FavoriteLocation> _favorites = [];
+  
+  // Place autocomplete
+  List<PlaceSuggestion> _suggestions = [];
+  bool _showSuggestions = false;
+  String? _sessionToken;
+  Timer? _debounceTimer;
 
   late TabController tabs;
   WebViewController? windy;
@@ -71,7 +79,77 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _shimmerController.dispose();
     tabs.dispose();
     _search.dispose();
+    _debounceTimer?.cancel();
     super.dispose();
+  }
+
+  void _onSearchTextChanged(String value) {
+    _debounceTimer?.cancel();
+    
+    if (value.trim().isEmpty) {
+      setState(() {
+        _suggestions = [];
+        _showSuggestions = false;
+      });
+      return;
+    }
+
+    // Start a new session if needed
+    _sessionToken ??= PlacesService.generateSessionToken();
+
+    // Debounce to avoid too many API calls
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () async {
+      final suggestions = await PlacesService.getFullAutocompleteSuggestions(
+        value,
+        sessionToken: _sessionToken,
+      );
+      if (mounted) {
+        setState(() {
+          _suggestions = suggestions;
+          _showSuggestions = suggestions.isNotEmpty;
+        });
+      }
+    });
+  }
+
+  Future<void> _onSuggestionSelected(PlaceSuggestion suggestion) async {
+    setState(() {
+      _showSuggestions = false;
+      _suggestions = [];
+      loading = true;
+    });
+    _fadeController.reset();
+    _search.clear();
+    FocusScope.of(context).unfocus();
+
+    try {
+      // Get place details to get coordinates
+      final details = await PlacesService.getPlaceDetails(
+        suggestion.placeId,
+        sessionToken: _sessionToken,
+      );
+
+      // Reset session token after selection
+      _sessionToken = null;
+
+      if (details != null) {
+        // Use coordinates to load weather with the place name
+        await controller.loadByCoordinates(
+          details.lat,
+          details.lon,
+          cityName: suggestion.mainText,
+        );
+        _fadeController.forward();
+      } else {
+        // Fallback to city search if details failed
+        await controller.loadByCity(suggestion.mainText);
+        _fadeController.forward();
+      }
+    } catch (e) {
+      _showError('Search Error: ${e.toString()}');
+    }
+
+    setState(() => loading = false);
   }
 
   void _onWeatherDataLoaded() {
@@ -322,7 +400,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _onSearch() async {
     final q = _search.text.trim();
     if (q.isEmpty) return;
-    setState(() => loading = true);
+    setState(() {
+      loading = true;
+      _showSuggestions = false;
+      _suggestions = [];
+    });
     _fadeController.reset();
     _search.clear(); // Clear search text after searching
     FocusScope.of(context).unfocus(); // Hide keyboard
@@ -808,69 +890,204 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildModernSearchBar(bool isDay) {
+    final fg = isDay ? Colors.black : Colors.white;
+    final bgColor = isDay
+        ? Colors.white.withValues(alpha: 0.25)
+        : Colors.black.withValues(alpha: 0.25);
+
     return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        child: ClipRRect(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Search bar
+          ClipRRect(
             borderRadius: BorderRadius.circular(14),
             child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                child: Container(
-                  decoration: BoxDecoration(
-                      color: isDay
-                          ? Colors.white.withValues(alpha: 0.25)
-                          : Colors.black.withValues(alpha: 0.25),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          width: 1)),
-                  child: Row(children: [
+              filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: bgColor,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  children: [
                     Expanded(
-                        child: TextField(
-                            controller: _search,
-                            style: TextStyle(
-                                color: isDay
-                                    ? Colors.black.withValues(alpha: 0.87)
-                                    : Colors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500),
-                            decoration: InputDecoration(
-                                hintText: "Search city or ICAO code...",
-                                hintStyle: TextStyle(
-                                    color: isDay
-                                        ? Colors.black.withValues(alpha: 0.45)
-                                        : Colors.white.withValues(alpha: 0.5),
-                                    fontSize: 14),
-                                prefixIcon: Icon(Icons.search_rounded,
-                                    color: isDay
-                                        ? Colors.black.withValues(alpha: 0.54)
-                                        : Colors.white.withValues(alpha: 0.7),
-                                    size: 20),
-                                border: InputBorder.none,
-                                contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 14)),
-                            onSubmitted: (_) => _onSearch())),
+                      child: TextField(
+                        controller: _search,
+                        style: TextStyle(
+                          color: fg.withValues(alpha: 0.87),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: "Search any location...",
+                          hintStyle: TextStyle(
+                            color: fg.withValues(alpha: 0.45),
+                            fontSize: 14,
+                          ),
+                          prefixIcon: Icon(
+                            Icons.search_rounded,
+                            color: fg.withValues(alpha: 0.54),
+                            size: 20,
+                          ),
+                          suffixIcon: _search.text.isNotEmpty
+                              ? IconButton(
+                                  icon: Icon(
+                                    Icons.close_rounded,
+                                    color: fg.withValues(alpha: 0.54),
+                                    size: 18,
+                                  ),
+                                  onPressed: () {
+                                    _search.clear();
+                                    setState(() {
+                                      _suggestions = [];
+                                      _showSuggestions = false;
+                                    });
+                                  },
+                                )
+                              : null,
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
+                        ),
+                        onChanged: _onSearchTextChanged,
+                        onSubmitted: (_) => _onSearch(),
+                      ),
+                    ),
                     if (controller.current.value != null)
                       IconButton(
-                          icon: Icon(
-                              _isFavorite
-                                  ? Icons.star_rounded
-                                  : Icons.star_border_rounded,
-                              color: _isFavorite
-                                  ? Colors.amber
-                                  : (isDay
-                                      ? Colors.black.withValues(alpha: 0.54)
-                                      : Colors.white.withValues(alpha: 0.7)),
-                              size: 22),
-                          onPressed: _toggleFavorite),
+                        icon: Icon(
+                          _isFavorite
+                              ? Icons.star_rounded
+                              : Icons.star_border_rounded,
+                          color: _isFavorite
+                              ? Colors.amber
+                              : fg.withValues(alpha: 0.54),
+                          size: 22,
+                        ),
+                        onPressed: _toggleFavorite,
+                      ),
                     IconButton(
-                        icon: Icon(Icons.send_rounded,
-                            color: isDay
-                                ? Colors.black.withValues(alpha: 0.54)
-                                : Colors.white.withValues(alpha: 0.7),
-                            size: 20),
-                        onPressed: _onSearch),
-                  ]),
-                ))));
+                      icon: Icon(
+                        Icons.send_rounded,
+                        color: fg.withValues(alpha: 0.54),
+                        size: 20,
+                      ),
+                      onPressed: _onSearch,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // Suggestions dropdown
+          if (_showSuggestions && _suggestions.isNotEmpty)
+            _buildSuggestionsDropdown(isDay),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSuggestionsDropdown(bool isDay) {
+    final fg = isDay ? Colors.black : Colors.white;
+    final bgColor = isDay
+        ? Colors.white.withValues(alpha: 0.95)
+        : Colors.grey[900]!.withValues(alpha: 0.95);
+
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      constraints: const BoxConstraints(maxHeight: 250),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.15),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: ListView.builder(
+          shrinkWrap: true,
+          padding: EdgeInsets.zero,
+          itemCount: _suggestions.length,
+          itemBuilder: (context, index) {
+            final suggestion = _suggestions[index];
+            return InkWell(
+              onTap: () => _onSuggestionSelected(suggestion),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  border: index < _suggestions.length - 1
+                      ? Border(
+                          bottom: BorderSide(
+                            color: fg.withValues(alpha: 0.1),
+                            width: 0.5,
+                          ),
+                        )
+                      : null,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.location_on_outlined,
+                      color: fg.withValues(alpha: 0.5),
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            suggestion.mainText,
+                            style: TextStyle(
+                              color: fg.withValues(alpha: 0.87),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (suggestion.secondaryText.isNotEmpty)
+                            Text(
+                              suggestion.secondaryText,
+                              style: TextStyle(
+                                color: fg.withValues(alpha: 0.5),
+                                fontSize: 12,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      Icons.north_west_rounded,
+                      color: fg.withValues(alpha: 0.3),
+                      size: 16,
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
   }
 
   Widget _buildWeatherCard(dynamic c, String windDirection, bool isDay) {
@@ -885,7 +1102,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           dew: "${c?.dewpointC?.toStringAsFixed(1) ?? '--'}°C",
           pressure: "${c?.pressureMb?.toStringAsFixed(0) ?? '--'} mb",
           windDir: windDirection,
-          isDay: isDay),
+          isDay: isDay,
+          streetAddress: c?.streetAddress),
       if (controller.metarApplied)
         Positioned(
             top: 12,

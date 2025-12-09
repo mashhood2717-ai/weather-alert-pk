@@ -22,6 +22,9 @@ class CurrentWeather {
   final double? precipitation;
   final double? rain;
   final double? snowfall;
+  // Street address from geocoding
+  final String? streetAddress;
+  final String? fullAddress;
 
   CurrentWeather({
     required this.city,
@@ -44,5 +47,38 @@ class CurrentWeather {
     this.precipitation,
     this.rain,
     this.snowfall,
+    this.streetAddress,
+    this.fullAddress,
   });
+
+  /// Create a copy with updated address
+  CurrentWeather copyWithAddress({
+    String? streetAddress,
+    String? fullAddress,
+  }) {
+    return CurrentWeather(
+      city: city,
+      tempC: tempC,
+      condition: condition,
+      icon: icon,
+      humidity: humidity,
+      windKph: windKph,
+      windDeg: windDeg,
+      feelsLikeC: feelsLikeC,
+      dewpointC: dewpointC,
+      pressureMb: pressureMb,
+      visKm: visKm,
+      gustKph: gustKph,
+      isDay: isDay,
+      lat: lat,
+      lon: lon,
+      uvIndex: uvIndex,
+      cloudCover: cloudCover,
+      precipitation: precipitation,
+      rain: rain,
+      snowfall: snowfall,
+      streetAddress: streetAddress ?? this.streetAddress,
+      fullAddress: fullAddress ?? this.fullAddress,
+    );
+  }
 }

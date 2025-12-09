@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
 import '../services/metar_service.dart';
 import '../services/open_meteo_service.dart';
+import '../services/geocoding_service.dart';
 import '../utils/icon_mapper.dart';
 import '../models/current_weather.dart';
 import '../models/hourly_weather.dart';
@@ -212,6 +213,10 @@ class WeatherController {
         metar = m;
         _createCurrentFromMetarOnly(m);
         metarApplied = true;
+        // Fetch street address in background
+        if (current.value != null) {
+          _fetchAndUpdateStreetAddress(current.value!.lat, current.value!.lon);
+        }
         onDataLoaded?.call();
         return;
       }
@@ -224,6 +229,10 @@ class WeatherController {
         metar = m;
         _createCurrentFromMetarOnly(m);
         metarApplied = true;
+        // Fetch street address in background
+        if (current.value != null) {
+          _fetchAndUpdateStreetAddress(current.value!.lat, current.value!.lon);
+        }
         onDataLoaded?.call();
         return;
       }
@@ -232,6 +241,12 @@ class WeatherController {
     // Otherwise use API data for current weather
     if (json != null) {
       _parseCurrentWeather(json);
+      // Fetch street address in background
+      final lat = _toD(json['latitude']);
+      final lon = _toD(json['longitude']);
+      if (lat != 0.0 && lon != 0.0) {
+        _fetchAndUpdateStreetAddress(lat, lon);
+      }
     }
 
     metarApplied = false;
@@ -261,6 +276,8 @@ class WeatherController {
           metar = m;
           _createCurrentFromMetarOnly(m);
           metarApplied = true;
+          // Fetch street address in background
+          _fetchAndUpdateStreetAddress(lat, lon);
           onDataLoaded?.call();
           return;
         }
@@ -269,6 +286,8 @@ class WeatherController {
       _parseCurrentWeather(json);
       metarApplied = false;
       metar = null;
+      // Fetch street address in background
+      _fetchAndUpdateStreetAddress(lat, lon);
       onDataLoaded?.call();
     }
   }
@@ -293,6 +312,8 @@ class WeatherController {
             metar = m;
             _createCurrentFromMetarOnly(m);
             metarApplied = true;
+            // Fetch street address in background
+            _fetchAndUpdateStreetAddress(lat, lon);
             onDataLoaded?.call();
             return;
           }
@@ -301,11 +322,28 @@ class WeatherController {
         _parseCurrentWeather(json);
         metarApplied = false;
         metar = null;
+        // Fetch street address in background
+        _fetchAndUpdateStreetAddress(lat, lon);
         onDataLoaded?.call();
       }
     } catch (e) {
       print('loadByLocation error: $e');
       rethrow;
+    }
+  }
+
+  /// Fetch street address from geocoding and update current weather
+  Future<void> _fetchAndUpdateStreetAddress(double lat, double lon) async {
+    try {
+      final result = await GeocodingService.reverseGeocode(lat, lon);
+      if (result != null && current.value != null) {
+        current.value = current.value!.copyWithAddress(
+          streetAddress: result.shortAddress,
+          fullAddress: result.formattedAddress,
+        );
+      }
+    } catch (e) {
+      print('Geocoding error: $e');
     }
   }
 
