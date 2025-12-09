@@ -1,4 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="notification_color">#FF5722</color>
+    <color name="widget_bg_day_start">#1A237E</color>
+    <color name="widget_bg_day_end">#3F51B5</color>
+    <color name="widget_bg_night_start">#0D1B2A</color>
+    <color name="widget_bg_night_end">#415A77</color>
+    <color name="widget_text_primary">#FFFFFF</color>
+    <color name="widget_text_secondary">#BBFFFFFF</color>
+    <color name="widget_accent">#FFD700</color>
+    
+    <string name="widget_description">Shows weather, temperature, humidity, and prayer times</string>
 </resources>

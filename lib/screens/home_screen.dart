@@ -15,6 +15,7 @@ import '../services/aqi_service.dart';
 import '../services/settings_service.dart';
 import '../services/persistent_notification_service.dart';
 import '../services/prayer_service.dart';
+import '../services/widget_service.dart';
 import '../utils/background_utils.dart';
 import '../utils/wind_utils.dart';
 import '../widgets/current_weather_tile.dart';
@@ -40,7 +41,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final WeatherController controller = WeatherController();
   final FavoritesService _favoritesService = FavoritesService();
   final SettingsService _settings = SettingsService();
-  final PersistentNotificationService _persistentNotification = PersistentNotificationService();
+  final PersistentNotificationService _persistentNotification =
+      PersistentNotificationService();
+  final WidgetService _widgetService = WidgetService();
   final TextEditingController _search = TextEditingController();
 
   bool loading = false;
@@ -101,9 +104,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _initServices() async {
     await _settings.initialize();
     await _persistentNotification.initialize();
+    await _widgetService.initialize();
     _persistentNotification.setRefreshCallback(_onRefreshNotification);
+    _widgetService.setRefreshCallback(_onRefreshNotification);
     // Sync persistent notification with traveling mode
-    await _persistentNotification.syncWithTravelingMode(_settings.travelingMode);
+    await _persistentNotification
+        .syncWithTravelingMode(_settings.travelingMode);
     if (mounted) setState(() {});
   }
 
@@ -321,12 +327,35 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final temp = _settings.convertTemperature(weather.tempC);
       final tempStr = '${temp.round()}${_settings.temperatureSymbol}';
 
+      // Get feels like with unit
+      final feelsLike = _settings.convertTemperature(weather.feelsLikeC ?? weather.tempC);
+      final feelsLikeStr = 'Feels like ${feelsLike.round()}${_settings.temperatureSymbol}';
+
+      // Get wind with unit
+      final windSpeed = _settings.convertWindSpeedHybrid(weather.windKph);
+      final windStr = '${windSpeed.round()} ${_settings.windSymbolHybrid}';
+
       // Get next prayer info
       String nextPrayerName = '--';
       String nextPrayerTime = '--';
       if (_prayerData?.nextPrayer != null) {
         nextPrayerName = _prayerData!.nextPrayer!.name;
         nextPrayerTime = _prayerData!.nextPrayer!.formattedTime;
+      }
+
+      // Get all prayer times
+      String fajr = '--:--', dhuhr = '--:--', asr = '--:--', maghrib = '--:--', isha = '--:--';
+      if (_prayerData != null) {
+        for (final prayer in _prayerData!.prayers) {
+          final timeStr = _formatPrayerTime(prayer.time);
+          switch (prayer.name) {
+            case 'Fajr': fajr = timeStr; break;
+            case 'Dhuhr': dhuhr = timeStr; break;
+            case 'Asr': asr = timeStr; break;
+            case 'Maghrib': maghrib = timeStr; break;
+            case 'Isha': isha = timeStr; break;
+          }
+        }
       }
 
       // Update notification
@@ -337,9 +366,35 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         nextPrayerTime: nextPrayerTime,
         city: weather.city,
       );
+
+      // Update home screen widget
+      await _widgetService.updateWidget(
+        city: weather.city,
+        temp: tempStr,
+        condition: weather.condition,
+        feelsLike: feelsLikeStr,
+        humidity: '${weather.humidity}%',
+        wind: windStr,
+        uv: (weather.uvIndex ?? 0).toStringAsFixed(1),
+        isDay: weather.isDay == 1,
+        nextPrayer: nextPrayerName,
+        nextPrayerTime: nextPrayerTime,
+        fajr: fajr,
+        dhuhr: dhuhr,
+        asr: asr,
+        maghrib: maghrib,
+        isha: isha,
+      );
     } catch (e) {
       debugPrint('Error updating persistent notification: $e');
     }
+  }
+
+  /// Format prayer time for widget display
+  String _formatPrayerTime(DateTime time) {
+    final hour = time.hour > 12 ? time.hour - 12 : (time.hour == 0 ? 12 : time.hour);
+    final minute = time.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
   }
 
   Future<void> _loadFavorites() async {
@@ -1309,19 +1364,27 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Widget _buildWeatherCard(dynamic c, String windDirection, bool isDay) {
     // Convert temperature and wind based on settings
-    final tempValue = c?.tempC != null ? _settings.convertTemperature(c!.tempC) : null;
-    final windValue = c?.windKph != null ? _settings.convertWindSpeedHybrid(c!.windKph!) : null;
-    final dewValue = c?.dewpointC != null ? _settings.convertTemperature(c!.dewpointC!) : null;
-    
+    final tempValue =
+        c?.tempC != null ? _settings.convertTemperature(c!.tempC) : null;
+    final windValue = c?.windKph != null
+        ? _settings.convertWindSpeedHybrid(c!.windKph!)
+        : null;
+    final dewValue = c?.dewpointC != null
+        ? _settings.convertTemperature(c!.dewpointC!)
+        : null;
+
     return Stack(children: [
       CurrentWeatherTile(
           city: c?.city ?? controller.lastCitySearched ?? "--",
-          temp: "${tempValue?.toStringAsFixed(1) ?? '--'}${_settings.temperatureSymbol}",
+          temp:
+              "${tempValue?.toStringAsFixed(1) ?? '--'}${_settings.temperatureSymbol}",
           condition: c?.condition ?? "Data Unavailable",
           icon: c?.icon ?? '',
           humidity: "${c?.humidity ?? '--'}%",
-          wind: "${windValue?.toStringAsFixed(0) ?? '--'} ${_settings.windSymbolHybrid}",
-          dew: "${dewValue?.toStringAsFixed(1) ?? '--'}${_settings.temperatureSymbol}",
+          wind:
+              "${windValue?.toStringAsFixed(0) ?? '--'} ${_settings.windSymbolHybrid}",
+          dew:
+              "${dewValue?.toStringAsFixed(1) ?? '--'}${_settings.temperatureSymbol}",
           pressure: "${c?.pressureMb?.toStringAsFixed(0) ?? '--'} mb",
           windDir: windDirection,
           isDay: isDay,
@@ -1483,15 +1546,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               final maxTemp = _settings.convertTemperature(d.maxTemp);
               final minTemp = _settings.convertTemperature(d.minTemp);
               return ForecastTile(
-                date: d.date,
-                icon: d.icon,
-                condition: d.condition,
-                maxTemp: maxTemp.toStringAsFixed(0),
-                minTemp: minTemp.toStringAsFixed(0),
-                isDay: isDay,
-                dailyWeather: d,
-                feelsLikeHigh: maxTemp + (d.uvIndexMax ?? 0) * 0.5,
-                feelsLikeLow: minTemp - 2);
+                  date: d.date,
+                  icon: d.icon,
+                  condition: d.condition,
+                  maxTemp: maxTemp.toStringAsFixed(0),
+                  minTemp: minTemp.toStringAsFixed(0),
+                  isDay: isDay,
+                  dailyWeather: d,
+                  feelsLikeHigh: maxTemp + (d.uvIndexMax ?? 0) * 0.5,
+                  feelsLikeLow: minTemp - 2);
             }),
           ],
           const SizedBox(height: 8),
@@ -1522,15 +1585,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               final metarTempC = controller.metar!["temp_c"];
               final metarWindKph = controller.metar!["wind_kph"];
               final metarDewC = controller.metar!["dewpoint_c"];
-              final tempDisplay = metarTempC != null ? _settings.convertTemperature((metarTempC as num).toDouble()).toStringAsFixed(1) : "--";
-              final windDisplay = metarWindKph != null ? _settings.convertWindSpeedHybrid((metarWindKph as num).toDouble()).toStringAsFixed(0) : "--";
-              final dewDisplay = metarDewC != null ? _settings.convertTemperature((metarDewC as num).toDouble()).toStringAsFixed(1) : "--";
+              final tempDisplay = metarTempC != null
+                  ? _settings
+                      .convertTemperature((metarTempC as num).toDouble())
+                      .toStringAsFixed(1)
+                  : "--";
+              final windDisplay = metarWindKph != null
+                  ? _settings
+                      .convertWindSpeedHybrid((metarWindKph as num).toDouble())
+                      .toStringAsFixed(0)
+                  : "--";
+              final dewDisplay = metarDewC != null
+                  ? _settings
+                      .convertTemperature((metarDewC as num).toDouble())
+                      .toStringAsFixed(1)
+                  : "--";
               return MetarTile(
                   station: controller.metar!["station"] ?? "--",
                   observed: controller.metar!["observed"] ?? "--",
                   temp: "$tempDisplay${_settings.temperatureSymbol}",
-                  wind: "$windDisplay ${_settings.windSymbolHybrid} (${controller.metar!["wind_degrees"] ?? "--"}°)",
-                  visibility: "${controller.metar!["visibility_km"] ?? "--"} km",
+                  wind:
+                      "$windDisplay ${_settings.windSymbolHybrid} (${controller.metar!["wind_degrees"] ?? "--"}°)",
+                  visibility:
+                      "${controller.metar!["visibility_km"] ?? "--"} km",
                   pressure: "${controller.metar!["pressure_hpa"] ?? "--"} hPa",
                   humidity: "${controller.metar!["humidity"] ?? "--"}%",
                   dewpoint: "$dewDisplay${_settings.temperatureSymbol}",

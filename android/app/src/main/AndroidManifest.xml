@@ -104,6 +104,20 @@
                 android:value="weather_status_display" />
         </service>
 
+        <!-- Weather & Prayer Widget -->
+        <receiver
+            android:name=".WeatherWidgetProvider"
+            android:exported="true"
+            android:label="Weather &amp; Prayer">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.mashhood.weatheralert.WIDGET_REFRESH" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_weather_info" />
+        </receiver>
+
         <!-- Required by Flutter to confirm we are using v2 embedding -->
         <meta-data
             android:name="flutterEmbedding"

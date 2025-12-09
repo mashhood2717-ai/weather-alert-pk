@@ -175,7 +175,8 @@ class SettingsService extends ChangeNotifier {
 
   /// Convert wind for hybrid/imperial mode
   double convertWindSpeedHybrid(double kmhValue) {
-    if (_temperatureUnit == TemperatureUnit.hybrid || _temperatureUnit == TemperatureUnit.imperial) {
+    if (_temperatureUnit == TemperatureUnit.hybrid ||
+        _temperatureUnit == TemperatureUnit.imperial) {
       return kmhValue * 0.621371; // Convert to mph
     }
     return convertWindSpeed(kmhValue);
@@ -183,7 +184,8 @@ class SettingsService extends ChangeNotifier {
 
   /// Get wind symbol for hybrid/imperial mode
   String get windSymbolHybrid {
-    if (_temperatureUnit == TemperatureUnit.hybrid || _temperatureUnit == TemperatureUnit.imperial) {
+    if (_temperatureUnit == TemperatureUnit.hybrid ||
+        _temperatureUnit == TemperatureUnit.imperial) {
       return 'mph';
     }
     return windSymbol;

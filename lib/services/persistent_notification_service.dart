@@ -35,8 +35,9 @@ class PersistentNotificationService {
 
     // Check if notification was previously enabled
     final prefs = await SharedPreferences.getInstance();
-    final wasEnabled = prefs.getBool('persistent_notification_enabled') ?? false;
-    
+    final wasEnabled =
+        prefs.getBool('persistent_notification_enabled') ?? false;
+
     if (wasEnabled) {
       final settings = SettingsService();
       if (settings.travelingMode) {

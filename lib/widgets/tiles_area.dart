@@ -78,18 +78,22 @@ class TilesArea extends StatelessWidget {
     if (controller.metarApplied && controller.metar != null) {
       final m = controller.metar!;
       final windDeg = m["wind_degrees"];
-      final metarWindDir = windDeg != null 
+      final metarWindDir = windDeg != null
           ? _mapWindDegreesToCardinal((windDeg as num).toInt())
           : "--";
-      
+
       final dewC = m["dewpoint_c"];
       final windKph = m["wind_kph"];
-      
-      final dewDisplay = dewC != null 
-          ? settings.convertTemperature((dewC as num).toDouble()).toStringAsFixed(1)
+
+      final dewDisplay = dewC != null
+          ? settings
+              .convertTemperature((dewC as num).toDouble())
+              .toStringAsFixed(1)
           : "--";
-      final windDisplay = windKph != null 
-          ? settings.convertWindSpeedHybrid((windKph as num).toDouble()).toStringAsFixed(0)
+      final windDisplay = windKph != null
+          ? settings
+              .convertWindSpeedHybrid((windKph as num).toDouble())
+              .toStringAsFixed(0)
           : "--";
 
       return {
@@ -102,13 +106,13 @@ class TilesArea extends StatelessWidget {
       };
     }
 
-    final feelsLike = c.feelsLikeC != null 
+    final feelsLike = c.feelsLikeC != null
         ? settings.convertTemperature(c.feelsLikeC!).toStringAsFixed(1)
         : '--';
-    final dewPoint = c.dewpointC != null 
+    final dewPoint = c.dewpointC != null
         ? settings.convertTemperature(c.dewpointC!).toStringAsFixed(1)
         : '--';
-    final windSpeed = c.gustKph != null 
+    final windSpeed = c.gustKph != null
         ? settings.convertWindSpeedHybrid(c.gustKph!).toStringAsFixed(0)
         : '--';
 
@@ -127,8 +131,24 @@ class TilesArea extends StatelessWidget {
 
   String _mapWindDegreesToCardinal(int? degrees) {
     if (degrees == null) return '--';
-    const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
-                        'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+    const directions = [
+      'N',
+      'NNE',
+      'NE',
+      'ENE',
+      'E',
+      'ESE',
+      'SE',
+      'SSE',
+      'S',
+      'SSW',
+      'SW',
+      'WSW',
+      'W',
+      'WNW',
+      'NW',
+      'NNW'
+    ];
     final index = ((degrees + 11.25) / 22.5).floor() % 16;
     return directions[index];
   }
