@@ -127,7 +127,7 @@ class CurrentWeatherTile extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          temp.replaceAll('°C', ''),
+                          temp.replaceAll(RegExp(r'[°][CF]'), ''),
                           style: TextStyle(
                             fontSize: 52,
                             fontWeight: FontWeight.w200,
@@ -139,7 +139,7 @@ class CurrentWeatherTile extends StatelessWidget {
                         Padding(
                           padding: const EdgeInsets.only(top: 6),
                           child: Text(
-                            '°C',
+                            temp.contains('°F') ? '°F' : '°C',
                             style: TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.w300,
