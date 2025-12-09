@@ -13,6 +13,8 @@ import '../services/favorites_service.dart';
 import '../services/places_service.dart';
 import '../services/aqi_service.dart';
 import '../services/settings_service.dart';
+import '../services/persistent_notification_service.dart';
+import '../services/prayer_service.dart';
 import '../utils/background_utils.dart';
 import '../utils/wind_utils.dart';
 import '../widgets/current_weather_tile.dart';
@@ -38,6 +40,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final WeatherController controller = WeatherController();
   final FavoritesService _favoritesService = FavoritesService();
   final SettingsService _settings = SettingsService();
+  final PersistentNotificationService _persistentNotification = PersistentNotificationService();
   final TextEditingController _search = TextEditingController();
 
   bool loading = false;
@@ -48,6 +51,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   AirQualityData? _aqiData;
   bool _aqiLoading = false;
   String? _aqiError;
+
+  // Prayer data for persistent notification
+  DailyPrayerTimes? _prayerData;
 
   // Location auto-refresh
   Timer? _locationRefreshTimer;
@@ -84,7 +90,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     )..repeat();
 
     controller.onDataLoaded = _onWeatherDataLoaded;
-    _initSettings();
+    _initServices();
     _loadInitial();
     _loadFavorites();
     _startLocationAutoRefresh();
@@ -92,9 +98,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _settings.addListener(_onSettingsChanged);
   }
 
-  Future<void> _initSettings() async {
+  Future<void> _initServices() async {
     await _settings.initialize();
+    await _persistentNotification.initialize();
+    _persistentNotification.setRefreshCallback(_onRefreshNotification);
+    // Sync persistent notification with traveling mode
+    await _persistentNotification.syncWithTravelingMode(_settings.travelingMode);
     if (mounted) setState(() {});
+  }
+
+  /// Handle refresh button press from notification
+  Future<void> _onRefreshNotification() async {
+    if (controller.current.value != null) {
+      final coords = controller.getCurrentCoordinates();
+      if (coords != null) {
+        await controller.loadByCoordinates(coords.$1, coords.$2);
+        await _fetchAqiData(coords.$1, coords.$2);
+      }
+    }
   }
 
   void _onSettingsChanged() {
@@ -102,6 +123,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       setState(() {});
       // Restart location refresh if traveling mode changed
       _restartLocationRefresh();
+      // Sync persistent notification with traveling mode
+      _persistentNotification.syncWithTravelingMode(_settings.travelingMode);
     }
   }
 
@@ -114,6 +137,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _debounceTimer?.cancel();
     _locationRefreshTimer?.cancel();
     _settings.removeListener(_onSettingsChanged);
+    _persistentNotification.dispose();
     super.dispose();
   }
 
@@ -275,8 +299,47 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (coords != null) {
       _fetchAqiData(coords.$1, coords.$2);
       _lastKnownPosition = null; // Reset position tracking for auto-refresh
+      // Update persistent notification with weather and prayer data
+      _updatePersistentNotification(coords.$1, coords.$2);
     }
     if (mounted) setState(() {});
+  }
+
+  /// Update persistent notification with current weather and next prayer
+  Future<void> _updatePersistentNotification(double lat, double lon) async {
+    final weather = controller.current.value;
+    if (weather == null) return;
+
+    try {
+      // Calculate prayer times for current location
+      _prayerData = await PrayerService.calculatePrayerTimes(
+        latitude: lat,
+        longitude: lon,
+      );
+
+      // Get temperature with unit
+      final temp = _settings.convertTemperature(weather.tempC);
+      final tempStr = '${temp.round()}${_settings.temperatureSymbol}';
+
+      // Get next prayer info
+      String nextPrayerName = '--';
+      String nextPrayerTime = '--';
+      if (_prayerData?.nextPrayer != null) {
+        nextPrayerName = _prayerData!.nextPrayer!.name;
+        nextPrayerTime = _prayerData!.nextPrayer!.formattedTime;
+      }
+
+      // Update notification
+      await _persistentNotification.updateNotification(
+        condition: weather.condition,
+        temperature: tempStr,
+        nextPrayer: nextPrayerName,
+        nextPrayerTime: nextPrayerTime,
+        city: weather.city,
+      );
+    } catch (e) {
+      debugPrint('Error updating persistent notification: $e');
+    }
   }
 
   Future<void> _loadFavorites() async {
