@@ -6,6 +6,8 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:timezone/timezone.dart' as tz;
+import 'package:timezone/data/latest.dart' as tz_data;
 import '../models/weather_alert.dart';
 import 'alert_storage_service.dart';
 
@@ -94,6 +96,17 @@ class NotificationService {
     enableVibration: true,
   );
 
+  // Prayer notification channel
+  static const AndroidNotificationChannel _prayerChannel =
+      AndroidNotificationChannel(
+    'prayer_notifications',
+    'Prayer Time Reminders',
+    description: 'Notifications for prayer times',
+    importance: Importance.high,
+    playSound: true,
+    enableVibration: true,
+  );
+
   Future<void> initialize() async {
     // Request permission
     NotificationSettings settings = await _messaging.requestPermission(
@@ -128,7 +141,11 @@ class NotificationService {
       await androidPlugin.createNotificationChannel(_channelHigh);
       await androidPlugin.createNotificationChannel(_channelMedium);
       await androidPlugin.createNotificationChannel(_channelLow);
+      await androidPlugin.createNotificationChannel(_prayerChannel);
     }
+
+    // Initialize timezone for scheduled notifications
+    tz_data.initializeTimeZones();
 
     // Get FCM token and save to Firestore
     String? token = await _messaging.getToken();
@@ -308,5 +325,110 @@ class NotificationService {
   // Get current FCM token
   Future<String?> getToken() async {
     return await _messaging.getToken();
+  }
+
+  // ==================== Prayer Notifications ====================
+
+  /// Schedule a prayer notification
+  Future<void> schedulePrayerNotification({
+    required int id,
+    required String prayerName,
+    required DateTime scheduledTime,
+    int minutesBefore = 0,
+  }) async {
+    // Calculate the actual notification time
+    final notificationTime =
+        scheduledTime.subtract(Duration(minutes: minutesBefore));
+
+    // Don't schedule if the time has already passed
+    if (notificationTime.isBefore(DateTime.now())) {
+      return;
+    }
+
+    final tzNotificationTime = tz.TZDateTime.from(notificationTime, tz.local);
+
+    final title = minutesBefore > 0
+        ? '$prayerName in $minutesBefore minutes'
+        : 'Time for $prayerName';
+    final body = minutesBefore > 0
+        ? 'Prepare for $prayerName prayer'
+        : 'It\'s time to pray $prayerName';
+
+    await _localNotifications.zonedSchedule(
+      id,
+      title,
+      body,
+      tzNotificationTime,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          _prayerChannel.id,
+          _prayerChannel.name,
+          channelDescription: _prayerChannel.description,
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+          color: const Color(0xFF4CAF50),
+          enableVibration: true,
+          playSound: true,
+        ),
+      ),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      matchDateTimeComponents: null,
+      payload: 'prayer_$prayerName',
+    );
+  }
+
+  /// Cancel a specific prayer notification
+  Future<void> cancelPrayerNotification(int id) async {
+    await _localNotifications.cancel(id);
+  }
+
+  /// Cancel all prayer notifications
+  Future<void> cancelAllPrayerNotifications() async {
+    // Prayer notification IDs start from 1000
+    for (int i = 1000; i < 1010; i++) {
+      await _localNotifications.cancel(i);
+    }
+  }
+
+  /// Schedule all prayer notifications for today
+  Future<void> scheduleAllPrayerNotifications({
+    required Map<String, DateTime> prayerTimes,
+    required Map<String, bool> enabledPrayers,
+    int minutesBefore = 5,
+  }) async {
+    // Cancel existing prayer notifications first
+    await cancelAllPrayerNotifications();
+
+    int id = 1000;
+    for (final entry in prayerTimes.entries) {
+      final prayerName = entry.key;
+      final prayerTime = entry.value;
+
+      // Skip if this prayer notification is disabled
+      if (enabledPrayers[prayerName] != true) {
+        continue;
+      }
+
+      // Schedule notification at prayer time
+      await schedulePrayerNotification(
+        id: id,
+        prayerName: prayerName,
+        scheduledTime: prayerTime,
+        minutesBefore: 0,
+      );
+
+      // Also schedule a reminder before prayer time
+      if (minutesBefore > 0) {
+        await schedulePrayerNotification(
+          id: id + 5, // Offset ID for reminder
+          prayerName: prayerName,
+          scheduledTime: prayerTime,
+          minutesBefore: minutesBefore,
+        );
+      }
+
+      id++;
+    }
   }
 }

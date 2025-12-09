@@ -89,6 +89,8 @@ class _PrayerWidgetState extends State<PrayerWidget> {
           _loading = false;
           _error = null;
         });
+        // Schedule notifications after calculating prayer times
+        await _scheduleNotifications();
       }
     } catch (e) {
       if (mounted) {
@@ -98,6 +100,16 @@ class _PrayerWidgetState extends State<PrayerWidget> {
         });
       }
     }
+  }
+
+  Future<void> _scheduleNotifications() async {
+    if (widget.latitude == null || widget.longitude == null) return;
+    await PrayerService.scheduleNotifications(
+      latitude: widget.latitude!,
+      longitude: widget.longitude!,
+      method: _currentMethod,
+      madhab: _currentMadhab,
+    );
   }
 
   Future<void> _changeMadhab(AsrMadhab madhab) async {
@@ -115,6 +127,8 @@ class _PrayerWidgetState extends State<PrayerWidget> {
   Future<void> _toggleNotification(String prayer, bool value) async {
     await PrayerService.saveNotificationPref(prayer, value);
     setState(() => _notifications[prayer] = value);
+    // Re-schedule notifications with updated preferences
+    await _scheduleNotifications();
   }
 
   @override

@@ -3,6 +3,7 @@
 import 'package:adhan/adhan.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'notification_service.dart';
 
 /// Prayer calculation method
 enum PrayerMethod {
@@ -294,6 +295,44 @@ class PrayerService {
       nextPrayer: nextPrayer,
       timeUntilNext: timeUntilNext,
     );
+  }
+
+  /// Schedule prayer notifications based on current preferences
+  static Future<void> scheduleNotifications({
+    required double latitude,
+    required double longitude,
+    PrayerMethod? method,
+    AsrMadhab? madhab,
+  }) async {
+    try {
+      // Get prayer times
+      final prayerTimesData = await calculatePrayerTimes(
+        latitude: latitude,
+        longitude: longitude,
+        method: method,
+        madhab: madhab,
+      );
+
+      // Get notification preferences
+      final notificationPrefs = await getNotificationPrefs();
+
+      // Build prayer times map (only main prayers, not sunrise)
+      final prayerTimes = <String, DateTime>{};
+      for (final prayer in prayerTimesData.prayers) {
+        if (prayer.name != 'Sunrise') {
+          prayerTimes[prayer.name] = prayer.time;
+        }
+      }
+
+      // Schedule notifications
+      await NotificationService().scheduleAllPrayerNotifications(
+        prayerTimes: prayerTimes,
+        enabledPrayers: notificationPrefs,
+        minutesBefore: 5,
+      );
+    } catch (e) {
+      debugPrint('Error scheduling prayer notifications: $e');
+    }
   }
 
   /// Format duration as "Xh Ym"
