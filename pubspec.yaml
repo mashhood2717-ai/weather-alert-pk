@@ -1,5 +1,5 @@
 name: weather_alert_pakistan
-description: Weather Alert Pakistan with WeatherAPI + METAR + Windy
+description: Weather & Prayer Alert PK - Weather forecasts and Islamic prayer times
 publish_to: 'none'
 
 version: 1.1.0+1
@@ -23,6 +23,7 @@ dependencies:
   cloud_firestore: ^6.1.0
   adhan: ^2.0.0+1
   timezone: ^0.10.1
+  home_widget: ^0.8.1
 
 dev_dependencies:
   flutter_test:

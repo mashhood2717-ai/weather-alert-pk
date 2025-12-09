@@ -10,7 +10,7 @@ class WeatherAlertApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Weather Alert Pakistan',
+      title: 'Weather & Prayer Alert PK',
       theme: ThemeData(
         useMaterial3: true,
         scaffoldBackgroundColor: const Color(0xFFF8FAFF),

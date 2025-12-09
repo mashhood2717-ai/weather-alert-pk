@@ -12,6 +12,7 @@ import '../services/notification_service.dart';
 import '../services/favorites_service.dart';
 import '../services/places_service.dart';
 import '../services/aqi_service.dart';
+import '../services/settings_service.dart';
 import '../utils/background_utils.dart';
 import '../utils/wind_utils.dart';
 import '../widgets/current_weather_tile.dart';
@@ -25,6 +26,7 @@ import '../widgets/aqi_widget.dart';
 import '../widgets/prayer_widget.dart';
 import '../models/daily_weather.dart';
 import '../models/current_weather.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -35,6 +37,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final WeatherController controller = WeatherController();
   final FavoritesService _favoritesService = FavoritesService();
+  final SettingsService _settings = SettingsService();
   final TextEditingController _search = TextEditingController();
 
   bool loading = false;
@@ -81,10 +84,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     )..repeat();
 
     controller.onDataLoaded = _onWeatherDataLoaded;
+    _initSettings();
     _loadInitial();
     _loadFavorites();
     _startLocationAutoRefresh();
     tabs.addListener(() => setState(() {}));
+    _settings.addListener(_onSettingsChanged);
+  }
+
+  Future<void> _initSettings() async {
+    await _settings.initialize();
+    if (mounted) setState(() {});
+  }
+
+  void _onSettingsChanged() {
+    if (mounted) {
+      setState(() {});
+      // Restart location refresh if traveling mode changed
+      _restartLocationRefresh();
+    }
   }
 
   @override
@@ -95,23 +113,38 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _search.dispose();
     _debounceTimer?.cancel();
     _locationRefreshTimer?.cancel();
+    _settings.removeListener(_onSettingsChanged);
     super.dispose();
   }
 
   /// Start auto-refreshing location for travelers
   void _startLocationAutoRefresh() {
-    // Check location every 2 minutes
+    // Check location based on traveling mode
+    final interval = _settings.travelingMode
+        ? const Duration(minutes: 1) // More frequent when traveling
+        : const Duration(minutes: 5); // Less frequent normally
+
     _locationRefreshTimer = Timer.periodic(
-      const Duration(minutes: 2),
+      interval,
       (_) => _checkLocationChange(),
     );
   }
 
+  /// Restart location refresh when settings change
+  void _restartLocationRefresh() {
+    _locationRefreshTimer?.cancel();
+    _startLocationAutoRefresh();
+  }
+
   /// Check if location has changed significantly
   Future<void> _checkLocationChange() async {
+    // Only check if traveling mode is enabled
+    if (!_settings.travelingMode) return;
+
     try {
       final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.medium,
+        desiredAccuracy:
+            LocationAccuracy.high, // Higher accuracy when traveling
       );
 
       if (_lastKnownPosition != null) {
@@ -827,12 +860,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   // ==================== END SKELETON LOADER ====================
 
+  /// Determine if day mode should be used based on settings and weather data
+  bool _getIsDay(CurrentWeather? c) {
+    switch (_settings.themeMode) {
+      case AppThemeMode.light:
+        return true;
+      case AppThemeMode.dark:
+        return false;
+      case AppThemeMode.system:
+        // Use system brightness
+        final brightness = MediaQuery.of(context).platformBrightness;
+        return brightness == Brightness.light;
+      case AppThemeMode.auto:
+        // Use sunrise/sunset (original behavior)
+        return (c?.isDay ?? 1) == 1;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<CurrentWeather?>(
       valueListenable: controller.current,
       builder: (context, c, _) {
-        final isDay = (c?.isDay ?? 1) == 1;
+        final isDay = _getIsDay(c);
         final condition = c?.condition ?? "";
         final hasData = c != null || controller.metar != null;
         final dailyData =
@@ -909,12 +959,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text("Weather Alert PK",
+                      Text("Weather & Prayer Alert",
                           style: TextStyle(
                               color: isDay ? Colors.black : Colors.white,
-                              fontSize: 17,
+                              fontSize: 16,
                               fontWeight: FontWeight.bold,
-                              letterSpacing: 0.3)),
+                              letterSpacing: 0.2)),
                     ]))),
         _buildAppBarButton(
             icon: Icons.star_rounded,
@@ -942,6 +992,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             icon: Icons.notifications_rounded,
             isDay: isDay,
             onTap: () => Navigator.pushNamed(context, '/alerts')),
+        const SizedBox(width: 6),
+        _buildAppBarButton(
+            icon: Icons.settings_rounded,
+            isDay: isDay,
+            onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (context) => SettingsScreen(isDay: isDay)))),
         const SizedBox(width: 6),
         _buildAppBarButton(
             icon: Icons.admin_panel_settings,
