@@ -48,8 +48,7 @@ class GeocodingService {
   static final Map<String, GeocodingResult> _cache = {};
 
   /// Reverse geocode coordinates to get street address
-  static Future<GeocodingResult?> reverseGeocode(
-      double lat, double lon) async {
+  static Future<GeocodingResult?> reverseGeocode(double lat, double lon) async {
     // Round to 4 decimal places for cache key (approx 11m precision)
     final cacheKey = '${lat.toStringAsFixed(4)},${lon.toStringAsFixed(4)}';
 
@@ -106,9 +105,8 @@ class GeocodingService {
           streetAddress = longName;
         }
         if (types.contains('route')) {
-          streetAddress = streetAddress.isEmpty
-              ? longName
-              : '$streetAddress $longName';
+          streetAddress =
+              streetAddress.isEmpty ? longName : '$streetAddress $longName';
         }
         if (types.contains('sublocality_level_1') ||
             types.contains('sublocality')) {

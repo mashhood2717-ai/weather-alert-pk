@@ -87,9 +87,7 @@ class PlacesService {
 
         if (data['status'] == 'OK') {
           final predictions = data['predictions'] as List<dynamic>;
-          return predictions
-              .map((p) => PlaceSuggestion.fromJson(p))
-              .toList();
+          return predictions.map((p) => PlaceSuggestion.fromJson(p)).toList();
         }
       }
     } catch (e) {
@@ -127,9 +125,7 @@ class PlacesService {
 
         if (data['status'] == 'OK') {
           final predictions = data['predictions'] as List<dynamic>;
-          return predictions
-              .map((p) => PlaceSuggestion.fromJson(p))
-              .toList();
+          return predictions.map((p) => PlaceSuggestion.fromJson(p)).toList();
         }
       }
     } catch (e) {

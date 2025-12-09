@@ -6,11 +6,13 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../services/weather_controller.dart';
 import '../services/notification_service.dart';
 import '../services/favorites_service.dart';
 import '../services/places_service.dart';
+import '../services/aqi_service.dart';
 import '../utils/background_utils.dart';
 import '../utils/wind_utils.dart';
 import '../widgets/current_weather_tile.dart';
@@ -20,6 +22,7 @@ import '../widgets/metar_tile.dart';
 import '../widgets/tiles_area.dart';
 import '../widgets/sun_widget.dart';
 import '../widgets/wu_widget.dart';
+import '../widgets/aqi_widget.dart';
 import '../models/daily_weather.dart';
 import '../models/current_weather.dart';
 
@@ -37,7 +40,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool loading = false;
   bool _isFavorite = false;
   List<FavoriteLocation> _favorites = [];
-  
+
+  // AQI data
+  AirQualityData? _aqiData;
+  bool _aqiLoading = false;
+  String? _aqiError;
+
+  // Location auto-refresh
+  Timer? _locationRefreshTimer;
+  Position? _lastKnownPosition;
+  static const double _locationChangeThreshold = 500; // meters
+
   // Place autocomplete
   List<PlaceSuggestion> _suggestions = [];
   bool _showSuggestions = false;
@@ -53,7 +66,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    tabs = TabController(length: 5, vsync: this);
+    tabs = TabController(length: 6, vsync: this);
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
@@ -70,6 +83,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     controller.onDataLoaded = _onWeatherDataLoaded;
     _loadInitial();
     _loadFavorites();
+    _startLocationAutoRefresh();
     tabs.addListener(() => setState(() {}));
   }
 
@@ -80,12 +94,80 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     tabs.dispose();
     _search.dispose();
     _debounceTimer?.cancel();
+    _locationRefreshTimer?.cancel();
     super.dispose();
+  }
+
+  /// Start auto-refreshing location for travelers
+  void _startLocationAutoRefresh() {
+    // Check location every 2 minutes
+    _locationRefreshTimer = Timer.periodic(
+      const Duration(minutes: 2),
+      (_) => _checkLocationChange(),
+    );
+  }
+
+  /// Check if location has changed significantly
+  Future<void> _checkLocationChange() async {
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+      );
+
+      if (_lastKnownPosition != null) {
+        final distance = Geolocator.distanceBetween(
+          _lastKnownPosition!.latitude,
+          _lastKnownPosition!.longitude,
+          position.latitude,
+          position.longitude,
+        );
+
+        // If moved more than threshold, refresh weather
+        if (distance > _locationChangeThreshold) {
+          _lastKnownPosition = position;
+          await controller.loadByCoordinates(
+            position.latitude,
+            position.longitude,
+          );
+          await _fetchAqiData(position.latitude, position.longitude);
+        }
+      } else {
+        _lastKnownPosition = position;
+      }
+    } catch (e) {
+      // Silently fail - location refresh is optional
+      debugPrint('Location auto-refresh error: $e');
+    }
+  }
+
+  /// Fetch AQI data for given coordinates
+  Future<void> _fetchAqiData(double lat, double lon) async {
+    setState(() {
+      _aqiLoading = true;
+      _aqiError = null;
+    });
+
+    try {
+      final data = await AqiService.fetchAirQuality(lat, lon);
+      if (mounted) {
+        setState(() {
+          _aqiData = data;
+          _aqiLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _aqiError = e.toString();
+          _aqiLoading = false;
+        });
+      }
+    }
   }
 
   void _onSearchTextChanged(String value) {
     _debounceTimer?.cancel();
-    
+
     if (value.trim().isEmpty) {
       setState(() {
         _suggestions = [];
@@ -155,6 +237,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void _onWeatherDataLoaded() {
     _updateWindy();
     _checkIfFavorite();
+    // Fetch AQI data for current location
+    final coords = controller.getCurrentCoordinates();
+    if (coords != null) {
+      _fetchAqiData(coords.$1, coords.$2);
+      _lastKnownPosition = null; // Reset position tracking for auto-refresh
+    }
     if (mounted) setState(() {});
   }
 
@@ -774,6 +862,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                       TabBarView(controller: tabs, children: [
                                 _buildHomeTab(
                                     c, windDirection, dailyData, isDay),
+                                _buildAqiTab(isDay),
                                 _buildRawTab(isDay),
                                 _buildWindyTab(),
                                 _buildMetarTab(isDay),
@@ -1208,6 +1297,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             dividerColor: Colors.transparent,
             tabs: const [
               Tab(text: "Home"),
+              Tab(text: "AQI"),
               Tab(text: "Raw"),
               Tab(text: "Windy"),
               Tab(text: "METAR"),
@@ -1229,7 +1319,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 height: 130,
                 child: ListView.separated(
                     scrollDirection: Axis.horizontal,
-                    itemCount: controller.hourly.length,
+                    itemCount: controller.hourly.length > 24 ? 24 : controller.hourly.length,
                     separatorBuilder: (_, __) => const SizedBox(width: 8),
                     itemBuilder: (_, i) {
                       final h = controller.hourly[i];
@@ -1314,6 +1404,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 iconUrl: controller.metar!["icon"] ?? '',
                 isDay: isDay)
           ]);
+  }
+
+  Widget _buildAqiTab(bool isDay) {
+    return AqiWidget(
+      aqiData: _aqiData,
+      isDay: isDay,
+      isLoading: _aqiLoading,
+      errorMessage: _aqiError,
+      onRefresh: () {
+        final coords = controller.getCurrentCoordinates();
+        if (coords != null) {
+          _fetchAqiData(coords.$1, coords.$2);
+        }
+      },
+    );
   }
 
   Widget _buildWindyTab() {
