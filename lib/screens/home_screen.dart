@@ -1428,6 +1428,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       latitude: c?.lat ?? 33.6844,
       longitude: c?.lon ?? 73.0479,
       isDay: isDay,
+      cityName: c?.city,
     );
   }
 }
