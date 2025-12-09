@@ -1245,15 +1245,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildWeatherCard(dynamic c, String windDirection, bool isDay) {
+    // Convert temperature and wind based on settings
+    final tempValue = c?.tempC != null ? _settings.convertTemperature(c!.tempC) : null;
+    final windValue = c?.windKph != null ? _settings.convertWindSpeedHybrid(c!.windKph!) : null;
+    final dewValue = c?.dewpointC != null ? _settings.convertTemperature(c!.dewpointC!) : null;
+    
     return Stack(children: [
       CurrentWeatherTile(
           city: c?.city ?? controller.lastCitySearched ?? "--",
-          temp: "${c?.tempC.toStringAsFixed(1) ?? '--'}°C",
+          temp: "${tempValue?.toStringAsFixed(1) ?? '--'}${_settings.temperatureSymbol}",
           condition: c?.condition ?? "Data Unavailable",
           icon: c?.icon ?? '',
           humidity: "${c?.humidity ?? '--'}%",
-          wind: "${c?.windKph?.toStringAsFixed(0) ?? '--'} km/h",
-          dew: "${c?.dewpointC?.toStringAsFixed(1) ?? '--'}°C",
+          wind: "${windValue?.toStringAsFixed(0) ?? '--'} ${_settings.windSymbolHybrid}",
+          dew: "${dewValue?.toStringAsFixed(1) ?? '--'}${_settings.temperatureSymbol}",
           pressure: "${c?.pressureMb?.toStringAsFixed(0) ?? '--'} mb",
           windDir: windDirection,
           isDay: isDay,
@@ -1390,9 +1395,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     separatorBuilder: (_, __) => const SizedBox(width: 8),
                     itemBuilder: (_, i) {
                       final h = controller.hourly[i];
+                      final hourlyTemp = _settings.convertTemperature(h.tempC);
                       return HourlyTile(
                           time: h.time,
-                          temp: "${h.tempC.toStringAsFixed(0)}°",
+                          temp: "${hourlyTemp.toStringAsFixed(0)}°",
                           icon: h.icon,
                           humidity: h.humidity.toString(),
                           isDay: isDay);
@@ -1410,16 +1416,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           if (controller.daily.isNotEmpty) ...[
             _buildSectionTitle("7-Day Forecast", isDay),
             const SizedBox(height: 8),
-            ...controller.daily.map((d) => ForecastTile(
+            ...controller.daily.map((d) {
+              final maxTemp = _settings.convertTemperature(d.maxTemp);
+              final minTemp = _settings.convertTemperature(d.minTemp);
+              return ForecastTile(
                 date: d.date,
                 icon: d.icon,
                 condition: d.condition,
-                maxTemp: d.maxTemp.toStringAsFixed(0),
-                minTemp: d.minTemp.toStringAsFixed(0),
+                maxTemp: maxTemp.toStringAsFixed(0),
+                minTemp: minTemp.toStringAsFixed(0),
                 isDay: isDay,
                 dailyWeather: d,
-                feelsLikeHigh: d.maxTemp + (d.uvIndexMax ?? 0) * 0.5,
-                feelsLikeLow: d.minTemp - 2)),
+                feelsLikeHigh: maxTemp + (d.uvIndexMax ?? 0) * 0.5,
+                feelsLikeLow: minTemp - 2);
+            }),
           ],
           const SizedBox(height: 8),
         ]);
@@ -1445,18 +1455,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         : Colors.white.withValues(alpha: 0.54),
                     fontSize: 14)))
         : ListView(padding: const EdgeInsets.all(16), children: [
-            MetarTile(
-                station: controller.metar!["station"] ?? "--",
-                observed: controller.metar!["observed"] ?? "--",
-                temp: "${controller.metar!["temp_c"] ?? "--"}°C",
-                wind:
-                    "${controller.metar!["wind_kph"] ?? "--"} km/h (${controller.metar!["wind_degrees"] ?? "--"}°)",
-                visibility: "${controller.metar!["visibility_km"] ?? "--"} km",
-                pressure: "${controller.metar!["pressure_hpa"] ?? "--"} hPa",
-                humidity: "${controller.metar!["humidity"] ?? "--"}%",
-                dewpoint: "${controller.metar!["dewpoint_c"] ?? "--"}°C",
-                iconUrl: controller.metar!["icon"] ?? '',
-                isDay: isDay)
+            Builder(builder: (context) {
+              final metarTempC = controller.metar!["temp_c"];
+              final metarWindKph = controller.metar!["wind_kph"];
+              final metarDewC = controller.metar!["dewpoint_c"];
+              final tempDisplay = metarTempC != null ? _settings.convertTemperature((metarTempC as num).toDouble()).toStringAsFixed(1) : "--";
+              final windDisplay = metarWindKph != null ? _settings.convertWindSpeedHybrid((metarWindKph as num).toDouble()).toStringAsFixed(0) : "--";
+              final dewDisplay = metarDewC != null ? _settings.convertTemperature((metarDewC as num).toDouble()).toStringAsFixed(1) : "--";
+              return MetarTile(
+                  station: controller.metar!["station"] ?? "--",
+                  observed: controller.metar!["observed"] ?? "--",
+                  temp: "$tempDisplay${_settings.temperatureSymbol}",
+                  wind: "$windDisplay ${_settings.windSymbolHybrid} (${controller.metar!["wind_degrees"] ?? "--"}°)",
+                  visibility: "${controller.metar!["visibility_km"] ?? "--"} km",
+                  pressure: "${controller.metar!["pressure_hpa"] ?? "--"} hPa",
+                  humidity: "${controller.metar!["humidity"] ?? "--"}%",
+                  dewpoint: "$dewDisplay${_settings.temperatureSymbol}",
+                  iconUrl: controller.metar!["icon"] ?? '',
+                  isDay: isDay);
+            })
           ]);
   }
 

@@ -50,6 +50,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           );
 
     return Scaffold(
+      backgroundColor: widget.isDay ? const Color(0xFF4A90D9) : const Color(0xFF16213e),
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,

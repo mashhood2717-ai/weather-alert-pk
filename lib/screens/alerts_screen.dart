@@ -6,7 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/weather_alert.dart';
 import '../services/alert_storage_service.dart';
 import '../services/notification_service.dart';
-import '../services/weather_monitor_service.dart';
 import '../utils/background_utils.dart';
 
 class AlertsScreen extends StatefulWidget {
@@ -189,83 +188,6 @@ class _AlertsScreenState extends State<AlertsScreen>
   Future<void> _markAllAsRead() async {
     await _storage.markAllAsRead();
     await _loadData();
-  }
-
-  /// Send a test notification to verify alerts are working
-  Future<void> _sendTestAlert() async {
-    final alert = WeatherAlert(
-      id: 'test_${DateTime.now().millisecondsSinceEpoch}',
-      title: '🧪 Test Alert - Working!',
-      body:
-          'Your weather alerts are configured correctly. You will receive notifications when severe weather is detected.',
-      city: 'Test',
-      severity: 'medium',
-      receivedAt: DateTime.now(),
-      data: {'type': 'test', 'source': 'manual_test'},
-    );
-
-    // Save to storage
-    await _storage.saveAlert(alert);
-
-    // Show notification
-    await NotificationService().showWeatherAlert(
-      title: alert.title,
-      body: alert.body,
-      severity: 'medium',
-      payload: '{"type": "test"}',
-    );
-
-    await _loadData();
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Test alert sent! Check your notifications.'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    }
-  }
-
-  /// Manually check weather for all subscribed cities
-  Future<void> _checkWeatherNow() async {
-    if (_subscribedCities.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Subscribe to cities first in the Cities tab!'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    // Show current thresholds for debugging
-    print('=== CHECK WEATHER NOW ===');
-    print('Subscribed cities: $_subscribedCities');
-    print(
-        'Thresholds - Heat: $_tempHighThreshold, Cold: $_tempLowThreshold, Wind: $_windSpeedThreshold, Visibility: $_visibilityThreshold');
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-            'Checking weather for ${_subscribedCities.length} cities (Cold threshold: ${_tempLowThreshold}°C)...'),
-        backgroundColor: Colors.blue,
-        duration: const Duration(seconds: 2),
-      ),
-    );
-
-    await WeatherMonitorService().checkWeatherConditions();
-    await _loadData();
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content:
-              Text('Weather check complete! Alerts sent if conditions met.'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    }
   }
 
   Future<void> _clearAllAlerts() async {
@@ -1036,44 +958,6 @@ class _AlertsScreenState extends State<AlertsScreen>
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Test Alert Button
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _sendTestAlert,
-              icon: const Icon(Icons.notification_add),
-              label: const Text('Send Test Alert'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.orange,
-                side: const BorderSide(color: Colors.orange),
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Check Weather Now Button
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _checkWeatherNow,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Check Weather Now'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.blue,
-                side: const BorderSide(color: Colors.blue),
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
