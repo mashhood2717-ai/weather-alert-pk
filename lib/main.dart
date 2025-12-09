@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'firebase_options.dart';
@@ -11,12 +12,27 @@ import 'services/manual_alert_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Firebase first (required)
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
   // Set up background message handler
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
+  // Run the app immediately - don't wait for non-critical services
+  runApp(const WeatherAlertApp());
+
+  // Initialize non-critical services AFTER app is running (deferred)
+  _initializeBackgroundServices();
+}
+
+/// Initialize background services after app is visible
+/// This improves perceived startup time significantly
+Future<void> _initializeBackgroundServices() async {
+  // Small delay to let the UI render first
+  await Future.delayed(const Duration(milliseconds: 100));
 
   // Initialize notification service
   final notificationService = NotificationService();
@@ -26,12 +42,9 @@ void main() async {
   await WeatherMonitorService().startMonitoring();
 
   // Initialize manual alert service (listens for admin portal alerts)
-  // Run in background to not block app startup
   ManualAlertService().initialize().catchError((e) {
     print('ManualAlertService init error: $e');
   });
-
-  runApp(const WeatherAlertApp());
 }
 
 class WeatherAlertApp extends StatelessWidget {

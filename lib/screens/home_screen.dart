@@ -1,7 +1,6 @@
 // lib/screens/home_screen.dart - WITH SKELETON LOADER & CLEAR SEARCH
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -23,6 +22,7 @@ import '../widgets/tiles_area.dart';
 import '../widgets/sun_widget.dart';
 import '../widgets/wu_widget.dart';
 import '../widgets/aqi_widget.dart';
+import '../widgets/prayer_widget.dart';
 import '../models/daily_weather.dart';
 import '../models/current_weather.dart';
 
@@ -839,6 +839,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             controller.daily.isNotEmpty ? controller.daily.first : null;
         final windDirection = windDegToCompass(c?.windDeg);
 
+        // Update status bar icons based on day/night mode
+        SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: isDay ? Brightness.dark : Brightness.light,
+          statusBarBrightness: isDay ? Brightness.light : Brightness.dark,
+        ));
+
         return Scaffold(
           backgroundColor: Colors.transparent,
           extendBodyBehindAppBar: true,
@@ -863,10 +870,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 _buildHomeTab(
                                     c, windDirection, dailyData, isDay),
                                 _buildAqiTab(isDay),
-                                _buildRawTab(isDay),
                                 _buildWindyTab(),
                                 _buildMetarTab(isDay),
                                 WuWidget(isDay: isDay, onDataLoaded: (data) {}),
+                                _buildPrayerTab(c, isDay),
                               ])),
                               _buildModernTabBar(isDay),
                             ])),
@@ -1298,10 +1305,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             tabs: const [
               Tab(text: "Home"),
               Tab(text: "AQI"),
-              Tab(text: "Raw"),
               Tab(text: "Windy"),
               Tab(text: "METAR"),
-              Tab(text: "WU")
+              Tab(text: "WU"),
+              Tab(text: "Prayer")
             ]));
   }
 
@@ -1319,7 +1326,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 height: 130,
                 child: ListView.separated(
                     scrollDirection: Axis.horizontal,
-                    itemCount: controller.hourly.length > 24 ? 24 : controller.hourly.length,
+                    itemCount: controller.hourly.length > 24
+                        ? 24
+                        : controller.hourly.length,
                     separatorBuilder: (_, __) => const SizedBox(width: 8),
                     itemBuilder: (_, i) {
                       final h = controller.hourly[i];
@@ -1367,19 +1376,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             letterSpacing: 0.2));
   }
 
-  Widget _buildRawTab(bool isDay) {
-    return SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: SelectableText(
-            const JsonEncoder.withIndent('  ').convert(
-                controller.rawWeatherJson ?? {"message": "No Raw Data Loaded"}),
-            style: TextStyle(
-                color:
-                    isDay ? Colors.black.withValues(alpha: 0.87) : Colors.white,
-                fontSize: 12,
-                fontFamily: 'monospace')));
-  }
-
   Widget _buildMetarTab(bool isDay) {
     return controller.metar == null
         ? Center(
@@ -1425,5 +1421,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (windy == null) _updateWindy();
     if (windy == null) return const Center(child: CircularProgressIndicator());
     return WebViewWidget(controller: windy!);
+  }
+
+  Widget _buildPrayerTab(CurrentWeather? c, bool isDay) {
+    return PrayerWidget(
+      latitude: c?.lat ?? 33.6844,
+      longitude: c?.lon ?? 73.0479,
+      isDay: isDay,
+    );
   }
 }
