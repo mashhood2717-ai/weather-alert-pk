@@ -1,4 +1,4 @@
-// lib/widgets/forecast_tile.dart
+// lib/widgets/forecast_tile.dart - WITH FEELS LIKE HIGH/LOW
 
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -12,7 +12,10 @@ class ForecastTile extends StatelessWidget {
   final String maxTemp;
   final String minTemp;
   final bool isDay;
-  final DailyWeather? dailyWeather; // Full daily data for details
+  final DailyWeather? dailyWeather;
+  // New optional parameters for feels like
+  final double? feelsLikeHigh;
+  final double? feelsLikeLow;
 
   const ForecastTile({
     super.key,
@@ -23,6 +26,8 @@ class ForecastTile extends StatelessWidget {
     required this.minTemp,
     this.isDay = true,
     this.dailyWeather,
+    this.feelsLikeHigh,
+    this.feelsLikeLow,
   });
 
   void _showDayDetails(BuildContext context) {
@@ -48,27 +53,39 @@ class ForecastTile extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Handle bar
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: fg.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
             // Header
             Row(
               children: [
                 Image.network(icon,
-                    width: 64,
-                    height: 64,
+                    width: 56,
+                    height: 56,
                     errorBuilder: (_, __, ___) =>
-                        Icon(Icons.cloud, size: 64, color: fg)),
-                const SizedBox(width: 16),
+                        Icon(Icons.cloud, size: 56, color: fg)),
+                const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(_formatDateDisplay(d.date),
                           style: TextStyle(
-                              fontSize: 20,
+                              fontSize: 18,
                               fontWeight: FontWeight.bold,
                               color: fg)),
                       Text(d.condition,
                           style: TextStyle(
-                              fontSize: 16, color: fg.withValues(alpha: 0.7))),
+                              fontSize: 14, color: fg.withValues(alpha: 0.7))),
                     ],
                   ),
                 ),
@@ -77,24 +94,63 @@ class ForecastTile extends StatelessWidget {
                   children: [
                     Text("${d.maxTemp.toStringAsFixed(0)}°",
                         style: TextStyle(
-                            fontSize: 28,
+                            fontSize: 26,
                             fontWeight: FontWeight.bold,
                             color: Colors.orange[700])),
                     Text("${d.minTemp.toStringAsFixed(0)}°",
                         style:
-                            TextStyle(fontSize: 22, color: Colors.blue[600])),
+                            TextStyle(fontSize: 20, color: Colors.blue[600])),
                   ],
                 ),
               ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             const Divider(),
             const SizedBox(height: 12),
 
+            // Feels Like Section - NEW
+            if (feelsLikeHigh != null || feelsLikeLow != null) ...[
+              Text(
+                "Feels Like",
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: fg.withValues(alpha: 0.7),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildFeelsLikeTile(
+                      "High",
+                      feelsLikeHigh != null
+                          ? "${feelsLikeHigh!.toStringAsFixed(0)}°C"
+                          : "--",
+                      Colors.orange[700]!,
+                      fg,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildFeelsLikeTile(
+                      "Low",
+                      feelsLikeLow != null
+                          ? "${feelsLikeLow!.toStringAsFixed(0)}°C"
+                          : "--",
+                      Colors.blue[600]!,
+                      fg,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+            ],
+
             // Parameters Grid
             Wrap(
-              spacing: 12,
-              runSpacing: 12,
+              spacing: 10,
+              runSpacing: 10,
               children: [
                 _buildDetailItem(Icons.wb_sunny, "Sunrise", d.sunrise, fg),
                 _buildDetailItem(
@@ -123,9 +179,48 @@ class ForecastTile extends StatelessWidget {
     );
   }
 
+  Widget _buildFeelsLikeTile(
+      String label, String value, Color accentColor, Color fg) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: accentColor.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: accentColor.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.thermostat, size: 18, color: accentColor),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: fg.withValues(alpha: 0.7),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: accentColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDetailItem(IconData icon, String label, String value, Color fg) {
     return Container(
-      width: 100,
+      width: 95,
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: fg.withValues(alpha: 0.05),
@@ -134,13 +229,13 @@ class ForecastTile extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Icon(icon, size: 22, color: fg.withValues(alpha: 0.7)),
+          Icon(icon, size: 20, color: fg.withValues(alpha: 0.7)),
           const SizedBox(height: 4),
           Text(value,
               style: TextStyle(
-                  fontSize: 14, fontWeight: FontWeight.bold, color: fg)),
+                  fontSize: 13, fontWeight: FontWeight.bold, color: fg)),
           Text(label,
-              style: TextStyle(fontSize: 11, color: fg.withValues(alpha: 0.6))),
+              style: TextStyle(fontSize: 10, color: fg.withValues(alpha: 0.6))),
         ],
       ),
     );
@@ -208,58 +303,60 @@ class ForecastTile extends StatelessWidget {
     return GestureDetector(
       onTap: () => _showDayDetails(context),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
           child: Container(
-            margin: const EdgeInsets.only(bottom: 10),
-            padding: const EdgeInsets.all(14),
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color: tint,
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
             ),
             child: Row(
               children: [
                 Image.network(
                   icon,
-                  width: 52,
-                  height: 52,
+                  width: 44,
+                  height: 44,
                   errorBuilder: (_, __, ___) => Icon(Icons.cloud,
-                      size: 48, color: fg.withValues(alpha: 0.6)),
+                      size: 40, color: fg.withValues(alpha: 0.6)),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(_formatDateDisplay(date),
                           style: TextStyle(
-                              fontSize: 15,
+                              fontSize: 14,
                               fontWeight: FontWeight.bold,
                               color: fg)),
                       Text(condition,
                           style: TextStyle(
-                              fontSize: 13, color: fg.withValues(alpha: 0.7))),
+                              fontSize: 12, color: fg.withValues(alpha: 0.7)),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
                     ],
                   ),
                 ),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text("$maxTemp°C",
+                    Text("$maxTemp°",
                         style: TextStyle(
                             color: Colors.orange[700],
-                            fontSize: 15,
+                            fontSize: 14,
                             fontWeight: FontWeight.w600)),
-                    Text("$minTemp°C",
+                    Text("$minTemp°",
                         style:
-                            TextStyle(color: Colors.blue[400], fontSize: 14)),
+                            TextStyle(color: Colors.blue[400], fontSize: 13)),
                   ],
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 Icon(Icons.chevron_right,
-                    color: fg.withValues(alpha: 0.5), size: 20),
+                    color: fg.withValues(alpha: 0.4), size: 18),
               ],
             ),
           ),

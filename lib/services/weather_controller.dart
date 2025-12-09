@@ -21,6 +21,9 @@ class WeatherController {
   bool metarApplied = false;
   String? lastCitySearched;
 
+  // Callback for when data is fully loaded (for Windy update)
+  VoidCallback? onDataLoaded;
+
   // Add local cache support
   Future<void> loadCachedWeather() async {
     final prefs = await SharedPreferences.getInstance();
@@ -183,6 +186,7 @@ class WeatherController {
     return "SKC";
   }
 
+  /// Load weather by city name - NOW AWAITS PROPERLY FOR WINDY FIX
   Future<void> loadByCity(String city) async {
     lastCitySearched = city;
 
@@ -192,94 +196,139 @@ class WeatherController {
     // Show cached data instantly if available
     await loadCachedWeather();
 
-    // Fetch API data in background (restore city-based fetch)
-    OpenMeteoService.fetchWeatherByCity(city).then((json) async {
-      if (json != null) {
-        rawWeatherJson = json;
-        _parseForecastsOnly(json);
-        await saveWeatherToCache(json);
-      }
+    // Fetch API data - AWAIT instead of .then() for proper sequencing
+    final json = await OpenMeteoService.fetchWeatherByCity(city);
 
-      // If direct ICAO code entered, use METAR for current weather
-      if (isIcao) {
-        final m = await fetchMetar(city.toUpperCase());
-        if (m != null) {
-          metar = m;
-          _createCurrentFromMetarOnly(m);
-          metarApplied = true;
-          return;
-        }
-      }
+    if (json != null) {
+      rawWeatherJson = json;
+      _parseForecastsOnly(json);
+      await saveWeatherToCache(json);
+    }
 
-      // If major Pakistani city, use METAR for current weather
+    // If direct ICAO code entered, use METAR for current weather
+    if (isIcao) {
+      final m = await fetchMetar(city.toUpperCase());
+      if (m != null) {
+        metar = m;
+        _createCurrentFromMetarOnly(m);
+        metarApplied = true;
+        onDataLoaded?.call();
+        return;
+      }
+    }
+
+    // If major Pakistani city, use METAR for current weather
+    if (icao != null) {
+      final m = await fetchMetar(icao);
+      if (m != null) {
+        metar = m;
+        _createCurrentFromMetarOnly(m);
+        metarApplied = true;
+        onDataLoaded?.call();
+        return;
+      }
+    }
+
+    // Otherwise use API data for current weather
+    if (json != null) {
+      _parseCurrentWeather(json);
+    }
+
+    metarApplied = false;
+    metar = null;
+    onDataLoaded?.call();
+  }
+
+  /// Load weather by coordinates
+  Future<void> loadByCoordinates(double lat, double lon,
+      {String? cityName}) async {
+    lastCitySearched = cityName;
+
+    final icao = icaoFromCoordinates(lat, lon);
+    final json = await OpenMeteoService.fetchWeather(lat, lon);
+
+    if (json != null) {
+      if (cityName != null) {
+        json['_city_name'] = cityName;
+      }
+      rawWeatherJson = json;
+      _parseForecastsOnly(json);
+      await saveWeatherToCache(json);
+
       if (icao != null) {
         final m = await fetchMetar(icao);
         if (m != null) {
           metar = m;
           _createCurrentFromMetarOnly(m);
           metarApplied = true;
+          onDataLoaded?.call();
           return;
         }
       }
 
-      // Otherwise use API data for current weather
-      if (json != null) {
-        _parseCurrentWeather(json);
-      }
-
+      _parseCurrentWeather(json);
       metarApplied = false;
       metar = null;
-    });
+      onDataLoaded?.call();
+    }
   }
 
   Future<void> loadByLocation() async {
-    await loadCachedWeather();
-    final pos = await determinePosition();
-    final icaoByCoords = icaoFromCoordinates(pos.latitude, pos.longitude);
+    try {
+      final position = await determinePosition();
+      final lat = position.latitude;
+      final lon = position.longitude;
 
-    // Fetch API data in background (restore location-based fetch)
-    OpenMeteoService.fetchWeather(pos.latitude, pos.longitude)
-        .then((json) async {
+      final icao = icaoFromCoordinates(lat, lon);
+      final json = await OpenMeteoService.fetchWeather(lat, lon);
+
       if (json != null) {
         rawWeatherJson = json;
         _parseForecastsOnly(json);
         await saveWeatherToCache(json);
-      }
 
-      // If within 20km of airport, use METAR data for current weather
-      if (icaoByCoords != null) {
-        final m = await fetchMetar(icaoByCoords);
-        if (m != null) {
-          metar = m;
-          _createCurrentFromMetarOnly(m);
-          metarApplied = true;
-          return;
+        if (icao != null) {
+          final m = await fetchMetar(icao);
+          if (m != null) {
+            metar = m;
+            _createCurrentFromMetarOnly(m);
+            metarApplied = true;
+            onDataLoaded?.call();
+            return;
+          }
         }
-      }
 
-      // Otherwise use API data for current weather too
-      if (json != null) {
         _parseCurrentWeather(json);
+        metarApplied = false;
+        metar = null;
+        onDataLoaded?.call();
       }
-
-      metarApplied = false;
-      metar = null;
-    });
+    } catch (e) {
+      print('loadByLocation error: $e');
+      rethrow;
+    }
   }
 
-  /// Parse only forecasts (daily and hourly) from API
-  void _parseForecastsOnly(Map<String, dynamic> json) {
-    // Debug: print the full raw API response for verification
-    print('RAW OPEN-METEO RESPONSE:');
-    try {
-      print(const JsonEncoder.withIndent('  ').convert(json));
-    } catch (e) {
-      print(json.toString());
+  /// Get current coordinates (lat, lon)
+  (double, double)? getCurrentCoordinates() {
+    final c = current.value;
+    if (c != null && c.lat != 0.0 && c.lon != 0.0) {
+      return (c.lat, c.lon);
     }
+    if (rawWeatherJson != null) {
+      final lat = (rawWeatherJson?['latitude'] as num?)?.toDouble();
+      final lon = (rawWeatherJson?['longitude'] as num?)?.toDouble();
+      if (lat != null && lon != null) {
+        return (lat, lon);
+      }
+    }
+    return null;
+  }
+
+  void _parseForecastsOnly(Map<String, dynamic> json) {
     final hourlyData = json["hourly"];
     final dailyData = json["daily"];
 
-    // Parse daily forecast
     daily = [];
     if (dailyData != null) {
       final times = dailyData["time"] as List? ?? [];
@@ -300,7 +349,6 @@ class WeatherController {
         final code = weatherCodes.length > i ? weatherCodes[i] : 0;
         final minT = minTemps.length > i ? _toD(minTemps[i]) : 0.0;
         final maxT = maxTemps.length > i ? _toD(maxTemps[i]) : 0.0;
-        print('Day ${i + 1}: ${times[i] ?? "--"} min=$minT max=$maxT');
         daily.add(DailyWeather(
           date: times[i] ?? "--",
           maxTemp: maxT,
@@ -323,7 +371,6 @@ class WeatherController {
       }
     }
 
-    // Parse hourly forecast
     hourly = [];
     if (hourlyData != null) {
       final times = hourlyData["time"] as List? ?? [];
@@ -359,7 +406,6 @@ class WeatherController {
     }
   }
 
-  /// Parse only current weather from API
   void _parseCurrentWeather(Map<String, dynamic> json) {
     final cur = json["current"];
 
@@ -406,13 +452,11 @@ class WeatherController {
     final finalIconUrl = weatherApiIconUrl(mapMetarIcon(primaryCode));
     final metarDescription = mapMetarCodeToDescription(primaryCode);
 
-    // Get airport info from ICAO code
     final stationIcao = m["station"]?.toString().toUpperCase() ?? "";
     String cityName = lastCitySearched ?? "Unknown";
     double lat = _toD(m["latitude"]);
     double lon = _toD(m["longitude"]);
 
-    // Find airport name from our list
     for (final airport in _airports) {
       if (airport["icao"] == stationIcao) {
         cityName = airport["name"] as String;
@@ -422,67 +466,91 @@ class WeatherController {
       }
     }
 
-      // Use API sunrise/sunset for isDay calculation
-      int isDay = 1;
+    int isDay = _calculateIsDay();
+
+    current.value = CurrentWeather(
+      city: cityName,
+      tempC: _toD(m["temp_c"]),
+      condition: metarDescription,
+      icon: finalIconUrl,
+      humidity: _toI(m["humidity"]),
+      windKph: _toD(m["wind_kph"]),
+      windDeg: _toI(m["wind_degrees"]),
+      feelsLikeC: null,
+      dewpointC: _toD(m["dewpoint_c"]),
+      pressureMb: _toD(m["pressure_hpa"]),
+      visKm: _toD(m["visibility_km"]),
+      gustKph: null,
+      isDay: isDay,
+      lat: lat,
+      lon: lon,
+      uvIndex: null,
+      cloudCover: null,
+      precipitation: null,
+      rain: null,
+      snowfall: null,
+    );
+  }
+
+  int _calculateIsDay() {
+    final now = DateTime.now();
+    final currentHour = now.hour;
+    final currentMinute = now.minute;
+    final currentTimeInMinutes = currentHour * 60 + currentMinute;
+
+    if (daily.isNotEmpty) {
       try {
-        final now = DateTime.now().toUtc();
-        DailyWeather? today;
-        // Find today's forecast (closest date)
-        if (daily.isNotEmpty) {
-          today = daily.firstWhere(
-            (d) => DateTime.parse(d.date).toUtc().day == now.day &&
-                    DateTime.parse(d.date).toUtc().month == now.month &&
-                    DateTime.parse(d.date).toUtc().year == now.year,
-            orElse: () => daily[0],
-          );
-          if (today.sunrise != "--" && today.sunset != "--") {
-            // Parse sunrise/sunset
-            final sunriseParts = today.sunrise.split(":");
-            final sunsetParts = today.sunset.split(":");
-            if (sunriseParts.length == 2 && sunsetParts.length == 2) {
-              final sunriseHour = int.tryParse(sunriseParts[0]) ?? 6;
-              final sunriseMinute = int.tryParse(sunriseParts[1].substring(0,2)) ?? 0;
-              final sunsetHour = int.tryParse(sunsetParts[0]) ?? 18;
-              final sunsetMinute = int.tryParse(sunsetParts[1].substring(0,2)) ?? 0;
-              // Assume local time is UTC+5 (Pakistan)
-              final sunrise = DateTime.utc(now.year, now.month, now.day, sunriseHour - 5, sunriseMinute);
-              final sunset = DateTime.utc(now.year, now.month, now.day, sunsetHour - 5, sunsetMinute);
-              if (now.isAfter(sunrise) && now.isBefore(sunset)) {
-                isDay = 1;
-              } else {
-                isDay = 0;
-              }
+        final today = daily.first;
+
+        if (today.sunrise != "--" && today.sunset != "--") {
+          final sunriseMinutes = _parseTimeToMinutes(today.sunrise);
+          final sunsetMinutes = _parseTimeToMinutes(today.sunset);
+
+          if (sunriseMinutes != null && sunsetMinutes != null) {
+            if (currentTimeInMinutes >= sunriseMinutes &&
+                currentTimeInMinutes < sunsetMinutes) {
+              return 1;
+            } else {
+              return 0;
             }
           }
         }
-      } catch (_) {
-        isDay = 1;
+      } catch (e) {
+        print('Error parsing sunrise/sunset: $e');
+      }
+    }
+
+    if (currentHour >= 6 && currentHour < 18) {
+      return 1;
+    } else {
+      return 0;
+    }
+  }
+
+  int? _parseTimeToMinutes(String timeStr) {
+    try {
+      final parts = timeStr.trim().split(" ");
+      if (parts.length != 2) return null;
+
+      final timePart = parts[0];
+      final amPm = parts[1].toUpperCase();
+
+      final hm = timePart.split(":");
+      if (hm.length != 2) return null;
+
+      int hour = int.tryParse(hm[0]) ?? 0;
+      int minute = int.tryParse(hm[1]) ?? 0;
+
+      if (amPm == "PM" && hour != 12) {
+        hour += 12;
+      } else if (amPm == "AM" && hour == 12) {
+        hour = 0;
       }
 
-      current.value = CurrentWeather(
-        city: cityName,
-        tempC: _toD(m["temp_c"]),
-        condition: metarDescription,
-        icon: finalIconUrl,
-        humidity: _toI(m["humidity"]),
-        windKph: _toD(m["wind_kph"]),
-        windDeg: _toI(m["wind_degrees"]),
-        feelsLikeC: null,
-        dewpointC: _toD(m["dewpoint_c"]),
-        pressureMb: _toD(m["pressure_hpa"]),
-        visKm: _toD(m["visibility_km"]),
-        gustKph: null,
-        isDay: isDay,
-        lat: lat,
-        lon: lon,
-        uvIndex: null,
-        cloudCover: null,
-        precipitation: null,
-        rain: null,
-        snowfall: null,
-    );
-
-    // Don't clear daily/hourly here - they should come from API
+      return hour * 60 + minute;
+    } catch (e) {
+      return null;
+    }
   }
 
   String _formatTime(String? isoTime) {
@@ -555,7 +623,6 @@ class WeatherController {
   Map<String, String> getTilesForUI() {
     if (current.value == null) return {};
 
-    // METAR tiles - keep original 6 tiles only (hide unused)
     if (metarApplied && metar != null) {
       final m = metar!;
       final metarWindDir = _mapWindDegreesToCardinal(_toI(m["wind_degrees"]));
@@ -570,7 +637,6 @@ class WeatherController {
       };
     }
 
-    // API tiles - show all parameters, wind gusts shown as Wind Speed
     return {
       "Feels Like":
           "${current.value!.feelsLikeC?.toStringAsFixed(1) ?? '--'}°C",

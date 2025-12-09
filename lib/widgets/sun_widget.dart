@@ -1,4 +1,4 @@
-// lib/widgets/sun_widget.dart - PROFESSIONAL UI
+// lib/widgets/sun_widget.dart - COMPACT VERSION
 
 import 'dart:math';
 import 'dart:ui';
@@ -52,11 +52,11 @@ class SunWidget extends StatelessWidget {
     }
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
+      borderRadius: BorderRadius.circular(18),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
         child: Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
@@ -71,37 +71,19 @@ class SunWidget extends StatelessWidget {
                       Colors.black.withValues(alpha: 0.2),
                     ],
             ),
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: Colors.white.withValues(alpha: 0.2),
-              width: 1.5,
+              width: 1,
             ),
           ),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.wb_twilight_rounded,
-                    size: 20,
-                    color: fg.withValues(alpha: 0.7),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    "Sunrise & Sunset",
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: fg,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
+              // Arc - reduced height
               SizedBox(
-                height: 140,
+                height: 70,
+                width: double.infinity,
                 child: CustomPaint(
                   painter: _SunArcPainter(
                     progress: progress,
@@ -110,20 +92,19 @@ class SunWidget extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
+              // Sunrise and Sunset row - compact
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  _buildTimeCard(
+                  _buildTimeInfo(
                     Icons.wb_sunny_rounded,
-                    "Sunrise",
                     sunrise,
                     fg,
                     Colors.orange.shade400,
                   ),
-                  _buildTimeCard(
+                  const Spacer(),
+                  _buildTimeInfo(
                     Icons.nights_stay_rounded,
-                    "Sunset",
                     sunset,
                     fg,
                     Colors.deepPurple.shade300,
@@ -137,48 +118,22 @@ class SunWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildTimeCard(
-      IconData icon, String label, String time, Color fg, Color accentColor) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: fg.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: fg.withValues(alpha: 0.1),
-            width: 1,
+  Widget _buildTimeInfo(
+      IconData icon, String time, Color fg, Color accentColor) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 18, color: accentColor),
+        const SizedBox(width: 6),
+        Text(
+          time,
+          style: TextStyle(
+            fontSize: 13,
+            color: fg,
+            fontWeight: FontWeight.w600,
           ),
         ),
-        child: Column(
-          children: [
-            Icon(
-              icon,
-              size: 24,
-              color: accentColor,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                color: fg.withValues(alpha: 0.6),
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.3,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              time,
-              style: TextStyle(
-                fontSize: 14,
-                color: fg,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-      ),
+      ],
     );
   }
 }
@@ -197,8 +152,8 @@ class _SunArcPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final Paint arcPaint = Paint()
-      ..color = color.withValues(alpha: 0.25)
-      ..strokeWidth = 4
+      ..color = color.withValues(alpha: 0.2)
+      ..strokeWidth = 3
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
 
@@ -208,38 +163,49 @@ class _SunArcPainter extends CustomPainter {
             ? [Colors.orange.shade300, Colors.amber.shade200]
             : [Colors.deepPurple.shade300, Colors.indigo.shade300],
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
-      ..strokeWidth = 4
+      ..strokeWidth = 3
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
 
-    final Rect arcRect =
-        Rect.fromLTWH(0, size.height / 2, size.width, size.height);
+    // Smaller arc
+    final double arcHeight = size.height * 0.9;
+    final Rect arcRect = Rect.fromLTWH(
+      20,
+      size.height - arcHeight / 2,
+      size.width - 40,
+      arcHeight,
+    );
 
     canvas.drawArc(arcRect, pi, pi, false, arcPaint);
     canvas.drawArc(arcRect, pi, pi * progress, false, progressArcPaint);
 
     final double angle = pi + pi * progress;
-    final double radius = size.width / 2;
-    final double x = size.width / 2 + radius * cos(angle);
-    final double y = size.height / 2 + radius * sin(angle);
+    final double radiusX = (size.width - 40) / 2;
+    final double radiusY = arcHeight / 2;
+    final double centerX = size.width / 2;
+    final double centerY = size.height - arcHeight / 2 + radiusY;
+    final double x = centerX + radiusX * cos(angle);
+    final double y = centerY + radiusY * sin(angle);
 
+    // Sun glow - smaller
     final Paint glowPaint = Paint()
       ..shader = RadialGradient(
         colors: isDay
             ? [
-                Colors.orange.shade300.withValues(alpha: 0.6),
-                Colors.orange.shade200.withValues(alpha: 0.3),
+                Colors.orange.shade300.withValues(alpha: 0.5),
+                Colors.orange.shade200.withValues(alpha: 0.2),
                 Colors.transparent,
               ]
             : [
-                Colors.deepPurple.shade200.withValues(alpha: 0.5),
-                Colors.deepPurple.shade100.withValues(alpha: 0.2),
+                Colors.deepPurple.shade200.withValues(alpha: 0.4),
+                Colors.deepPurple.shade100.withValues(alpha: 0.15),
                 Colors.transparent,
               ],
-      ).createShader(Rect.fromCircle(center: Offset(x, y), radius: 24));
+      ).createShader(Rect.fromCircle(center: Offset(x, y), radius: 16));
 
-    canvas.drawCircle(Offset(x, y), 24, glowPaint);
+    canvas.drawCircle(Offset(x, y), 16, glowPaint);
 
+    // Sun circle - smaller
     final Paint sunPaint = Paint()
       ..shader = LinearGradient(
         begin: Alignment.topLeft,
@@ -247,16 +213,16 @@ class _SunArcPainter extends CustomPainter {
         colors: isDay
             ? [Colors.orange.shade400, Colors.amber.shade300]
             : [Colors.deepPurple.shade300, Colors.indigo.shade200],
-      ).createShader(Rect.fromCircle(center: Offset(x, y), radius: 10));
+      ).createShader(Rect.fromCircle(center: Offset(x, y), radius: 7));
 
-    canvas.drawCircle(Offset(x, y), 10, sunPaint);
+    canvas.drawCircle(Offset(x, y), 7, sunPaint);
 
     final Paint sunBorderPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.8)
+      ..color = Colors.white.withValues(alpha: 0.7)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
+      ..strokeWidth = 1.5;
 
-    canvas.drawCircle(Offset(x, y), 10, sunBorderPaint);
+    canvas.drawCircle(Offset(x, y), 7, sunBorderPaint);
   }
 
   @override
