@@ -49,32 +49,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
             colors: [Color(0xFF1a1a2e), Color(0xFF16213e)],
           );
 
-    return Scaffold(
-      backgroundColor:
-          widget.isDay ? const Color(0xFF4A90D9) : const Color(0xFF16213e),
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
+    return Container(
+      decoration: BoxDecoration(gradient: bgGradient),
+      child: Scaffold(
         backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios, color: fg),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Settings',
-          style: TextStyle(
-            color: fg,
-            fontWeight: FontWeight.bold,
-            fontSize: 22,
+        extendBodyBehindAppBar: true,
+        extendBody: true,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: Icon(Icons.arrow_back_ios, color: fg),
+            onPressed: () => Navigator.pop(context),
           ),
+          title: Text(
+            'Settings',
+            style: TextStyle(
+              color: fg,
+              fontWeight: FontWeight.bold,
+              fontSize: 22,
+            ),
+          ),
+          centerTitle: true,
         ),
-        centerTitle: true,
-      ),
-      body: Container(
-        decoration: BoxDecoration(gradient: bgGradient),
-        child: SafeArea(
+        body: SafeArea(
+          bottom: false,
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

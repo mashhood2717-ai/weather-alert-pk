@@ -31,10 +31,11 @@ void main() async {
 /// Initialize background services after app is visible
 /// This improves perceived startup time significantly
 Future<void> _initializeBackgroundServices() async {
-  // Small delay to let the UI render first
-  await Future.delayed(const Duration(milliseconds: 100));
+  // Wait 5 seconds to allow location permission dialog to complete first
+  // This prevents "Can request only one set of permissions at a time" error
+  await Future.delayed(const Duration(seconds: 5));
 
-  // Initialize notification service
+  // Initialize notification service (this requests FCM permission)
   final notificationService = NotificationService();
   await notificationService.initialize();
 

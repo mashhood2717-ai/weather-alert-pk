@@ -3,7 +3,6 @@
 import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'settings_service.dart';
 
 /// Service to manage persistent notification in notification bar
 /// Shows weather condition, temperature, and next prayer time
@@ -38,11 +37,11 @@ class PersistentNotificationService {
     final wasEnabled =
         prefs.getBool('persistent_notification_enabled') ?? false;
 
-    if (wasEnabled) {
-      final settings = SettingsService();
-      if (settings.travelingMode) {
-        await startNotification();
-      }
+    // Read traveling mode directly from prefs to avoid race condition
+    final travelingMode = prefs.getBool('traveling_mode') ?? false;
+
+    if (wasEnabled && travelingMode) {
+      await startNotification();
     }
   }
 
@@ -152,8 +151,8 @@ class PersistentNotificationService {
   void _startBackgroundUpdates() {
     _stopBackgroundUpdates();
 
-    final settings = SettingsService();
-    if (!settings.travelingMode) return;
+    // Only start background updates when notification is running (traveling mode)
+    if (!_isRunning) return;
 
     // Update every 15 minutes when traveling
     _updateTimer = Timer.periodic(const Duration(minutes: 15), (_) {

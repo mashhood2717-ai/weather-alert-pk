@@ -53,6 +53,9 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
 
+  bool _isInitialized = false;
+  bool get isInitialized => _isInitialized;
+
   // Notification channels for different severity levels
   static const AndroidNotificationChannel _channelHigh =
       AndroidNotificationChannel(
@@ -146,6 +149,8 @@ class NotificationService {
 
     // Initialize timezone for scheduled notifications
     tz_data.initializeTimeZones();
+    // Set local timezone to Pakistan (Asia/Karachi) - required before using tz.local
+    tz.setLocalLocation(tz.getLocation('Asia/Karachi'));
 
     // Get FCM token and save to Firestore
     String? token = await _messaging.getToken();
@@ -176,6 +181,8 @@ class NotificationService {
 
     // Subscribe to weather alert topics
     await subscribeToAlerts();
+
+    _isInitialized = true;
   }
 
   /// Save FCM token to Firestore for push notifications when app is closed
@@ -329,6 +336,18 @@ class NotificationService {
 
   // ==================== Prayer Notifications ====================
 
+  /// Ensure timezone is initialized (can be called multiple times safely)
+  void _ensureTimezoneInitialized() {
+    try {
+      // Try to access local - if it throws, timezone isn't set
+      tz.local;
+    } catch (e) {
+      // Initialize timezone if not already done
+      tz_data.initializeTimeZones();
+      tz.setLocalLocation(tz.getLocation('Asia/Karachi'));
+    }
+  }
+
   /// Schedule a prayer notification
   Future<void> schedulePrayerNotification({
     required int id,
@@ -336,6 +355,9 @@ class NotificationService {
     required DateTime scheduledTime,
     int minutesBefore = 0,
   }) async {
+    // Ensure timezone is initialized
+    _ensureTimezoneInitialized();
+
     // Calculate the actual notification time
     final notificationTime =
         scheduledTime.subtract(Duration(minutes: minutesBefore));

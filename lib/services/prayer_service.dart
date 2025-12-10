@@ -249,43 +249,53 @@ class PrayerService {
     PrayerTimeData? nextPrayer;
     Duration? timeUntilNext;
 
-    // Only check for main prayers (not sunrise)
+    // Include all prayers including Sunrise for next prayer calculation
+    // But current prayer should only be main prayers (not sunrise)
+    final allPrayers = prayers; // includes Sunrise
     final mainPrayers = prayers.where((p) => p.name != 'Sunrise').toList();
 
-    for (int i = 0; i < mainPrayers.length; i++) {
-      final prayer = mainPrayers[i];
-      final nextIndex = (i + 1) % mainPrayers.length;
-      final next = mainPrayers[nextIndex];
+    // Find the next prayer (including Sunrise)
+    for (int i = 0; i < allPrayers.length; i++) {
+      final prayer = allPrayers[i];
+      if (now.isBefore(prayer.time)) {
+        nextPrayer = prayer;
+        timeUntilNext = prayer.time.difference(now);
+        break;
+      }
+    }
 
+    // Find current prayer (excluding Sunrise)
+    for (int i = mainPrayers.length - 1; i >= 0; i--) {
+      final prayer = mainPrayers[i];
       if (now.isAfter(prayer.time) || now.isAtSameMomentAs(prayer.time)) {
-        // Check if we're before the next prayer
-        if (nextIndex == 0) {
-          // Isha is current, Fajr is next (tomorrow)
-          currentPrayer = prayer;
-          // Calculate next Fajr (tomorrow)
-          final tomorrow = usedDate.add(const Duration(days: 1));
-          final tomorrowComponents = DateComponents.from(tomorrow);
-          final tomorrowPrayers =
-              PrayerTimes(coordinates, tomorrowComponents, params);
-          nextPrayer = PrayerTimeData(
-            name: 'Fajr',
-            nameArabic: 'الفجر',
-            time: tomorrowPrayers.fajr,
-            icon: Icons.nightlight_round,
-          );
-          timeUntilNext = nextPrayer.time.difference(now);
-        } else if (now.isBefore(next.time)) {
-          currentPrayer = prayer;
-          nextPrayer = next;
-          timeUntilNext = next.time.difference(now);
-        }
+        currentPrayer = prayer;
+        break;
+      }
+    }
+
+    // If no next prayer found today, next is tomorrow's Fajr
+    if (nextPrayer == null) {
+      final tomorrow = usedDate.add(const Duration(days: 1));
+      final tomorrowComponents = DateComponents.from(tomorrow);
+      final tomorrowPrayers =
+          PrayerTimes(coordinates, tomorrowComponents, params);
+      nextPrayer = PrayerTimeData(
+        name: 'Fajr',
+        nameArabic: 'الفجر',
+        time: tomorrowPrayers.fajr,
+        icon: Icons.nightlight_round,
+      );
+      timeUntilNext = nextPrayer.time.difference(now);
+      // Current prayer is Isha if we're past all prayers
+      if (currentPrayer == null) {
+        currentPrayer = mainPrayers.last; // Isha
       }
     }
 
     // If no current prayer found, we're before Fajr
-    if (currentPrayer == null) {
-      nextPrayer = mainPrayers.first; // Fajr
-      timeUntilNext = mainPrayers.first.time.difference(now);
+    if (currentPrayer == null && nextPrayer.name == 'Fajr') {
+      // Before Fajr, no current prayer (or previous day's Isha)
+      currentPrayer = null;
     }
 
     return DailyPrayerTimes(

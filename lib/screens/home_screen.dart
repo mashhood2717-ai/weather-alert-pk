@@ -93,16 +93,32 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     )..repeat();
 
     controller.onDataLoaded = _onWeatherDataLoaded;
-    _initServices();
+    _initSettings();
     _loadInitial();
     _loadFavorites();
     _startLocationAutoRefresh();
     tabs.addListener(() => setState(() {}));
     _settings.addListener(_onSettingsChanged);
+
+    // Initialize widget services in background (non-blocking)
+    _initWidgetServices();
   }
 
-  Future<void> _initServices() async {
+  Future<void> _initSettings() async {
     await _settings.initialize();
+    if (mounted) setState(() {});
+  }
+
+  /// Initialize persistent notification and widget services (non-blocking)
+  Future<void> _initWidgetServices() async {
+    // Delay to not interfere with location permission
+    await Future.delayed(const Duration(seconds: 2));
+    
+    // Ensure settings are initialized before proceeding
+    if (!_settings.isInitialized) {
+      await _settings.initialize();
+    }
+    
     await _persistentNotification.initialize();
     await _widgetService.initialize();
     _persistentNotification.setRefreshCallback(_onRefreshNotification);
@@ -110,7 +126,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     // Sync persistent notification with traveling mode
     await _persistentNotification
         .syncWithTravelingMode(_settings.travelingMode);
-    if (mounted) setState(() {});
   }
 
   /// Handle refresh button press from notification
@@ -328,8 +343,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final tempStr = '${temp.round()}${_settings.temperatureSymbol}';
 
       // Get feels like with unit
-      final feelsLike = _settings.convertTemperature(weather.feelsLikeC ?? weather.tempC);
-      final feelsLikeStr = 'Feels like ${feelsLike.round()}${_settings.temperatureSymbol}';
+      final feelsLike =
+          _settings.convertTemperature(weather.feelsLikeC ?? weather.tempC);
+      final feelsLikeStr =
+          'Feels like ${feelsLike.round()}${_settings.temperatureSymbol}';
 
       // Get wind with unit
       final windSpeed = _settings.convertWindSpeedHybrid(weather.windKph);
@@ -344,16 +361,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }
 
       // Get all prayer times
-      String fajr = '--:--', dhuhr = '--:--', asr = '--:--', maghrib = '--:--', isha = '--:--';
+      String fajr = '--:--',
+          dhuhr = '--:--',
+          asr = '--:--',
+          maghrib = '--:--',
+          isha = '--:--';
       if (_prayerData != null) {
         for (final prayer in _prayerData!.prayers) {
           final timeStr = _formatPrayerTime(prayer.time);
           switch (prayer.name) {
-            case 'Fajr': fajr = timeStr; break;
-            case 'Dhuhr': dhuhr = timeStr; break;
-            case 'Asr': asr = timeStr; break;
-            case 'Maghrib': maghrib = timeStr; break;
-            case 'Isha': isha = timeStr; break;
+            case 'Fajr':
+              fajr = timeStr;
+              break;
+            case 'Dhuhr':
+              dhuhr = timeStr;
+              break;
+            case 'Asr':
+              asr = timeStr;
+              break;
+            case 'Maghrib':
+              maghrib = timeStr;
+              break;
+            case 'Isha':
+              isha = timeStr;
+              break;
           }
         }
       }
@@ -392,7 +423,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   /// Format prayer time for widget display
   String _formatPrayerTime(DateTime time) {
-    final hour = time.hour > 12 ? time.hour - 12 : (time.hour == 0 ? 12 : time.hour);
+    final hour =
+        time.hour > 12 ? time.hour - 12 : (time.hour == 0 ? 12 : time.hour);
     final minute = time.minute.toString().padLeft(2, '0');
     return '$hour:$minute';
   }
@@ -628,6 +660,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _loadInitial() async {
     setState(() => loading = true);
     try {
+      // Request location permission immediately on fresh install
+      // FCM permission is delayed in main.dart to avoid conflict
       await controller.loadByLocation();
       _fadeController.forward();
     } catch (e) {

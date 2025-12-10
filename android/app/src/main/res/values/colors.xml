@@ -8,6 +8,4 @@
     <color name="widget_text_primary">#FFFFFF</color>
     <color name="widget_text_secondary">#BBFFFFFF</color>
     <color name="widget_accent">#FFD700</color>
-    
-    <string name="widget_description">Shows weather, temperature, humidity, and prayer times</string>
 </resources>
