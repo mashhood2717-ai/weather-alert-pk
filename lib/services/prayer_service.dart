@@ -71,10 +71,11 @@ class PrayerService {
   static const String _methodKey = 'prayer_method';
   static const String _notificationsKey = 'prayer_notifications';
 
-  /// Get saved madhab preference
+  /// Get saved madhab preference (default is Hanafi for Pakistan)
   static Future<AsrMadhab> getSavedMadhab() async {
     final prefs = await SharedPreferences.getInstance();
-    final value = prefs.getString(_madhabKey) ?? 'shafi';
+    final value =
+        prefs.getString(_madhabKey) ?? 'hanafi'; // Default Hanafi for Pakistan
     return value == 'hanafi' ? AsrMadhab.hanafi : AsrMadhab.shafi;
   }
 

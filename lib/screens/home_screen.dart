@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/weather_controller.dart';
 import '../services/notification_service.dart';
@@ -62,6 +63,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Timer? _locationRefreshTimer;
   Position? _lastKnownPosition;
   static const double _locationChangeThreshold = 500; // meters
+
+  // Developer debug mode (5 taps on weather icon)
+  int _iconTapCount = 0;
+  DateTime? _lastIconTap;
 
   // Place autocomplete
   List<PlaceSuggestion> _suggestions = [];
@@ -666,6 +671,146 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     child: const Text('Copy & Close'))
               ],
             ));
+  }
+
+  /// Developer debug dialog - shown after 5 taps on weather icon
+  Future<void> _showDeveloperDebugDialog() async {
+    final token = await NotificationService().getToken();
+    final prefs = await SharedPreferences.getInstance();
+    final deviceId = prefs.getString('device_id') ?? 'Not set';
+    final c = controller.current.value;
+    final coords = controller.getCurrentCoordinates();
+
+    if (!mounted) return;
+    showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+              title: Row(children: [
+                const Icon(Icons.developer_mode, color: Colors.deepPurple),
+                const SizedBox(width: 8),
+                const Text('Developer Debug'),
+              ]),
+              content: SingleChildScrollView(
+                  child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                    _debugSection('Device Info', [
+                      'Device ID: $deviceId',
+                      'Is GPS Location: ${controller.isFromCurrentLocation}',
+                    ]),
+                    _debugSection(
+                        'FCM Token',
+                        [
+                          token ?? 'No token',
+                        ],
+                        isMonospace: true),
+                    _debugSection('Location Data', [
+                      'City: ${c?.city ?? "--"}',
+                      'Lat: ${coords?.$1 ?? "--"}',
+                      'Lon: ${coords?.$2 ?? "--"}',
+                      'Street: ${c?.streetAddress ?? "--"}',
+                    ]),
+                    _debugSection('Weather Source', [
+                      'METAR Applied: ${controller.metarApplied}',
+                      'Last City Searched: ${controller.lastCitySearched ?? "--"}',
+                    ]),
+                    const Divider(),
+                    const Text('📍 Motorway Testing Tips:',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, color: Colors.blue)),
+                    const SizedBox(height: 4),
+                    const Text(
+                      '1. Enable Traveling Mode in Settings\n'
+                      '2. Location refreshes every 1 min in traveling mode\n'
+                      '3. Check if street address updates while moving\n'
+                      '4. GPS location should show area name, not "Unknown"\n'
+                      '5. Widget only updates for GPS location, not searched cities',
+                      style: TextStyle(fontSize: 12, color: Colors.black54),
+                    ),
+                  ])),
+              actions: [
+                TextButton(
+                    onPressed: () {
+                      final debugText = '''
+Device ID: $deviceId
+FCM Token: $token
+City: ${c?.city}
+Coords: ${coords?.$1}, ${coords?.$2}
+Street: ${c?.streetAddress}
+METAR: ${controller.metarApplied}
+Is GPS: ${controller.isFromCurrentLocation}
+''';
+                      Clipboard.setData(ClipboardData(text: debugText));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Debug info copied!')));
+                    },
+                    child: const Text('Copy All')),
+                TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('Close')),
+              ],
+            ));
+  }
+
+  Widget _debugSection(String title, List<String> lines,
+      {bool isMonospace = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title,
+              style:
+                  const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          const SizedBox(height: 4),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: lines
+                  .map((l) => SelectableText(
+                        l,
+                        style: TextStyle(
+                          fontSize: isMonospace ? 9 : 11,
+                          fontFamily: isMonospace ? 'monospace' : null,
+                          color: Colors.black87,
+                        ),
+                      ))
+                  .toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Handle tap on weather icon - 5 taps to show debug
+  void _onWeatherIconTap() {
+    final now = DateTime.now();
+    if (_lastIconTap != null && now.difference(_lastIconTap!).inSeconds > 2) {
+      _iconTapCount = 0; // Reset if more than 2 seconds between taps
+    }
+    _lastIconTap = now;
+    _iconTapCount++;
+
+    if (_iconTapCount >= 5) {
+      _iconTapCount = 0;
+      _showDeveloperDebugDialog();
+    } else if (_iconTapCount >= 3) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${5 - _iconTapCount} more taps for debug mode'),
+          duration: const Duration(milliseconds: 500),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   Future<void> _loadInitial() async {
@@ -1423,7 +1568,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           pressure: "${c?.pressureMb?.toStringAsFixed(0) ?? '--'} mb",
           windDir: windDirection,
           isDay: isDay,
-          streetAddress: c?.streetAddress),
+          streetAddress: c?.streetAddress,
+          onIconTap: _onWeatherIconTap),
       if (controller.metarApplied)
         Positioned(
             top: 12,

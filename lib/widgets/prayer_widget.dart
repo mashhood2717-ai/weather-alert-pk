@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/prayer_service.dart';
+import '../services/notification_service.dart';
 import '../utils/background_utils.dart';
 
 class PrayerWidget extends StatefulWidget {
@@ -27,7 +28,7 @@ class _PrayerWidgetState extends State<PrayerWidget> {
   DailyPrayerTimes? _prayerTimes;
   bool _loading = true;
   String? _error;
-  AsrMadhab _currentMadhab = AsrMadhab.shafi;
+  AsrMadhab _currentMadhab = AsrMadhab.hanafi; // Default Hanafi for Pakistan
   PrayerMethod _currentMethod = PrayerMethod.karachi;
   Map<String, bool> _notifications = {};
   Timer? _refreshTimer;
@@ -129,6 +130,17 @@ class _PrayerWidgetState extends State<PrayerWidget> {
     setState(() => _notifications[prayer] = value);
     // Re-schedule notifications with updated preferences
     await _scheduleNotifications();
+  }
+
+  /// Test azan notification with sound and vibration
+  Future<void> _testAzanNotification() async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('🕌 Sending test Azan notification...'),
+        duration: Duration(seconds: 1),
+      ),
+    );
+    await NotificationService().showImmediatePrayerNotification('Test');
   }
 
   @override
@@ -495,6 +507,32 @@ class _PrayerWidgetState extends State<PrayerWidget> {
               onChanged: (method) {
                 if (method != null) _changeMethod(method);
               },
+            ),
+          ),
+          const SizedBox(height: 20),
+          // Test Azan Button
+          Text(
+            'Test Notification',
+            style: TextStyle(
+              color: fg.withValues(alpha: 0.7),
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _testAzanNotification,
+              icon: const Icon(Icons.notifications_active, size: 20),
+              label: const Text('Test Azan Sound & Vibration'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
             ),
           ),
         ],

@@ -16,6 +16,7 @@ class CurrentWeatherTile extends StatelessWidget {
   final String pressure;
   final String windDir;
   final String? streetAddress;
+  final VoidCallback? onIconTap;
 
   const CurrentWeatherTile({
     super.key,
@@ -30,6 +31,7 @@ class CurrentWeatherTile extends StatelessWidget {
     required this.windDir,
     this.isDay = true,
     this.streetAddress,
+    this.onIconTap,
   });
 
   @override
@@ -166,26 +168,29 @@ class CurrentWeatherTile extends StatelessWidget {
               ),
               // Right side - Icon
               if (showIcon)
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: isDay
-                        ? Colors.white.withValues(alpha: 0.25)
-                        : Colors.black.withValues(alpha: 0.25),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.15),
-                      width: 1,
+                GestureDetector(
+                  onTap: onIconTap,
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: isDay
+                          ? Colors.white.withValues(alpha: 0.25)
+                          : Colors.black.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        width: 1,
+                      ),
                     ),
-                  ),
-                  child: Image.network(
-                    safeIcon,
-                    width: 60,
-                    height: 60,
-                    errorBuilder: (_, __, ___) => Icon(
-                      Icons.wb_cloudy_rounded,
-                      size: 50,
-                      color: fg.withValues(alpha: 0.5),
+                    child: Image.network(
+                      safeIcon,
+                      width: 60,
+                      height: 60,
+                      errorBuilder: (_, __, ___) => Icon(
+                        Icons.wb_cloudy_rounded,
+                        size: 50,
+                        color: fg.withValues(alpha: 0.5),
+                      ),
                     ),
                   ),
                 ),
