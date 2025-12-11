@@ -17,6 +17,7 @@ import '../services/settings_service.dart';
 import '../services/persistent_notification_service.dart';
 import '../services/prayer_service.dart';
 import '../services/widget_service.dart';
+import '../services/geocoding_service.dart';
 import '../utils/background_utils.dart';
 import '../utils/wind_utils.dart';
 import '../widgets/current_weather_tile.dart';
@@ -135,18 +136,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   /// Handle refresh button press from notification
   Future<void> _onRefreshNotification() async {
-    if (controller.current.value != null) {
+    // Only allow widget refresh if current location is GPS-based
+    if (controller.current.value != null && controller.isFromCurrentLocation) {
       final coords = controller.getCurrentCoordinates();
       if (coords != null) {
-        // Preserve the current location flag during refresh
-        final wasCurrentLocation = controller.isFromCurrentLocation;
         await controller.loadByCoordinates(
           coords.$1,
           coords.$2,
-          isCurrentLocation: wasCurrentLocation,
+          isCurrentLocation: true,
         );
         await _fetchAqiData(coords.$1, coords.$2);
       }
+    } else {
+      debugPrint('Widget refresh ignored: not on GPS location');
     }
   }
 
@@ -405,25 +407,38 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         }
       }
 
+      // --- Reverse geocode for city name ---
+      String cityName = weather.city;
+      try {
+        final geoResult = await GeocodingService.reverseGeocode(lat, lon);
+        if (geoResult != null && geoResult.mainLocationName != 'Unknown') {
+          cityName = geoResult.mainLocationName;
+          // Update controller.current.value with new city name so app card and widget are always in sync
+          controller.current.value = weather.copyWithAddress(city: cityName);
+        }
+      } catch (e) {
+        debugPrint('Reverse geocoding failed: $e');
+      }
+
       // Update notification
       await _persistentNotification.updateNotification(
-        condition: weather.condition,
+        condition: controller.current.value!.condition,
         temperature: tempStr,
         nextPrayer: nextPrayerName,
         nextPrayerTime: nextPrayerTime,
-        city: weather.city,
+        city: controller.current.value!.city,
       );
 
       // Update home screen widget
       await _widgetService.updateWidget(
-        city: weather.city,
+        city: controller.current.value!.city,
         temp: tempStr,
-        condition: weather.condition,
+        condition: controller.current.value!.condition,
         feelsLike: feelsLikeStr,
-        humidity: '${weather.humidity}%',
+        humidity: '${controller.current.value!.humidity}%',
         wind: windStr,
-        uv: (weather.uvIndex ?? 0).toStringAsFixed(1),
-        isDay: weather.isDay == 1,
+        uv: (controller.current.value!.uvIndex ?? 0).toStringAsFixed(1),
+        isDay: controller.current.value!.isDay == 1,
         nextPrayer: nextPrayerName,
         nextPrayerTime: nextPrayerTime,
         fajr: fajr,

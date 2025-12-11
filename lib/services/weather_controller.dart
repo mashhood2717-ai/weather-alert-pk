@@ -117,7 +117,7 @@ class WeatherController {
     for (final airport in _airports) {
       final distance = _calculateDistance(
           lat, lon, airport["lat"] as double, airport["lon"] as double);
-      if (distance <= 20.0) {
+      if (distance <= 30.0) {
         return airport["icao"] as String;
       }
     }
@@ -344,14 +344,15 @@ class WeatherController {
     try {
       final result = await GeocodingService.reverseGeocode(lat, lon);
       if (result != null && current.value != null) {
-        // Update city name if current city is "Unknown" or generic
         String? newCityName;
         final currentCity = current.value!.city;
-        if (currentCity == 'Unknown' ||
+        final mainLocation = result.mainLocationName;
+        // Always update city if GPS location, or if previous logic matches
+        if (isFromCurrentLocation ||
+            currentCity == 'Unknown' ||
             currentCity.isEmpty ||
-            currentCity.startsWith('Lat:')) {
-          // Use the best available main location name from geocoding
-          final mainLocation = result.mainLocationName;
+            currentCity.startsWith('Lat:') ||
+            (currentCity.toUpperCase() == 'ISLAMABAD' && mainLocation.toUpperCase() == 'RAWALPINDI')) {
           if (mainLocation != 'Unknown') {
             newCityName = mainLocation;
           }
@@ -523,11 +524,20 @@ class WeatherController {
 
     for (final airport in _airports) {
       if (airport["icao"] == stationIcao) {
-        cityName = airport["name"] as String;
+        // If OPIS and last searched/geocoded city is Rawalpindi, show Rawalpindi
+        if (stationIcao == "OPIS" && cityName.toUpperCase().contains("RAWALPINDI")) {
+          cityName = "Rawalpindi";
+        } else if (airport["name"] != null) {
+          cityName = airport["name"] as String;
+        }
         lat = airport["lat"] as double;
         lon = airport["lon"] as double;
         break;
       }
+    }
+
+    if (cityName.isEmpty || cityName == "Unknown") {
+      cityName = lastCitySearched ?? "Islamabad";
     }
 
     current.value = CurrentWeather(
