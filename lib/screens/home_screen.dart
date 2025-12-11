@@ -1553,53 +1553,56 @@ Is GPS: ${controller.isFromCurrentLocation}
         ? _settings.convertTemperature(c!.dewpointC!)
         : null;
 
-    return Stack(children: [
-      CurrentWeatherTile(
-          city: c?.city ?? controller.lastCitySearched ?? "--",
-          temp:
-              "${tempValue?.toStringAsFixed(1) ?? '--'}${_settings.temperatureSymbol}",
-          condition: c?.condition ?? "Data Unavailable",
-          icon: c?.icon ?? '',
-          humidity: "${c?.humidity ?? '--'}%",
-          wind:
-              "${windValue?.toStringAsFixed(0) ?? '--'} ${_settings.windSymbolHybrid}",
-          dew:
-              "${dewValue?.toStringAsFixed(1) ?? '--'}${_settings.temperatureSymbol}",
-          pressure: "${c?.pressureMb?.toStringAsFixed(0) ?? '--'} mb",
-          windDir: windDirection,
-          isDay: isDay,
-          streetAddress: c?.streetAddress,
-          onIconTap: _onWeatherIconTap),
-      if (controller.metarApplied)
-        Positioned(
-            top: 12,
-            right: 12,
-            child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-                    child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                            color: Colors.red.shade400.withValues(alpha: 0.9),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.3),
-                                width: 1)),
-                        child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.flight, size: 12, color: Colors.white),
-                              SizedBox(width: 4),
-                              Text('METAR',
-                                  style: TextStyle(
-                                      fontSize: 10,
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: 0.3))
-                            ]))))),
-    ]);
+    return GestureDetector(
+      onTap: _onWeatherIconTap, // 5 taps anywhere on card to show debug panel
+      child: Stack(children: [
+        CurrentWeatherTile(
+            city: c?.city ?? controller.lastCitySearched ?? "--",
+            temp:
+                "${tempValue?.toStringAsFixed(1) ?? '--'}${_settings.temperatureSymbol}",
+            condition: c?.condition ?? "Data Unavailable",
+            icon: c?.icon ?? '',
+            humidity: "${c?.humidity ?? '--'}%",
+            wind:
+                "${windValue?.toStringAsFixed(0) ?? '--'} ${_settings.windSymbolHybrid}",
+            dew:
+                "${dewValue?.toStringAsFixed(1) ?? '--'}${_settings.temperatureSymbol}",
+            pressure: "${c?.pressureMb?.toStringAsFixed(0) ?? '--'} mb",
+            windDir: windDirection,
+            isDay: isDay,
+            streetAddress: c?.streetAddress),
+        if (controller.metarApplied)
+          Positioned(
+              top: 12,
+              right: 12,
+              child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                      child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                              color: Colors.red.shade400.withValues(alpha: 0.9),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.3),
+                                  width: 1)),
+                          child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.flight,
+                                    size: 12, color: Colors.white),
+                                SizedBox(width: 4),
+                                Text('METAR',
+                                    style: TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 0.3))
+                              ]))))),
+      ]),
+    );
   }
 
   Widget _buildEmptyState(bool isDay) {

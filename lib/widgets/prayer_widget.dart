@@ -30,7 +30,7 @@ class _PrayerWidgetState extends State<PrayerWidget> {
   String? _error;
   AsrMadhab _currentMadhab = AsrMadhab.hanafi; // Default Hanafi for Pakistan
   PrayerMethod _currentMethod = PrayerMethod.karachi;
-  Map<String, bool> _notifications = {};
+  Map<String, PrayerNotificationMode> _notificationModes = {};
   Timer? _refreshTimer;
 
   @override
@@ -61,7 +61,7 @@ class _PrayerWidgetState extends State<PrayerWidget> {
   Future<void> _loadPreferences() async {
     _currentMadhab = await PrayerService.getSavedMadhab();
     _currentMethod = await PrayerService.getSavedMethod();
-    _notifications = await PrayerService.getNotificationPrefs();
+    _notificationModes = await PrayerService.getNotificationPrefs();
     if (mounted) setState(() {});
     await _calculatePrayers();
   }
@@ -125,9 +125,22 @@ class _PrayerWidgetState extends State<PrayerWidget> {
     await _calculatePrayers();
   }
 
-  Future<void> _toggleNotification(String prayer, bool value) async {
-    await PrayerService.saveNotificationPref(prayer, value);
-    setState(() => _notifications[prayer] = value);
+  /// Cycle notification mode for a prayer: Off -> Vibration -> Azan -> Off
+  Future<void> _cycleNotificationMode(String prayer) async {
+    final currentMode =
+        _notificationModes[prayer] ?? PrayerNotificationMode.azan;
+    final newMode = PrayerService.cycleNotificationMode(currentMode);
+    await PrayerService.saveNotificationMode(prayer, newMode);
+    setState(() => _notificationModes[prayer] = newMode);
+    // Show feedback
+    final label = PrayerService.getNotificationModeLabel(newMode);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$prayer notification: $label'),
+        duration: const Duration(milliseconds: 800),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
     // Re-schedule notifications with updated preferences
     await _scheduleNotifications();
   }
@@ -398,22 +411,55 @@ class _PrayerWidgetState extends State<PrayerWidget> {
           ),
           if (!isSunrise) ...[
             const SizedBox(width: 8),
-            IconButton(
-              icon: Icon(
-                _notifications[prayer.name] == true
-                    ? Icons.notifications_active
-                    : Icons.notifications_off_outlined,
-                color: _notifications[prayer.name] == true
-                    ? Colors.amber
-                    : fg.withValues(alpha: 0.4),
-                size: 20,
+            GestureDetector(
+              onTap: () => _cycleNotificationMode(prayer.name),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: PrayerService.getNotificationModeColor(
+                    _notificationModes[prayer.name] ??
+                        PrayerNotificationMode.azan,
+                  ).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: PrayerService.getNotificationModeColor(
+                      _notificationModes[prayer.name] ??
+                          PrayerNotificationMode.azan,
+                    ).withValues(alpha: 0.5),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      PrayerService.getNotificationModeIcon(
+                        _notificationModes[prayer.name] ??
+                            PrayerNotificationMode.azan,
+                      ),
+                      color: PrayerService.getNotificationModeColor(
+                        _notificationModes[prayer.name] ??
+                            PrayerNotificationMode.azan,
+                      ),
+                      size: 16,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      PrayerService.getNotificationModeLabel(
+                        _notificationModes[prayer.name] ??
+                            PrayerNotificationMode.azan,
+                      ),
+                      style: TextStyle(
+                        color: PrayerService.getNotificationModeColor(
+                          _notificationModes[prayer.name] ??
+                              PrayerNotificationMode.azan,
+                        ),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              onPressed: () => _toggleNotification(
-                prayer.name,
-                !(_notifications[prayer.name] ?? true),
-              ),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
             ),
           ],
         ],

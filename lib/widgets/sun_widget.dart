@@ -1,6 +1,5 @@
-// lib/widgets/sun_widget.dart - COMPACT VERSION
+// lib/widgets/sun_widget.dart - COMPACT HORIZONTAL LINE VERSION
 
-import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../utils/background_utils.dart';
@@ -52,11 +51,11 @@ class SunWidget extends StatelessWidget {
     }
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(16),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
@@ -71,7 +70,7 @@ class SunWidget extends StatelessWidget {
                       Colors.black.withValues(alpha: 0.2),
                     ],
             ),
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: Colors.white.withValues(alpha: 0.2),
               width: 1,
@@ -80,31 +79,27 @@ class SunWidget extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Arc - reduced height
-              SizedBox(
-                height: 70,
-                width: double.infinity,
-                child: CustomPaint(
-                  painter: _SunArcPainter(
-                    progress: progress,
-                    color: fg,
-                    isDay: isDay,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              // Sunrise and Sunset row - compact
+              // Sunrise and Sunset row with progress line
               Row(
                 children: [
-                  _buildTimeInfo(
+                  // Sunrise
+                  _buildTimeColumn(
                     Icons.wb_sunny_rounded,
+                    'Sunrise',
                     sunrise,
                     fg,
                     Colors.orange.shade400,
                   ),
-                  const Spacer(),
-                  _buildTimeInfo(
+                  const SizedBox(width: 12),
+                  // Progress line
+                  Expanded(
+                    child: _buildProgressLine(progress, fg),
+                  ),
+                  const SizedBox(width: 12),
+                  // Sunset
+                  _buildTimeColumn(
                     Icons.nights_stay_rounded,
+                    'Sunset',
                     sunset,
                     fg,
                     Colors.deepPurple.shade300,
@@ -118,113 +113,114 @@ class SunWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildTimeInfo(
-      IconData icon, String time, Color fg, Color accentColor) {
-    return Row(
+  Widget _buildTimeColumn(
+      IconData icon, String label, String time, Color fg, Color accentColor) {
+    return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 18, color: accentColor),
-        const SizedBox(width: 6),
+        Icon(icon, size: 22, color: accentColor),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 9,
+            color: fg.withValues(alpha: 0.6),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
         Text(
           time,
           style: TextStyle(
-            fontSize: 13,
+            fontSize: 12,
             color: fg,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.bold,
           ),
         ),
       ],
     );
   }
-}
 
-class _SunArcPainter extends CustomPainter {
-  final double progress;
-  final Color color;
-  final bool isDay;
+  Widget _buildProgressLine(double progress, Color fg) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final lineWidth = constraints.maxWidth;
+        final sunPosition = lineWidth * progress;
 
-  _SunArcPainter({
-    required this.progress,
-    required this.color,
-    required this.isDay,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final Paint arcPaint = Paint()
-      ..color = color.withValues(alpha: 0.2)
-      ..strokeWidth = 3
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-
-    final Paint progressArcPaint = Paint()
-      ..shader = LinearGradient(
-        colors: isDay
-            ? [Colors.orange.shade300, Colors.amber.shade200]
-            : [Colors.deepPurple.shade300, Colors.indigo.shade300],
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
-      ..strokeWidth = 3
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-
-    // Smaller arc
-    final double arcHeight = size.height * 0.9;
-    final Rect arcRect = Rect.fromLTWH(
-      20,
-      size.height - arcHeight / 2,
-      size.width - 40,
-      arcHeight,
+        return SizedBox(
+          height: 36,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // Background line
+              Container(
+                height: 3,
+                decoration: BoxDecoration(
+                  color: fg.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              // Progress line
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  width: sunPosition,
+                  height: 3,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: isDay
+                          ? [Colors.orange.shade300, Colors.amber.shade400]
+                          : [
+                              Colors.deepPurple.shade300,
+                              Colors.indigo.shade300
+                            ],
+                    ),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              // Sun indicator
+              Positioned(
+                left: sunPosition - 12,
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: isDay
+                          ? [Colors.orange.shade400, Colors.amber.shade300]
+                          : [
+                              Colors.deepPurple.shade300,
+                              Colors.indigo.shade200
+                            ],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: isDay
+                            ? Colors.orange.withValues(alpha: 0.4)
+                            : Colors.deepPurple.withValues(alpha: 0.4),
+                        blurRadius: 8,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.7),
+                      width: 2,
+                    ),
+                  ),
+                  child: Icon(
+                    isDay ? Icons.wb_sunny : Icons.nightlight_round,
+                    size: 12,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
-
-    canvas.drawArc(arcRect, pi, pi, false, arcPaint);
-    canvas.drawArc(arcRect, pi, pi * progress, false, progressArcPaint);
-
-    final double angle = pi + pi * progress;
-    final double radiusX = (size.width - 40) / 2;
-    final double radiusY = arcHeight / 2;
-    final double centerX = size.width / 2;
-    final double centerY = size.height - arcHeight / 2 + radiusY;
-    final double x = centerX + radiusX * cos(angle);
-    final double y = centerY + radiusY * sin(angle);
-
-    // Sun glow - smaller
-    final Paint glowPaint = Paint()
-      ..shader = RadialGradient(
-        colors: isDay
-            ? [
-                Colors.orange.shade300.withValues(alpha: 0.5),
-                Colors.orange.shade200.withValues(alpha: 0.2),
-                Colors.transparent,
-              ]
-            : [
-                Colors.deepPurple.shade200.withValues(alpha: 0.4),
-                Colors.deepPurple.shade100.withValues(alpha: 0.15),
-                Colors.transparent,
-              ],
-      ).createShader(Rect.fromCircle(center: Offset(x, y), radius: 16));
-
-    canvas.drawCircle(Offset(x, y), 16, glowPaint);
-
-    // Sun circle - smaller
-    final Paint sunPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: isDay
-            ? [Colors.orange.shade400, Colors.amber.shade300]
-            : [Colors.deepPurple.shade300, Colors.indigo.shade200],
-      ).createShader(Rect.fromCircle(center: Offset(x, y), radius: 7));
-
-    canvas.drawCircle(Offset(x, y), 7, sunPaint);
-
-    final Paint sunBorderPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.7)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-
-    canvas.drawCircle(Offset(x, y), 7, sunBorderPaint);
   }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }

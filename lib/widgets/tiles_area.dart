@@ -5,6 +5,15 @@ import '../services/weather_controller.dart';
 import '../services/settings_service.dart';
 import 'param_tile.dart';
 
+/// Data class for a tile with icon
+class TileData {
+  final String label;
+  final String value;
+  final IconData icon;
+
+  TileData({required this.label, required this.value, required this.icon});
+}
+
 class TilesArea extends StatelessWidget {
   final WeatherController controller;
 
@@ -22,22 +31,22 @@ class TilesArea extends StatelessWidget {
     if (tiles.isEmpty) return const SizedBox.shrink();
 
     final List<Widget> rows = [];
-    final entries = tiles.entries.toList();
 
     // 3 tiles per row
-    for (int i = 0; i < entries.length; i += 3) {
-      final first = entries[i];
-      final second = (i + 1 < entries.length) ? entries[i + 1] : null;
-      final third = (i + 2 < entries.length) ? entries[i + 2] : null;
+    for (int i = 0; i < tiles.length; i += 3) {
+      final first = tiles[i];
+      final second = (i + 1 < tiles.length) ? tiles[i + 1] : null;
+      final third = (i + 2 < tiles.length) ? tiles[i + 2] : null;
 
       rows.add(
         Row(
           children: [
             Expanded(
               child: ParamTile(
-                label: first.key,
+                label: first.label,
                 value: first.value,
                 isDay: isDay,
+                icon: first.icon,
               ),
             ),
             const SizedBox(width: 8),
@@ -45,9 +54,10 @@ class TilesArea extends StatelessWidget {
               child: second == null
                   ? const SizedBox.shrink()
                   : ParamTile(
-                      label: second.key,
+                      label: second.label,
                       value: second.value,
                       isDay: isDay,
+                      icon: second.icon,
                     ),
             ),
             const SizedBox(width: 8),
@@ -55,9 +65,10 @@ class TilesArea extends StatelessWidget {
               child: third == null
                   ? const SizedBox.shrink()
                   : ParamTile(
-                      label: third.key,
+                      label: third.label,
                       value: third.value,
                       isDay: isDay,
+                      icon: third.icon,
                     ),
             ),
           ],
@@ -71,9 +82,9 @@ class TilesArea extends StatelessWidget {
   }
 
   /// Get tiles with unit conversion applied
-  Map<String, String> _getTilesWithUnits(SettingsService settings) {
+  List<TileData> _getTilesWithUnits(SettingsService settings) {
     final c = controller.current.value;
-    if (c == null) return {};
+    if (c == null) return [];
 
     if (controller.metarApplied && controller.metar != null) {
       final m = controller.metar!;
@@ -96,14 +107,32 @@ class TilesArea extends StatelessWidget {
               .toStringAsFixed(0)
           : "--";
 
-      return {
-        "Humidity": "${m["humidity"] ?? "--"}%",
-        "Dew Point": "$dewDisplay${settings.temperatureSymbol}",
-        "Pressure": "${m["pressure_hpa"] ?? "--"} hPa",
-        "Visibility": "${m["visibility_km"] ?? "--"} km",
-        "Wind Speed": "$windDisplay ${settings.windSymbolHybrid}",
-        "Wind Dir": metarWindDir,
-      };
+      return [
+        TileData(
+            label: "Humidity",
+            value: "${m["humidity"] ?? "--"}%",
+            icon: Icons.water_drop_outlined),
+        TileData(
+            label: "Dew Point",
+            value: "$dewDisplay${settings.temperatureSymbol}",
+            icon: Icons.opacity),
+        TileData(
+            label: "Pressure",
+            value: "${m["pressure_hpa"] ?? "--"} hPa",
+            icon: Icons.speed_rounded),
+        TileData(
+            label: "Visibility",
+            value: "${m["visibility_km"] ?? "--"} km",
+            icon: Icons.visibility_outlined),
+        TileData(
+            label: "Wind Speed",
+            value: "$windDisplay ${settings.windSymbolHybrid}",
+            icon: Icons.air_rounded),
+        TileData(
+            label: "Wind Dir",
+            value: metarWindDir,
+            icon: Icons.explore_outlined),
+      ];
     }
 
     final feelsLike = c.feelsLikeC != null
@@ -116,17 +145,44 @@ class TilesArea extends StatelessWidget {
         ? settings.convertWindSpeedHybrid(c.gustKph!).toStringAsFixed(0)
         : '--';
 
-    return {
-      "Feels Like": "$feelsLike${settings.temperatureSymbol}",
-      "Humidity": "${c.humidity}%",
-      "Dew Point": "$dewPoint${settings.temperatureSymbol}",
-      "Pressure": "${c.pressureMb?.toStringAsFixed(0) ?? '--'} hPa",
-      "Wind Speed": "$windSpeed ${settings.windSymbolHybrid}",
-      "Wind Dir": _mapWindDegreesToCardinal(c.windDeg),
-      "UV Index": "${c.uvIndex?.toStringAsFixed(1) ?? '--'}",
-      "Cloud Cover": "${c.cloudCover ?? '--'}%",
-      "Precipitation": "${c.precipitation?.toStringAsFixed(1) ?? '0'} mm",
-    };
+    return [
+      TileData(
+          label: "Feels Like",
+          value: "$feelsLike${settings.temperatureSymbol}",
+          icon: Icons.thermostat_outlined),
+      TileData(
+          label: "Humidity",
+          value: "${c.humidity}%",
+          icon: Icons.water_drop_outlined),
+      TileData(
+          label: "Dew Point",
+          value: "$dewPoint${settings.temperatureSymbol}",
+          icon: Icons.opacity),
+      TileData(
+          label: "Pressure",
+          value: "${c.pressureMb?.toStringAsFixed(0) ?? '--'} hPa",
+          icon: Icons.speed_rounded),
+      TileData(
+          label: "Wind Speed",
+          value: "$windSpeed ${settings.windSymbolHybrid}",
+          icon: Icons.air_rounded),
+      TileData(
+          label: "Wind Dir",
+          value: _mapWindDegreesToCardinal(c.windDeg),
+          icon: Icons.explore_outlined),
+      TileData(
+          label: "UV Index",
+          value: "${c.uvIndex?.toStringAsFixed(1) ?? '--'}",
+          icon: Icons.wb_sunny_outlined),
+      TileData(
+          label: "Cloud Cover",
+          value: "${c.cloudCover ?? '--'}%",
+          icon: Icons.cloud_outlined),
+      TileData(
+          label: "Precipitation",
+          value: "${c.precipitation?.toStringAsFixed(1) ?? '0'} mm",
+          icon: Icons.umbrella_outlined),
+    ];
   }
 
   String _mapWindDegreesToCardinal(int? degrees) {

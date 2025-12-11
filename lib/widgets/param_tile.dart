@@ -8,12 +8,14 @@ class ParamTile extends StatelessWidget {
   final String label;
   final String value;
   final bool isDay;
+  final IconData? icon;
 
   const ParamTile({
     super.key,
     required this.label,
     required this.value,
     required this.isDay,
+    this.icon,
   });
 
   @override
@@ -47,6 +49,14 @@ class ParamTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (icon != null) ...[
+                Icon(
+                  icon,
+                  size: 18,
+                  color: fg.withValues(alpha: 0.6),
+                ),
+                const SizedBox(height: 2),
+              ],
               Text(
                 label,
                 style: TextStyle(

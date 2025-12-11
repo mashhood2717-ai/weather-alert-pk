@@ -11,6 +11,7 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
 import '../models/weather_alert.dart';
 import 'alert_storage_service.dart';
+import 'prayer_service.dart'; // For PrayerNotificationMode enum
 
 // Global navigator key for navigation from notification
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -104,7 +105,7 @@ class NotificationService {
   // Note: For custom sound, place azan.mp3 in android/app/src/main/res/raw/
   static const AndroidNotificationChannel _prayerChannel =
       AndroidNotificationChannel(
-    'prayer_notifications_v2', // Changed channel ID to force new channel creation
+    'prayer_notifications_v3', // Changed channel ID to force new channel creation
     'Prayer Time Azan',
     description: 'Prayer time notifications with azan sound',
     importance: Importance.max, // Max importance for prayer notifications
@@ -371,7 +372,14 @@ class NotificationService {
     required String prayerName,
     required DateTime scheduledTime,
     int minutesBefore = 0,
+    PrayerNotificationMode mode = PrayerNotificationMode.azan,
   }) async {
+    // Skip if mode is off
+    if (mode == PrayerNotificationMode.off) {
+      print('Prayer notification skipped (mode off): $prayerName');
+      return;
+    }
+
     // Ensure timezone is initialized
     _ensureTimezoneInitialized();
 
@@ -406,11 +414,19 @@ class NotificationService {
         ? _prayerReminderChannel.description
         : _prayerChannel.description;
 
-    // Strong vibration pattern for prayer time: wait, vibrate, wait, vibrate...
+    // Vibration pattern based on mode
+    final bool useVibration = mode == PrayerNotificationMode.vibrationOnly ||
+        mode == PrayerNotificationMode.azan;
     final vibrationPattern = isReminder
         ? Int64List.fromList([0, 250, 250, 250]) // Short pattern for reminder
         : Int64List.fromList(
             [0, 500, 200, 500, 200, 500, 200, 500]); // Long pattern for azan
+
+    // Sound based on mode - use azan.mp3 only for azan mode
+    final bool useSound = mode == PrayerNotificationMode.azan;
+    final AndroidNotificationSound? sound = (useSound && !isReminder)
+        ? const RawResourceAndroidNotificationSound('azan')
+        : null;
 
     try {
       await _localNotifications.zonedSchedule(
@@ -427,11 +443,10 @@ class NotificationService {
             priority: Priority.max,
             icon: '@mipmap/ic_launcher',
             color: const Color(0xFF4CAF50),
-            enableVibration: true,
-            vibrationPattern: vibrationPattern,
-            playSound: true,
-            // Use custom sound if available (azan.mp3 in res/raw/)
-            // sound: isReminder ? null : const RawResourceAndroidNotificationSound('azan'),
+            enableVibration: useVibration,
+            vibrationPattern: useVibration ? vibrationPattern : null,
+            playSound: useSound,
+            sound: sound,
             fullScreenIntent: !isReminder, // Full screen for prayer time
             category: AndroidNotificationCategory.alarm,
             visibility: NotificationVisibility.public,
@@ -466,12 +481,12 @@ class NotificationService {
   /// Schedule all prayer notifications for today
   Future<void> scheduleAllPrayerNotifications({
     required Map<String, DateTime> prayerTimes,
-    required Map<String, bool> enabledPrayers,
+    required Map<String, PrayerNotificationMode> prayerModes,
     int minutesBefore = 5,
   }) async {
     print('Scheduling prayer notifications...');
     print('Prayer times: $prayerTimes');
-    print('Enabled prayers: $enabledPrayers');
+    print('Prayer modes: $prayerModes');
 
     // Cancel existing prayer notifications first
     await cancelAllPrayerNotifications();
@@ -482,10 +497,12 @@ class NotificationService {
     for (final entry in prayerTimes.entries) {
       final prayerName = entry.key;
       final prayerTime = entry.value;
+      final mode = prayerModes[prayerName] ?? PrayerNotificationMode.azan;
 
-      // Skip if this prayer notification is disabled
-      if (enabledPrayers[prayerName] != true) {
-        print('Skipping $prayerName - notifications disabled');
+      // Skip if this prayer notification is off
+      if (mode == PrayerNotificationMode.off) {
+        print('Skipping $prayerName - notifications off');
+        id++;
         continue;
       }
 
@@ -495,16 +512,19 @@ class NotificationService {
         prayerName: prayerName,
         scheduledTime: prayerTime,
         minutesBefore: 0,
+        mode: mode,
       );
       scheduledCount++;
 
-      // Also schedule a reminder before prayer time
+      // Also schedule a reminder before prayer time (always vibration only)
       if (minutesBefore > 0) {
         await schedulePrayerNotification(
           id: id + 5, // Offset ID for reminder
           prayerName: prayerName,
           scheduledTime: prayerTime,
           minutesBefore: minutesBefore,
+          mode: PrayerNotificationMode
+              .vibrationOnly, // Reminders always vibration only
         );
         scheduledCount++;
       }
@@ -536,6 +556,7 @@ class NotificationService {
           enableVibration: true,
           vibrationPattern: vibrationPattern,
           playSound: true,
+          sound: const RawResourceAndroidNotificationSound('azan'),
           fullScreenIntent: true,
           category: AndroidNotificationCategory.alarm,
           visibility: NotificationVisibility.public,

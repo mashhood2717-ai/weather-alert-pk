@@ -27,6 +27,13 @@ enum AsrMadhab {
   hanafi, // Hanafi
 }
 
+/// Prayer notification mode
+enum PrayerNotificationMode {
+  off, // No notification
+  vibrationOnly, // Vibration only, no sound
+  azan, // Full azan sound with vibration
+}
+
 /// Single prayer time data
 class PrayerTimeData {
   final String name;
@@ -102,21 +109,77 @@ class PrayerService {
     await prefs.setString(_methodKey, method.name);
   }
 
-  /// Get notification preferences for each prayer
-  static Future<Map<String, bool>> getNotificationPrefs() async {
+  /// Get notification preferences for each prayer (now returns mode)
+  static Future<Map<String, PrayerNotificationMode>>
+      getNotificationPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     final prayers = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
-    final Map<String, bool> result = {};
+    final Map<String, PrayerNotificationMode> result = {};
     for (final prayer in prayers) {
-      result[prayer] = prefs.getBool('${_notificationsKey}_$prayer') ?? true;
+      final value =
+          prefs.getString('${_notificationsKey}_${prayer}_mode') ?? 'azan';
+      result[prayer] = PrayerNotificationMode.values.firstWhere(
+        (m) => m.name == value,
+        orElse: () => PrayerNotificationMode.azan,
+      );
     }
     return result;
   }
 
-  /// Save notification preference for a prayer
-  static Future<void> saveNotificationPref(String prayer, bool enabled) async {
+  /// Save notification mode for a prayer
+  static Future<void> saveNotificationMode(
+      String prayer, PrayerNotificationMode mode) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('${_notificationsKey}_$prayer', enabled);
+    await prefs.setString('${_notificationsKey}_${prayer}_mode', mode.name);
+  }
+
+  /// Cycle to next notification mode: off -> vibration -> azan -> off
+  static PrayerNotificationMode cycleNotificationMode(
+      PrayerNotificationMode current) {
+    switch (current) {
+      case PrayerNotificationMode.off:
+        return PrayerNotificationMode.vibrationOnly;
+      case PrayerNotificationMode.vibrationOnly:
+        return PrayerNotificationMode.azan;
+      case PrayerNotificationMode.azan:
+        return PrayerNotificationMode.off;
+    }
+  }
+
+  /// Get icon for notification mode
+  static IconData getNotificationModeIcon(PrayerNotificationMode mode) {
+    switch (mode) {
+      case PrayerNotificationMode.off:
+        return Icons.notifications_off_outlined;
+      case PrayerNotificationMode.vibrationOnly:
+        return Icons.vibration;
+      case PrayerNotificationMode.azan:
+        return Icons.volume_up_rounded;
+    }
+  }
+
+  /// Get color for notification mode
+  static Color getNotificationModeColor(PrayerNotificationMode mode) {
+    switch (mode) {
+      case PrayerNotificationMode.off:
+        return Colors.grey;
+      case PrayerNotificationMode.vibrationOnly:
+        return Colors.orange;
+      case PrayerNotificationMode.azan:
+        return Colors.green;
+    }
+  }
+
+  /// Get label for notification mode
+  static String getNotificationModeLabel(PrayerNotificationMode mode) {
+    switch (mode) {
+      case PrayerNotificationMode.off:
+        return 'Off';
+      case PrayerNotificationMode.vibrationOnly:
+        return 'Vibrate';
+      case PrayerNotificationMode.azan:
+        return 'Azan';
+    }
   }
 
   /// Convert our method enum to adhan package CalculationMethod
@@ -338,7 +401,7 @@ class PrayerService {
       // Schedule notifications
       await NotificationService().scheduleAllPrayerNotifications(
         prayerTimes: prayerTimes,
-        enabledPrayers: notificationPrefs,
+        prayerModes: notificationPrefs,
         minutesBefore: 5,
       );
     } catch (e) {
