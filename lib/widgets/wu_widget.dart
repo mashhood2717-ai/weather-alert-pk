@@ -23,6 +23,8 @@ class _WuWidgetState extends State<WuWidget> {
   Map<String, dynamic>? _currentData;
   bool _loading = false;
   String? _error;
+  // Store station info with location for dropdown display
+  Map<String, Map<String, dynamic>> _stationInfo = {};
 
   @override
   void initState() {
@@ -46,6 +48,14 @@ class _WuWidgetState extends State<WuWidget> {
       _loading = false;
       if (res == null) _error = "No data found for $id";
       _currentData = res;
+      // Store station info for dropdown display
+      if (res != null) {
+        _stationInfo[id] = {
+          'lat': res['lat'],
+          'lon': res['lon'],
+          'neighborhood': res['neighborhood'],
+        };
+      }
     });
 
     if (widget.onDataLoaded != null) {
@@ -254,16 +264,35 @@ class _WuWidgetState extends State<WuWidget> {
               child: _buildDropdown(
                   "Station ID",
                   _selectedStationId,
-                  stations
-                      .map<DropdownMenuItem<String>>(
-                        (s) => DropdownMenuItem<String>(
-                          value: s["id"]!,
-                          child: Text(s["name"] ?? s["id"]!,
-                              style: TextStyle(
-                                  color: foregroundForCard(widget.isDay))),
-                        ),
-                      )
-                      .toList(), (v) {
+                  stations.map<DropdownMenuItem<String>>(
+                    (s) {
+                      final stationId = s["id"]!;
+                      final info = _stationInfo[stationId];
+                      String displayText = s["name"] ?? stationId;
+                      // Add location info if available
+                      if (info != null &&
+                          info['neighborhood'] != null &&
+                          info['neighborhood'] != '--') {
+                        displayText =
+                            '${s["name"] ?? stationId} (${info['neighborhood']})';
+                      } else if (info != null &&
+                          info['lat'] != null &&
+                          info['lon'] != null) {
+                        final lat =
+                            (info['lat'] as num?)?.toStringAsFixed(2) ?? '--';
+                        final lon =
+                            (info['lon'] as num?)?.toStringAsFixed(2) ?? '--';
+                        displayText = '${s["name"] ?? stationId} ($lat, $lon)';
+                      }
+                      return DropdownMenuItem<String>(
+                        value: stationId,
+                        child: Text(displayText,
+                            style: TextStyle(
+                                color: foregroundForCard(widget.isDay),
+                                fontSize: 13)),
+                      );
+                    },
+                  ).toList(), (v) {
                 setState(() => _selectedStationId = v);
                 if (v != null) _loadStation(v);
               }, widget.isDay),

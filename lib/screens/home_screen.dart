@@ -1115,20 +1115,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 borderRadius: BorderRadius.circular(8),
                 child: Image.asset('assets/images/logo.png',
                     width: 36, height: 36, fit: BoxFit.contain))),
-        const SizedBox(width: 12),
+        // Expanded spacer for layout (logo on left, icons on right)
         Expanded(
             child: GestureDetector(
-                onLongPress: _showFcmTokenDialog,
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("Weather & Prayer Alert",
-                          style: TextStyle(
-                              color: isDay ? Colors.black : Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 0.2)),
-                    ]))),
+                onLongPress: _showFcmTokenDialog, child: const SizedBox())),
         _buildAppBarButton(
             icon: Icons.star_rounded,
             isDay: isDay,
@@ -1537,12 +1527,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 const EdgeInsets.symmetric(horizontal: -2, vertical: 2),
             dividerColor: Colors.transparent,
             tabs: const [
-              Tab(text: "Home"),
-              Tab(text: "AQI"),
-              Tab(text: "Windy"),
-              Tab(text: "METAR"),
-              Tab(text: "WU"),
-              Tab(text: "Prayer")
+              Tab(icon: Icon(Icons.home_rounded, size: 22)),
+              Tab(icon: Icon(Icons.air_rounded, size: 22)),
+              Tab(icon: Icon(Icons.waves_rounded, size: 22)),
+              Tab(icon: Icon(Icons.flight_takeoff_rounded, size: 22)),
+              Tab(icon: Icon(Icons.sensors_rounded, size: 22)),
+              Tab(icon: Icon(Icons.mosque_rounded, size: 22)),
             ]));
   }
 

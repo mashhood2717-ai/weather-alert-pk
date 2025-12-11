@@ -59,6 +59,9 @@ Future<Map<String, dynamic>?> fetchWUCurrentByStation(String stationId) async {
       "observed": safe(o["obsTimeUtc"]),
       "rain_rate": safe(o["metric"]?["precipRate"]),
       "rain_total": safe(o["metric"]?["precipTotal"]),
+      "lat": o["lat"],
+      "lon": o["lon"],
+      "neighborhood": safe(o["neighborhood"]),
     };
 
     _wuStationCache[key] = {"fetched_at": _nowIso(), "data": clean};
