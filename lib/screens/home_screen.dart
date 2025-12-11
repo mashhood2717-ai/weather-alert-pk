@@ -113,12 +113,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _initWidgetServices() async {
     // Delay to not interfere with location permission
     await Future.delayed(const Duration(seconds: 2));
-    
+
     // Ensure settings are initialized before proceeding
     if (!_settings.isInitialized) {
       await _settings.initialize();
     }
-    
+
     await _persistentNotification.initialize();
     await _widgetService.initialize();
     _persistentNotification.setRefreshCallback(_onRefreshNotification);
@@ -133,7 +133,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (controller.current.value != null) {
       final coords = controller.getCurrentCoordinates();
       if (coords != null) {
-        await controller.loadByCoordinates(coords.$1, coords.$2);
+        // Preserve the current location flag during refresh
+        final wasCurrentLocation = controller.isFromCurrentLocation;
+        await controller.loadByCoordinates(
+          coords.$1,
+          coords.$2,
+          isCurrentLocation: wasCurrentLocation,
+        );
         await _fetchAqiData(coords.$1, coords.$2);
       }
     }
@@ -203,9 +209,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         // If moved more than threshold, refresh weather
         if (distance > _locationChangeThreshold) {
           _lastKnownPosition = position;
+          // Mark as current location since this is GPS-based auto-refresh
           await controller.loadByCoordinates(
             position.latitude,
             position.longitude,
+            isCurrentLocation: true,
           );
           await _fetchAqiData(position.latitude, position.longitude);
         }
@@ -320,8 +328,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (coords != null) {
       _fetchAqiData(coords.$1, coords.$2);
       _lastKnownPosition = null; // Reset position tracking for auto-refresh
-      // Update persistent notification with weather and prayer data
-      _updatePersistentNotification(coords.$1, coords.$2);
+      // Only update persistent notification and widget when using current GPS location
+      // This ensures widget always shows current location, not searched location
+      if (controller.isFromCurrentLocation) {
+        _updatePersistentNotification(coords.$1, coords.$2);
+      }
     }
     if (mounted) setState(() {});
   }

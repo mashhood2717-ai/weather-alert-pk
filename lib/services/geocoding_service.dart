@@ -13,6 +13,7 @@ class GeocodingResult {
   final String? province;
   final String? country;
   final String formattedAddress;
+  final String? extractedAreaName; // Intelligently extracted area name
 
   GeocodingResult({
     required this.streetAddress,
@@ -23,7 +24,21 @@ class GeocodingResult {
     this.province,
     this.country,
     required this.formattedAddress,
+    this.extractedAreaName,
   });
+
+  /// Returns the best available main location name
+  /// Priority: locality > city > district > extractedAreaName > province
+  String get mainLocationName {
+    if (locality != null && locality!.isNotEmpty) return locality!;
+    if (city != null && city!.isNotEmpty) return city!;
+    if (district != null && district!.isNotEmpty) return district!;
+    if (extractedAreaName != null && extractedAreaName!.isNotEmpty) {
+      return extractedAreaName!;
+    }
+    if (province != null && province!.isNotEmpty) return province!;
+    return 'Unknown';
+  }
 
   /// Returns a short display string for UI (street + area)
   String get shortAddress {
@@ -91,6 +106,7 @@ class GeocodingService {
     String? province;
     String? country;
     String formattedAddress = results.first['formatted_address'] ?? '';
+    String? extractedAreaName;
 
     // Parse address components from the most detailed result
     for (final result in results) {
@@ -109,7 +125,8 @@ class GeocodingService {
               streetAddress.isEmpty ? longName : '$streetAddress $longName';
         }
         if (types.contains('sublocality_level_1') ||
-            types.contains('sublocality')) {
+            types.contains('sublocality') ||
+            types.contains('sublocality_level_2')) {
           subLocality ??= longName;
         }
         if (types.contains('locality')) {
@@ -125,6 +142,15 @@ class GeocodingService {
         if (types.contains('country')) {
           country ??= longName;
         }
+        // Also check for neighborhood and political areas
+        if (types.contains('neighborhood') || types.contains('political')) {
+          if (extractedAreaName == null && longName.isNotEmpty) {
+            // Only use if it's not a generic name
+            if (!_isGenericName(longName)) {
+              extractedAreaName = longName;
+            }
+          }
+        }
       }
     }
 
@@ -138,13 +164,26 @@ class GeocodingService {
           if (types.contains('premise') ||
               types.contains('establishment') ||
               types.contains('point_of_interest') ||
-              types.contains('neighborhood')) {
+              types.contains('neighborhood') ||
+              types.contains('natural_feature') ||
+              types.contains('colloquial_area')) {
             streetAddress = component['long_name'] ?? '';
             if (streetAddress.isNotEmpty) break;
           }
         }
         if (streetAddress.isNotEmpty) break;
       }
+    }
+
+    // If still no meaningful location, extract from formatted address intelligently
+    if ((locality == null || locality.isEmpty) &&
+        (city == null || city.isEmpty) &&
+        formattedAddress.isNotEmpty) {
+      extractedAreaName = _extractAreaFromFormattedAddress(
+        formattedAddress,
+        province,
+        country,
+      );
     }
 
     return GeocodingResult(
@@ -156,7 +195,97 @@ class GeocodingService {
       province: province,
       country: country,
       formattedAddress: formattedAddress,
+      extractedAreaName: extractedAreaName,
     );
+  }
+
+  /// Extract meaningful area name from formatted address
+  /// For example: "M-2 Motorway, Rawalpindi District, Punjab, Pakistan"
+  /// Should extract: "Rawalpindi District" or near major city
+  static String? _extractAreaFromFormattedAddress(
+    String formattedAddress,
+    String? province,
+    String? country,
+  ) {
+    // Split by comma and look for meaningful parts
+    final parts = formattedAddress.split(',').map((p) => p.trim()).toList();
+
+    // Remove country, province, and postal codes from consideration
+    final meaningfulParts = parts.where((part) {
+      if (part.isEmpty) return false;
+      if (country != null && part.toLowerCase() == country.toLowerCase()) {
+        return false;
+      }
+      if (province != null && part.toLowerCase() == province.toLowerCase()) {
+        return false;
+      }
+      // Skip postal codes (numbers only or alphanumeric codes)
+      if (RegExp(r'^[0-9\s-]+$').hasMatch(part)) return false;
+      // Skip very short parts
+      if (part.length < 3) return false;
+      return true;
+    }).toList();
+
+    // Look for known Pakistani patterns
+    for (final part in meaningfulParts) {
+      // Check if it contains "District" - common in Pakistan addresses
+      if (part.toLowerCase().contains('district')) {
+        // Extract just the name before "District"
+        final match =
+            RegExp(r'(\w+)\s*District', caseSensitive: false).firstMatch(part);
+        if (match != null) {
+          return match.group(1)?.trim();
+        }
+        return part;
+      }
+      // Check for Tehsil
+      if (part.toLowerCase().contains('tehsil')) {
+        final match =
+            RegExp(r'(\w+)\s*Tehsil', caseSensitive: false).firstMatch(part);
+        if (match != null) {
+          return match.group(1)?.trim();
+        }
+      }
+    }
+
+    // If we have meaningful parts, try the first one that looks like a place name
+    // Skip motorway/highway names for main location
+    for (final part in meaningfulParts) {
+      if (_isMotorwayOrHighway(part)) continue;
+      if (part.length > 2) {
+        return part;
+      }
+    }
+
+    // Last resort: return first meaningful part even if it's a motorway
+    if (meaningfulParts.isNotEmpty) {
+      return meaningfulParts.first;
+    }
+
+    return null;
+  }
+
+  /// Check if a name is a motorway or highway
+  static bool _isMotorwayOrHighway(String name) {
+    final lower = name.toLowerCase();
+    return lower.contains('motorway') ||
+        lower.contains('highway') ||
+        lower.contains('expressway') ||
+        lower.startsWith('m-') ||
+        lower.startsWith('n-') ||
+        RegExp(r'^[MN]\d+\b', caseSensitive: false).hasMatch(name);
+  }
+
+  /// Check if a name is too generic to be useful
+  static bool _isGenericName(String name) {
+    final lower = name.toLowerCase();
+    return lower == 'pakistan' ||
+        lower == 'punjab' ||
+        lower == 'sindh' ||
+        lower == 'kpk' ||
+        lower == 'balochistan' ||
+        lower == 'islamabad' ||
+        lower == 'ict';
   }
 
   /// Clear the cache (useful when memory is low)

@@ -51,13 +51,14 @@ class CurrentWeather {
     this.fullAddress,
   });
 
-  /// Create a copy with updated address
+  /// Create a copy with updated address and optionally city name
   CurrentWeather copyWithAddress({
+    String? city,
     String? streetAddress,
     String? fullAddress,
   }) {
     return CurrentWeather(
-      city: city,
+      city: city ?? this.city,
       tempC: tempC,
       condition: condition,
       icon: icon,

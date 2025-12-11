@@ -2,23 +2,28 @@
 // 13. lib/utils/icon_mapper.dart
 // ============================================
 
-String weatherApiIconUrl(String iconFile) {
+String weatherApiIconUrl(String iconFile, {bool isDay = true}) {
   if (iconFile.startsWith('http'))
     return iconFile.replaceFirst('http:', 'https:');
   if (iconFile.startsWith('//')) return 'https:$iconFile';
 
+  // Determine day or night folder
+  final folder = isDay ? 'day' : 'night';
+
   if (iconFile.isNotEmpty && !iconFile.contains('/')) {
-    return 'https://cdn.weatherapi.com/weather/64x64/day/$iconFile';
+    return 'https://cdn.weatherapi.com/weather/64x64/$folder/$iconFile';
   }
 
   return 'https://cdn.weatherapi.com/weather/$iconFile';
 }
 
-String mapMetarIcon(String code) {
+/// Map METAR weather code to icon file, with day/night support
+/// Returns the appropriate icon file based on time of day
+String mapMetarIcon(String code, {bool isDay = true}) {
   code = code.toUpperCase();
   code = code.replaceAll(RegExp(r'[+\-]'), '');
 
-  // Haze/Mist/Fog (Common in Pakistan)
+  // Haze/Mist/Fog (Common in Pakistan) - same for day/night
   if (code.contains("FU") ||
       code.contains("BR") ||
       code.contains("HZ") ||
@@ -26,17 +31,18 @@ String mapMetarIcon(String code) {
       code.contains("SA")) return "143.png";
   if (code.contains("FG")) return "248.png";
 
-  // Cloud Cover
+  // Cloud Cover - same for day/night
   if (code.contains("OVC") || code.contains("BKN")) return "122.png";
   if (code.contains("SCT") || code.contains("FEW")) return "119.png";
 
-  // Precipitation
+  // Precipitation - same for day/night
   if (code.contains("TSRA") || code.contains("TS")) return "389.png";
   if (code.contains("SHRA")) return "356.png";
   if (code.contains("RA") || code.contains("DZ")) return "308.png";
   if (code.contains("SN")) return "338.png";
 
-  // Default (Clear)
+  // Clear sky - use day/night specific icons
+  // 113.png is sun (day), 113.png in night folder is moon
   return "113.png";
 }
 

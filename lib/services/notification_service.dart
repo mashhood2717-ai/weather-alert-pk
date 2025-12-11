@@ -1,6 +1,7 @@
 // lib/services/notification_service.dart
 
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart' show Color, GlobalKey, NavigatorState;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -99,12 +100,27 @@ class NotificationService {
     enableVibration: true,
   );
 
-  // Prayer notification channel
+  // Prayer notification channel with azan sound
+  // Note: For custom sound, place azan.mp3 in android/app/src/main/res/raw/
   static const AndroidNotificationChannel _prayerChannel =
       AndroidNotificationChannel(
-    'prayer_notifications',
-    'Prayer Time Reminders',
-    description: 'Notifications for prayer times',
+    'prayer_notifications_v2', // Changed channel ID to force new channel creation
+    'Prayer Time Azan',
+    description: 'Prayer time notifications with azan sound',
+    importance: Importance.max, // Max importance for prayer notifications
+    playSound: true,
+    enableVibration: true,
+    enableLights: true,
+    ledColor: Color(0xFF4CAF50),
+    // Custom sound will be set in AndroidNotificationDetails
+  );
+
+  // Silent prayer reminder channel (for X minutes before)
+  static const AndroidNotificationChannel _prayerReminderChannel =
+      AndroidNotificationChannel(
+    'prayer_reminders',
+    'Prayer Reminders',
+    description: 'Reminders before prayer time',
     importance: Importance.high,
     playSound: true,
     enableVibration: true,
@@ -145,6 +161,7 @@ class NotificationService {
       await androidPlugin.createNotificationChannel(_channelMedium);
       await androidPlugin.createNotificationChannel(_channelLow);
       await androidPlugin.createNotificationChannel(_prayerChannel);
+      await androidPlugin.createNotificationChannel(_prayerReminderChannel);
     }
 
     // Initialize timezone for scheduled notifications
@@ -348,7 +365,7 @@ class NotificationService {
     }
   }
 
-  /// Schedule a prayer notification
+  /// Schedule a prayer notification with sound and vibration
   Future<void> schedulePrayerNotification({
     required int id,
     required String prayerName,
@@ -364,40 +381,72 @@ class NotificationService {
 
     // Don't schedule if the time has already passed
     if (notificationTime.isBefore(DateTime.now())) {
+      print(
+          'Prayer notification skipped (past time): $prayerName at $scheduledTime');
       return;
     }
 
     final tzNotificationTime = tz.TZDateTime.from(notificationTime, tz.local);
 
-    final title = minutesBefore > 0
+    // Different title/body for reminder vs actual prayer time
+    final bool isReminder = minutesBefore > 0;
+    final title = isReminder
         ? '$prayerName in $minutesBefore minutes'
-        : 'Time for $prayerName';
-    final body = minutesBefore > 0
+        : '🕌 $prayerName Time';
+    final body = isReminder
         ? 'Prepare for $prayerName prayer'
-        : 'It\'s time to pray $prayerName';
+        : 'Allahu Akbar - It\'s time for $prayerName prayer';
 
-    await _localNotifications.zonedSchedule(
-      id,
-      title,
-      body,
-      tzNotificationTime,
-      NotificationDetails(
-        android: AndroidNotificationDetails(
-          _prayerChannel.id,
-          _prayerChannel.name,
-          channelDescription: _prayerChannel.description,
-          importance: Importance.high,
-          priority: Priority.high,
-          icon: '@mipmap/ic_launcher',
-          color: const Color(0xFF4CAF50),
-          enableVibration: true,
-          playSound: true,
+    // Use different channels for prayer time vs reminder
+    final channelId =
+        isReminder ? _prayerReminderChannel.id : _prayerChannel.id;
+    final channelName =
+        isReminder ? _prayerReminderChannel.name : _prayerChannel.name;
+    final channelDesc = isReminder
+        ? _prayerReminderChannel.description
+        : _prayerChannel.description;
+
+    // Strong vibration pattern for prayer time: wait, vibrate, wait, vibrate...
+    final vibrationPattern = isReminder
+        ? Int64List.fromList([0, 250, 250, 250]) // Short pattern for reminder
+        : Int64List.fromList(
+            [0, 500, 200, 500, 200, 500, 200, 500]); // Long pattern for azan
+
+    try {
+      await _localNotifications.zonedSchedule(
+        id,
+        title,
+        body,
+        tzNotificationTime,
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            channelId,
+            channelName,
+            channelDescription: channelDesc,
+            importance: isReminder ? Importance.high : Importance.max,
+            priority: Priority.max,
+            icon: '@mipmap/ic_launcher',
+            color: const Color(0xFF4CAF50),
+            enableVibration: true,
+            vibrationPattern: vibrationPattern,
+            playSound: true,
+            // Use custom sound if available (azan.mp3 in res/raw/)
+            // sound: isReminder ? null : const RawResourceAndroidNotificationSound('azan'),
+            fullScreenIntent: !isReminder, // Full screen for prayer time
+            category: AndroidNotificationCategory.alarm,
+            visibility: NotificationVisibility.public,
+            ticker: title,
+          ),
         ),
-      ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      matchDateTimeComponents: null,
-      payload: 'prayer_$prayerName',
-    );
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        matchDateTimeComponents: null,
+        payload: 'prayer_$prayerName',
+      );
+      print(
+          'Prayer notification scheduled: $prayerName at $tzNotificationTime (ID: $id)');
+    } catch (e) {
+      print('Error scheduling prayer notification: $e');
+    }
   }
 
   /// Cancel a specific prayer notification
@@ -408,9 +457,10 @@ class NotificationService {
   /// Cancel all prayer notifications
   Future<void> cancelAllPrayerNotifications() async {
     // Prayer notification IDs start from 1000
-    for (int i = 1000; i < 1010; i++) {
+    for (int i = 1000; i < 1020; i++) {
       await _localNotifications.cancel(i);
     }
+    print('All prayer notifications cancelled');
   }
 
   /// Schedule all prayer notifications for today
@@ -419,16 +469,23 @@ class NotificationService {
     required Map<String, bool> enabledPrayers,
     int minutesBefore = 5,
   }) async {
+    print('Scheduling prayer notifications...');
+    print('Prayer times: $prayerTimes');
+    print('Enabled prayers: $enabledPrayers');
+
     // Cancel existing prayer notifications first
     await cancelAllPrayerNotifications();
 
     int id = 1000;
+    int scheduledCount = 0;
+
     for (final entry in prayerTimes.entries) {
       final prayerName = entry.key;
       final prayerTime = entry.value;
 
       // Skip if this prayer notification is disabled
       if (enabledPrayers[prayerName] != true) {
+        print('Skipping $prayerName - notifications disabled');
         continue;
       }
 
@@ -439,6 +496,7 @@ class NotificationService {
         scheduledTime: prayerTime,
         minutesBefore: 0,
       );
+      scheduledCount++;
 
       // Also schedule a reminder before prayer time
       if (minutesBefore > 0) {
@@ -448,9 +506,43 @@ class NotificationService {
           scheduledTime: prayerTime,
           minutesBefore: minutesBefore,
         );
+        scheduledCount++;
       }
 
       id++;
     }
+
+    print('Scheduled $scheduledCount prayer notifications');
+  }
+
+  /// Show an immediate prayer notification (for testing)
+  Future<void> showImmediatePrayerNotification(String prayerName) async {
+    final vibrationPattern =
+        Int64List.fromList([0, 500, 200, 500, 200, 500, 200, 500]);
+
+    await _localNotifications.show(
+      999, // Test notification ID
+      '🕌 $prayerName Time',
+      'Allahu Akbar - It\'s time for $prayerName prayer',
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          _prayerChannel.id,
+          _prayerChannel.name,
+          channelDescription: _prayerChannel.description,
+          importance: Importance.max,
+          priority: Priority.max,
+          icon: '@mipmap/ic_launcher',
+          color: const Color(0xFF4CAF50),
+          enableVibration: true,
+          vibrationPattern: vibrationPattern,
+          playSound: true,
+          fullScreenIntent: true,
+          category: AndroidNotificationCategory.alarm,
+          visibility: NotificationVisibility.public,
+        ),
+      ),
+      payload: 'prayer_$prayerName',
+    );
+    print('Immediate prayer notification shown for $prayerName');
   }
 }

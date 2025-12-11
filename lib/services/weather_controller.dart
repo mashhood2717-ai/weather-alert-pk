@@ -22,6 +22,9 @@ class WeatherController {
   bool metarApplied = false;
   String? lastCitySearched;
 
+  /// True if current weather is from GPS location, false if from search
+  bool isFromCurrentLocation = false;
+
   // Callback for when data is fully loaded (for Windy update)
   VoidCallback? onDataLoaded;
 
@@ -190,6 +193,7 @@ class WeatherController {
   /// Load weather by city name - NOW AWAITS PROPERLY FOR WINDY FIX
   Future<void> loadByCity(String city) async {
     lastCitySearched = city;
+    isFromCurrentLocation = false; // This is a search, not GPS location
 
     final isIcao = RegExp(r'^[A-Za-z]{4}$').hasMatch(city.trim());
     final icao = icaoFromCity(city);
@@ -254,10 +258,11 @@ class WeatherController {
     onDataLoaded?.call();
   }
 
-  /// Load weather by coordinates
+  /// Load weather by coordinates (from search/favorites - not GPS)
   Future<void> loadByCoordinates(double lat, double lon,
-      {String? cityName}) async {
+      {String? cityName, bool isCurrentLocation = false}) async {
     lastCitySearched = cityName;
+    isFromCurrentLocation = isCurrentLocation;
 
     final icao = icaoFromCoordinates(lat, lon);
     final json = await OpenMeteoService.fetchWeather(lat, lon);
@@ -294,6 +299,8 @@ class WeatherController {
 
   Future<void> loadByLocation() async {
     try {
+      isFromCurrentLocation = true; // This is GPS location
+
       final position = await determinePosition();
       final lat = position.latitude;
       final lon = position.longitude;
@@ -337,7 +344,21 @@ class WeatherController {
     try {
       final result = await GeocodingService.reverseGeocode(lat, lon);
       if (result != null && current.value != null) {
+        // Update city name if current city is "Unknown" or generic
+        String? newCityName;
+        final currentCity = current.value!.city;
+        if (currentCity == 'Unknown' ||
+            currentCity.isEmpty ||
+            currentCity.startsWith('Lat:')) {
+          // Use the best available main location name from geocoding
+          final mainLocation = result.mainLocationName;
+          if (mainLocation != 'Unknown') {
+            newCityName = mainLocation;
+          }
+        }
+
         current.value = current.value!.copyWithAddress(
+          city: newCityName,
           streetAddress: result.shortAddress,
           fullAddress: result.formattedAddress,
         );
@@ -487,7 +508,12 @@ class WeatherController {
     String metarRawText = m["raw_text"]?.toString().toUpperCase() ?? "";
     String primaryCode = _extractPrimaryMetarCode(metarRawText);
 
-    final finalIconUrl = weatherApiIconUrl(mapMetarIcon(primaryCode));
+    // Calculate isDay FIRST before using it for icon
+    int isDay = _calculateIsDay();
+
+    // Pass isDay to icon functions for proper day/night icons
+    final iconFile = mapMetarIcon(primaryCode, isDay: isDay == 1);
+    final finalIconUrl = weatherApiIconUrl(iconFile, isDay: isDay == 1);
     final metarDescription = mapMetarCodeToDescription(primaryCode);
 
     final stationIcao = m["station"]?.toString().toUpperCase() ?? "";
@@ -503,8 +529,6 @@ class WeatherController {
         break;
       }
     }
-
-    int isDay = _calculateIsDay();
 
     current.value = CurrentWeather(
       city: cityName,
@@ -618,7 +642,10 @@ class WeatherController {
     String metarRawText = m["raw_text"]?.toString().toUpperCase() ?? "";
     String primaryCode = _extractPrimaryMetarCode(metarRawText);
 
-    final finalIconUrl = weatherApiIconUrl(mapMetarIcon(primaryCode));
+    // Use existing isDay from current weather for proper day/night icons
+    final isDay = current.value!.isDay == 1;
+    final iconFile = mapMetarIcon(primaryCode, isDay: isDay);
+    final finalIconUrl = weatherApiIconUrl(iconFile, isDay: isDay);
     final metarDescription = mapMetarCodeToDescription(primaryCode);
 
     current.value = CurrentWeather(
