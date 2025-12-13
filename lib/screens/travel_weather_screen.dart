@@ -11,6 +11,7 @@ import 'dart:convert';
 import '../models/motorway_point.dart';
 import '../services/travel_weather_service.dart';
 import '../services/prayer_service.dart';
+import '../services/places_service.dart';
 import '../metar_service.dart';
 import '../services/weather_controller.dart';
 
@@ -36,8 +37,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   // Cache settings
   static const int _cacheMinutes = 15; // Cache duration in minutes
 
-  // Motorway selection
-  String _selectedMotorwayId = 'm2'; // Default to M2 (Islamabad-Lahore)
+  // Motorway selection - 'custom' means Google Places search
+  String _selectedMotorwayId = 'custom'; // Default to custom for any destination
 
   // Search state
   String? _fromId; // null means current location
@@ -46,6 +47,13 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   bool _showToSearch = false;
   final TextEditingController _fromSearchController = TextEditingController();
   final TextEditingController _toSearchController = TextEditingController();
+  
+  // Google Places search state
+  List<PlaceSuggestion> _placeSuggestions = [];
+  bool _isSearchingPlaces = false;
+  PlaceDetails? _customFromPlace;
+  PlaceDetails? _customToPlace;
+  Timer? _debounceTimer;
 
   // Route data
   List<TravelPoint> _routePoints = [];
@@ -117,7 +125,68 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     _toSearchController.dispose();
     _mapController?.dispose();
     _positionStream?.cancel(); // Cancel location tracking
+    _debounceTimer?.cancel();
     super.dispose();
+  }
+
+  /// Search for places using Google Places API
+  Future<void> _searchPlaces(String query) async {
+    if (query.trim().isEmpty) {
+      setState(() {
+        _placeSuggestions = [];
+        _isSearchingPlaces = false;
+      });
+      return;
+    }
+
+    setState(() => _isSearchingPlaces = true);
+
+    try {
+      final suggestions = await PlacesService.getFullAutocompleteSuggestions(query);
+      if (mounted) {
+        setState(() {
+          _placeSuggestions = suggestions;
+          _isSearchingPlaces = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSearchingPlaces = false);
+      }
+    }
+  }
+
+  /// Handle place selection from search
+  Future<void> _selectPlace(PlaceSuggestion suggestion, bool isFrom) async {
+    setState(() => _isLoading = true);
+
+    try {
+      final details = await PlacesService.getPlaceDetails(suggestion.placeId);
+      if (details != null && mounted) {
+        setState(() {
+          if (isFrom) {
+            _customFromPlace = details;
+            _fromId = 'custom_from';
+            _showFromSearch = false;
+            _fromSearchController.text = details.name;
+          } else {
+            _customToPlace = details;
+            _toId = 'custom_to';
+            _showToSearch = false;
+            _toSearchController.text = details.name;
+          }
+          _placeSuggestions = [];
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error getting place details: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _initializeLocation() async {
@@ -139,11 +208,22 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
 
   /// Called when user taps "Start Journey" button
   Future<void> _confirmRouteAndLoad() async {
-    if (_toId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a destination')),
-      );
-      return;
+    // Check if custom route is selected
+    if (_selectedMotorwayId == 'custom') {
+      if (_customToPlace == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please search and select a destination')),
+        );
+        return;
+      }
+    } else {
+      // Motorway route
+      if (_toId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select a destination')),
+        );
+        return;
+      }
     }
 
     setState(() {
@@ -153,6 +233,9 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
 
     // Fetch current location weather
     await _fetchCurrentLocationWeather();
+    
+    // Update UI with fetched weather
+    if (mounted) setState(() {});
 
     // Load route data
     await _loadRoute();
@@ -422,7 +505,13 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   bool _isLoadingRoute = false;
 
   Future<void> _loadRoute() async {
-    if (_toId == null) return;
+    // For custom route, we need at least a destination place
+    if (_selectedMotorwayId == 'custom') {
+      if (_customToPlace == null) return;
+    } else {
+      // For motorway routes, need destination toll plaza ID
+      if (_toId == null) return;
+    }
 
     // Prevent duplicate loads
     if (_isLoadingRoute) {
@@ -436,6 +525,12 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     });
 
     try {
+      // Handle custom route (Google Places search)
+      if (_selectedMotorwayId == 'custom') {
+        await _loadCustomRoute();
+        return;
+      }
+
       // Try to load from cache first (15 min valid)
       final cacheLoaded = await _loadCachedRouteData();
       if (cacheLoaded) {
@@ -600,6 +695,188 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       _isLoadingRoute = false;
       setState(() => _isLoading = false);
     }
+  }
+
+  /// Load route for custom origin/destination from Google Places
+  Future<void> _loadCustomRoute() async {
+    try {
+      // Get start coordinates (current location or custom from place)
+      double startLat, startLon;
+      String startName;
+      
+      if (_customFromPlace != null) {
+        startLat = _customFromPlace!.lat;
+        startLon = _customFromPlace!.lon;
+        startName = _customFromPlace!.name;
+      } else if (_currentPosition != null) {
+        startLat = _currentPosition!.latitude;
+        startLon = _currentPosition!.longitude;
+        startName = 'Current Location';
+      } else {
+        // Fallback to Islamabad
+        startLat = 33.6844;
+        startLon = 73.0479;
+        startName = 'Islamabad';
+      }
+
+      // Get destination coordinates
+      final endLat = _customToPlace!.lat;
+      final endLon = _customToPlace!.lon;
+      final endName = _customToPlace!.name;
+
+      debugPrint('🚗 Custom route: $startName → $endName');
+
+      // Get route from Google Directions API
+      final routeData = await TravelWeatherService.instance.getRoutePolyline(
+        startLat: startLat,
+        startLon: startLon,
+        endLat: endLat,
+        endLon: endLon,
+        waypoints: null,
+      );
+
+      if (routeData != null) {
+        _roadRoutePoints = routeData.polylinePoints
+            .map((p) => LatLng(p.latitude, p.longitude))
+            .toList();
+        _routeDistanceMeters = routeData.distanceMeters;
+        _routeDurationSeconds = routeData.durationSeconds;
+        _navigationSteps = routeData.steps;
+        debugPrint('✅ Custom route: ${_roadRoutePoints.length} points, ${(_routeDistanceMeters / 1000).toStringAsFixed(1)} km');
+      } else {
+        // Fallback to direct line
+        _roadRoutePoints = [
+          LatLng(startLat, startLon),
+          LatLng(endLat, endLon),
+        ];
+        _navigationSteps = [];
+      }
+
+      // Create waypoints for weather fetching - sample points along route
+      final weatherPoints = _sampleRoutePointsForWeather(startName, endName, startLat, startLon, endLat, endLon);
+      
+      // Fetch weather for route points
+      final weatherList = await TravelWeatherService.instance.getWeatherForPoints(weatherPoints);
+      
+      // Create weather map
+      final weatherMap = <String, TravelWeather>{};
+      for (int i = 0; i < weatherPoints.length && i < weatherList.length; i++) {
+        weatherMap[weatherPoints[i].id] = weatherList[i];
+      }
+
+      // Calculate ETAs
+      final totalSeconds = _routeDurationSeconds;
+      final totalDistance = _routeDistanceMeters / 1000;
+      
+      // Build travel points
+      final now = DateTime.now();
+      final travelPoints = <TravelPoint>[];
+      
+      for (int i = 0; i < weatherPoints.length; i++) {
+        final point = weatherPoints[i];
+        final weather = weatherMap[point.id];
+        
+        // Distribute time across points
+        final fraction = totalDistance > 0 ? point.distanceFromStart / totalDistance : (i / weatherPoints.length);
+        final etaSeconds = (totalSeconds * fraction).round();
+        final eta = Duration(seconds: etaSeconds);
+        final estimatedArrival = now.add(eta);
+
+        // Calculate prayer time at arrival
+        String? activePrayer;
+        String? activePrayerTime;
+        try {
+          final prayerData = await _getPrayerAtArrivalTime(
+            latitude: point.lat,
+            longitude: point.lon,
+            arrivalTime: estimatedArrival,
+          );
+          activePrayer = prayerData['name'];
+          activePrayerTime = prayerData['time'];
+        } catch (_) {}
+
+        travelPoints.add(TravelPoint(
+          point: point,
+          etaFromStart: eta,
+          estimatedArrival: estimatedArrival,
+          weather: weather,
+          nextPrayer: activePrayer,
+          nextPrayerTime: activePrayerTime,
+        ));
+      }
+
+      _routePoints = travelPoints;
+
+      // Fetch METAR for any airports near the route
+      await _fetchMetarForRoute();
+
+      // Update map markers
+      _updateMapMarkers();
+
+    } catch (e) {
+      setState(() => _error = 'Failed to load custom route: $e');
+      debugPrint('❌ Custom route error: $e');
+    } finally {
+      _isLoadingRoute = false;
+      setState(() => _isLoading = false);
+    }
+  }
+
+  /// Sample points along the route for weather fetching
+  List<MotorwayPoint> _sampleRoutePointsForWeather(
+    String startName,
+    String endName,
+    double startLat,
+    double startLon,
+    double endLat,
+    double endLon,
+  ) {
+    final points = <MotorwayPoint>[];
+    final totalDistanceKm = _routeDistanceMeters / 1000;
+    
+    // Sample every ~50km or 5 points minimum
+    int numSamples = (totalDistanceKm / 50).ceil().clamp(5, 15);
+    
+    // Add start point
+    points.add(MotorwayPoint(
+      id: 'custom_start',
+      name: startName,
+      lat: startLat,
+      lon: startLon,
+      distanceFromStart: 0,
+      type: PointType.destination,
+    ));
+
+    // Add intermediate points by sampling the polyline
+    if (_roadRoutePoints.length > 2) {
+      final step = (_roadRoutePoints.length - 1) / (numSamples - 1);
+      for (int i = 1; i < numSamples - 1; i++) {
+        final index = (i * step).round().clamp(0, _roadRoutePoints.length - 1);
+        final latLng = _roadRoutePoints[index];
+        final distanceKm = (totalDistanceKm * i / (numSamples - 1));
+        
+        points.add(MotorwayPoint(
+          id: 'custom_point_$i',
+          name: 'Route Point ${i + 1}',
+          lat: latLng.latitude,
+          lon: latLng.longitude,
+          distanceFromStart: distanceKm.round(),
+          type: PointType.interchange,
+        ));
+      }
+    }
+
+    // Add end point
+    points.add(MotorwayPoint(
+      id: 'custom_end',
+      name: endName,
+      lat: endLat,
+      lon: endLon,
+      distanceFromStart: totalDistanceKm.round(),
+      type: PointType.destination,
+    ));
+
+    return points;
   }
 
   Future<void> _fetchMetarForRoute() async {
@@ -1042,9 +1319,9 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     return pointsAhead;
   }
 
-  /// Get current motorway points
+  /// Get current motorway points (returns empty for custom route)
   List<MotorwayPoint> get _currentMotorwayPoints =>
-      PakistanMotorways.getPoints(_selectedMotorwayId);
+      _selectedMotorwayId == 'custom' ? [] : PakistanMotorways.getPoints(_selectedMotorwayId);
 
   List<MotorwayPoint> _getFilteredPoints(String query) {
     final points = _currentMotorwayPoints;
@@ -1099,21 +1376,28 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
 
   /// Initial view showing route selection before loading data
   Widget _buildRouteSelectionView() {
-    final hasDestination = _toId != null;
-    final destinationName = hasDestination
-        ? _currentMotorwayPoints
-            .firstWhere((p) => p.id == _toId,
-                orElse: () => _currentMotorwayPoints.last)
-            .name
-        : null;
+    // Check destination based on route type
+    final hasDestination = _selectedMotorwayId == 'custom'
+        ? _customToPlace != null
+        : _toId != null;
+    
+    String? destinationName;
+    if (_selectedMotorwayId == 'custom') {
+      destinationName = _customToPlace?.name;
+    } else if (hasDestination) {
+      destinationName = _currentMotorwayPoints
+          .firstWhere((p) => p.id == _toId,
+              orElse: () => _currentMotorwayPoints.last)
+          .name;
+    }
 
     // Calculate route preview (without loading weather)
-    final previewPoints = hasDestination
-        ? (_fromId == null
+    final previewPoints = (_selectedMotorwayId == 'custom' || !hasDestination)
+        ? <MotorwayPoint>[]
+        : (_fromId == null
             ? PakistanMotorways.getPointsTo(_selectedMotorwayId, _toId!)
             : PakistanMotorways.getPointsBetween(
-                _selectedMotorwayId, _fromId!, _toId!))
-        : <MotorwayPoint>[];
+                _selectedMotorwayId, _fromId!, _toId!));
 
     final totalDistance = previewPoints.isNotEmpty
         ? previewPoints.last.distanceFromStart -
@@ -1480,47 +1764,83 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                 // Motorway Selector
                 _buildMotorwaySelector(),
                 const SizedBox(height: 12),
-                // From field
-                _buildSearchField(
-                  label: 'From',
-                  value: _fromId == null
-                      ? 'Current Location'
-                      : _currentMotorwayPoints
-                          .firstWhere((p) => p.id == _fromId,
-                              orElse: () => _currentMotorwayPoints.first)
-                          .name,
-                  icon: Icons.my_location,
-                  isActive: _showFromSearch,
-                  controller: _fromSearchController,
-                  onTap: () {
-                    setState(() {
-                      _showFromSearch = !_showFromSearch;
-                      _showToSearch = false;
-                    });
-                  },
-                ),
-                if (_showFromSearch) _buildSearchDropdown(isFrom: true),
-                const SizedBox(height: 12),
-                // To field
-                _buildSearchField(
-                  label: 'To',
-                  value: _toId == null
-                      ? 'Select Destination'
-                      : _currentMotorwayPoints
-                          .firstWhere((p) => p.id == _toId,
-                              orElse: () => _currentMotorwayPoints.last)
-                          .name,
-                  icon: Icons.location_on,
-                  isActive: _showToSearch,
-                  controller: _toSearchController,
-                  onTap: () {
-                    setState(() {
-                      _showToSearch = !_showToSearch;
-                      _showFromSearch = false;
-                    });
-                  },
-                ),
-                if (_showToSearch) _buildSearchDropdown(isFrom: false),
+                // For custom route, use Google Places search
+                if (_selectedMotorwayId == 'custom') ...[
+                  _buildPlacesSearchField(
+                    label: 'From',
+                    value: _customFromPlace?.name ?? 'Current Location',
+                    icon: Icons.my_location,
+                    isActive: _showFromSearch,
+                    controller: _fromSearchController,
+                    onTap: () {
+                      setState(() {
+                        _showFromSearch = !_showFromSearch;
+                        _showToSearch = false;
+                        _placeSuggestions = [];
+                      });
+                    },
+                    isFrom: true,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildPlacesSearchField(
+                    label: 'To',
+                    value: _customToPlace?.name ?? 'Search destination...',
+                    icon: Icons.location_on,
+                    isActive: _showToSearch,
+                    controller: _toSearchController,
+                    onTap: () {
+                      setState(() {
+                        _showToSearch = !_showToSearch;
+                        _showFromSearch = false;
+                        _placeSuggestions = [];
+                      });
+                    },
+                    isFrom: false,
+                  ),
+                ] else ...[
+                  // Original motorway search
+                  // From field
+                  _buildSearchField(
+                    label: 'From',
+                    value: _fromId == null
+                        ? 'Current Location'
+                        : _currentMotorwayPoints
+                            .firstWhere((p) => p.id == _fromId,
+                                orElse: () => _currentMotorwayPoints.first)
+                            .name,
+                    icon: Icons.my_location,
+                    isActive: _showFromSearch,
+                    controller: _fromSearchController,
+                    onTap: () {
+                      setState(() {
+                        _showFromSearch = !_showFromSearch;
+                        _showToSearch = false;
+                      });
+                    },
+                  ),
+                  if (_showFromSearch) _buildSearchDropdown(isFrom: true),
+                  const SizedBox(height: 12),
+                  // To field
+                  _buildSearchField(
+                    label: 'To',
+                    value: _toId == null
+                        ? 'Select Destination'
+                        : _currentMotorwayPoints
+                            .firstWhere((p) => p.id == _toId,
+                                orElse: () => _currentMotorwayPoints.last)
+                            .name,
+                    icon: Icons.location_on,
+                    isActive: _showToSearch,
+                    controller: _toSearchController,
+                    onTap: () {
+                      setState(() {
+                        _showToSearch = !_showToSearch;
+                        _showFromSearch = false;
+                      });
+                    },
+                  ),
+                  if (_showToSearch) _buildSearchDropdown(isFrom: false),
+                ],
               ],
             ),
           ),
@@ -1529,7 +1849,219 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     );
   }
 
+  /// Build a search field with Google Places autocomplete
+  Widget _buildPlacesSearchField({
+    required String label,
+    required String value,
+    required IconData icon,
+    required bool isActive,
+    required TextEditingController controller,
+    required VoidCallback onTap,
+    required bool isFrom,
+  }) {
+    return Column(
+      children: [
+        GestureDetector(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: isActive
+                  ? Colors.white.withOpacity(0.2)
+                  : Colors.white.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isActive ? _accentBlue : Colors.white.withOpacity(0.2),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(icon, color: Colors.white, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.7),
+                          fontSize: 11,
+                        ),
+                      ),
+                      Text(
+                        value,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                if ((isFrom && _customFromPlace != null) || (!isFrom && _customToPlace != null))
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        if (isFrom) {
+                          _customFromPlace = null;
+                          _fromSearchController.clear();
+                        } else {
+                          _customToPlace = null;
+                          _toSearchController.clear();
+                        }
+                      });
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: Icon(Icons.clear, color: Colors.white70, size: 18),
+                    ),
+                  ),
+                Icon(
+                  isActive ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                  color: Colors.white,
+                ),
+              ],
+            ),
+          ),
+        ),
+        // Show search input and suggestions when active
+        if (isActive) _buildPlacesSearchDropdown(isFrom: isFrom),
+      ],
+    );
+  }
+
+  /// Build dropdown for Google Places search
+  Widget _buildPlacesSearchDropdown({required bool isFrom}) {
+    final controller = isFrom ? _fromSearchController : _toSearchController;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      constraints: const BoxConstraints(maxHeight: 280),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Search input
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: TextField(
+              controller: controller,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: 'Search places in Pakistan...',
+                hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                border: InputBorder.none,
+                prefixIcon: Icon(Icons.search, color: Colors.white.withOpacity(0.7)),
+                suffixIcon: _isSearchingPlaces
+                    ? Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white.withOpacity(0.7),
+                          ),
+                        ),
+                      )
+                    : null,
+                isDense: true,
+              ),
+              onChanged: (query) {
+                _debounceTimer?.cancel();
+                _debounceTimer = Timer(const Duration(milliseconds: 500), () {
+                  _searchPlaces(query);
+                });
+              },
+            ),
+          ),
+          // Current location option for "From"
+          if (isFrom)
+            ListTile(
+              dense: true,
+              leading: const Icon(Icons.my_location, color: _accentBlue, size: 20),
+              title: const Text(
+                'Current Location',
+                style: TextStyle(color: Colors.white),
+              ),
+              onTap: () {
+                setState(() {
+                  _customFromPlace = null;
+                  _showFromSearch = false;
+                  controller.clear();
+                  _placeSuggestions = [];
+                });
+              },
+            ),
+          // Place suggestions
+          if (_placeSuggestions.isNotEmpty)
+            Expanded(
+              child: ListView.builder(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                itemCount: _placeSuggestions.length,
+                itemBuilder: (context, index) {
+                  final suggestion = _placeSuggestions[index];
+                  return ListTile(
+                    dense: true,
+                    leading: Icon(
+                      Icons.place,
+                      color: Colors.white.withOpacity(0.8),
+                      size: 20,
+                    ),
+                    title: Text(
+                      suggestion.mainText,
+                      style: const TextStyle(color: Colors.white),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      suggestion.secondaryText,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.6),
+                        fontSize: 11,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    onTap: () => _selectPlace(suggestion, isFrom),
+                  );
+                },
+              ),
+            ),
+          // Empty state
+          if (_placeSuggestions.isEmpty && controller.text.isNotEmpty && !_isSearchingPlaces)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'No places found',
+                style: TextStyle(color: Colors.white.withOpacity(0.6)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMotorwaySelector() {
+    // Add custom route option to the list
+    final routeOptions = [
+      const MotorwayInfo(
+        id: 'custom',
+        name: 'Custom Route',
+        subtitle: 'Search any location in Pakistan',
+        distanceKm: 0,
+      ),
+      ...PakistanMotorways.motorways,
+    ];
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
@@ -1544,13 +2076,14 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
           icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white),
           dropdownColor: _darkBlue,
           style: const TextStyle(color: Colors.white),
-          items: PakistanMotorways.motorways.map((motorway) {
+          items: routeOptions.map((motorway) {
+            final isCustom = motorway.id == 'custom';
             return DropdownMenuItem<String>(
               value: motorway.id,
               child: Row(
                 children: [
                   Icon(
-                    Icons.directions_car,
+                    isCustom ? Icons.search : Icons.directions_car,
                     color: motorway.id == _selectedMotorwayId
                         ? Colors.amber
                         : Colors.white70,
@@ -1571,7 +2104,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                           ),
                         ),
                         Text(
-                          '${motorway.subtitle} • ${motorway.distanceKm} km',
+                          isCustom ? motorway.subtitle : '${motorway.subtitle} • ${motorway.distanceKm} km',
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.7),
                             fontSize: 11,
@@ -1594,6 +2127,11 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                 _routePoints = [];
                 _roadRoutePoints = [];
                 _routeConfirmed = false;
+                _customFromPlace = null;
+                _customToPlace = null;
+                _placeSuggestions = [];
+                _fromSearchController.clear();
+                _toSearchController.clear();
               });
             }
           },
@@ -3039,9 +3577,63 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   }
 
   Widget _buildMapWeatherCard() {
-    final hasMetar = _currentLocationMetar != null;
-    final metar = _currentLocationMetar;
-    final weather = _currentLocationWeather;
+    // Try to get METAR from current location or closest route point
+    Map<String, dynamic>? metar = _currentLocationMetar;
+    
+    // During navigation, try to get METAR from closest route point if available
+    if (_isNavigating && _routePoints.isNotEmpty && _currentPointIndex < _routePoints.length) {
+      final closestPoint = _routePoints[_currentPointIndex.clamp(0, _routePoints.length - 1)];
+      // Check if we have METAR data for this point (airports like Islamabad, Lahore)
+      if (_metarData.containsKey(closestPoint.point.id) && _metarData[closestPoint.point.id] != null) {
+        metar = _metarData[closestPoint.point.id];
+      }
+    }
+    
+    // Fallback: check if any route point has METAR data
+    if (metar == null && _routePoints.isNotEmpty) {
+      for (final point in _routePoints) {
+        if (_metarData.containsKey(point.point.id) && _metarData[point.point.id] != null) {
+          metar = _metarData[point.point.id];
+          break;
+        }
+      }
+    }
+    
+    final hasMetar = metar != null;
+    
+    // Try to get weather from current location, or from closest route point during navigation
+    Map<String, dynamic>? weather = _currentLocationWeather;
+    
+    // During navigation, use weather from current/closest route point if available
+    if (_isNavigating && _routePoints.isNotEmpty && _currentPointIndex < _routePoints.length) {
+      final closestPoint = _routePoints[_currentPointIndex.clamp(0, _routePoints.length - 1)];
+      if (closestPoint.weather != null) {
+        weather = {
+          'temp_c': closestPoint.weather!.tempC,
+          'humidity': closestPoint.weather!.humidity,
+          'wind_kph': closestPoint.weather!.windKph,
+          'condition': closestPoint.weather!.condition,
+          'icon': closestPoint.weather!.icon,
+        };
+      }
+    }
+    
+    // Fallback: if still no weather and route points exist, use first point's weather
+    if (weather == null && _routePoints.isNotEmpty) {
+      final firstWithWeather = _routePoints.firstWhere(
+        (p) => p.weather != null,
+        orElse: () => _routePoints.first,
+      );
+      if (firstWithWeather.weather != null) {
+        weather = {
+          'temp_c': firstWithWeather.weather!.tempC,
+          'humidity': firstWithWeather.weather!.humidity,
+          'wind_kph': firstWithWeather.weather!.windKph,
+          'condition': firstWithWeather.weather!.condition,
+          'icon': firstWithWeather.weather!.icon,
+        };
+      }
+    }
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),

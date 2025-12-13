@@ -131,25 +131,23 @@ class TravelWeatherService {
         if (data['status'] == 'OK' && data['routes'].isNotEmpty) {
           final route = data['routes'][0];
 
-          // Get the overview polyline (encoded)
+          // Get the overview polyline for backup
           final overviewPolyline =
               route['overview_polyline']['points'] as String;
-
-          // Decode the polyline to get actual road coordinates
-          final points = _decodePolyline(overviewPolyline);
 
           // Calculate total distance and duration from all legs
           int totalDistance = 0;
           int totalDuration = 0;
 
-          // Extract turn-by-turn navigation steps
+          // Extract turn-by-turn navigation steps AND detailed polyline points
           final List<NavigationStep> steps = [];
+          final List<RouteLatLng> detailedPoints = [];
 
           for (final leg in route['legs']) {
             totalDistance += (leg['distance']['value'] as int);
             totalDuration += (leg['duration']['value'] as int);
 
-            // Extract steps from each leg
+            // Extract steps from each leg - use step polylines for accuracy
             for (final step in leg['steps']) {
               steps.add(NavigationStep(
                 instruction: step['html_instructions'] ?? '',
@@ -165,11 +163,35 @@ class TravelWeatherService {
                   step['end_location']['lng'],
                 ),
               ));
+
+              // IMPORTANT: Decode each step's polyline for precise road alignment
+              // This gives us much more detailed points than overview_polyline
+              if (step['polyline'] != null &&
+                  step['polyline']['points'] != null) {
+                final stepPolyline = step['polyline']['points'] as String;
+                final stepPoints = _decodePolyline(stepPolyline);
+                
+                // Add points, avoiding duplicates at step boundaries
+                for (final pt in stepPoints) {
+                  if (detailedPoints.isEmpty ||
+                      (detailedPoints.last.latitude != pt.latitude ||
+                          detailedPoints.last.longitude != pt.longitude)) {
+                    detailedPoints.add(pt);
+                  }
+                }
+              }
             }
           }
 
+          // Use detailed points if available, otherwise fall back to overview
+          final finalPoints = detailedPoints.isNotEmpty
+              ? detailedPoints
+              : _decodePolyline(overviewPolyline);
+
+          print('🛣️ Route polyline: ${finalPoints.length} points (detailed from ${steps.length} steps)');
+
           return RouteData(
-            polylinePoints: points,
+            polylinePoints: finalPoints,
             distanceMeters: totalDistance,
             durationSeconds: totalDuration,
             polylineEncoded: overviewPolyline,
@@ -239,18 +261,11 @@ class TravelWeatherService {
           if (data['status'] == 'OK' && data['routes'].isNotEmpty) {
             final route = data['routes'][0];
 
-            // Get and decode polyline
+            // Get overview polyline for backup
             final polyline = route['overview_polyline']['points'] as String;
-            final points = _decodePolyline(polyline);
-
-            // Avoid duplicate points at segment boundaries
-            if (allPoints.isNotEmpty && points.isNotEmpty) {
-              points.removeAt(0);
-            }
-            allPoints.addAll(points);
             combinedPolyline += polyline;
 
-            // Extract distance, duration, and steps
+            // Extract distance, duration, steps AND detailed polyline from each step
             for (final leg in route['legs']) {
               totalDistance += (leg['distance']['value'] as int);
               totalDuration += (leg['duration']['value'] as int);
@@ -270,6 +285,22 @@ class TravelWeatherService {
                     step['end_location']['lng'],
                   ),
                 ));
+
+                // IMPORTANT: Use step-level polylines for precise road alignment
+                if (step['polyline'] != null &&
+                    step['polyline']['points'] != null) {
+                  final stepPolyline = step['polyline']['points'] as String;
+                  final stepPoints = _decodePolyline(stepPolyline);
+
+                  // Avoid duplicate points at step boundaries
+                  for (final pt in stepPoints) {
+                    if (allPoints.isEmpty ||
+                        (allPoints.last.latitude != pt.latitude ||
+                            allPoints.last.longitude != pt.longitude)) {
+                      allPoints.add(pt);
+                    }
+                  }
+                }
               }
             }
           }
