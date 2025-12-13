@@ -1748,6 +1748,9 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   Widget _buildSearchSection() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      constraints: BoxConstraints(
+        maxHeight: _showFromSearch || _showToSearch ? 280 : 200,
+      ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
         child: BackdropFilter(
@@ -1758,16 +1761,18 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: Colors.white.withOpacity(0.2)),
             ),
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                // Motorway Selector
-                _buildMotorwaySelector(),
-                const SizedBox(height: 12),
-                // For custom route, use Google Places search
-                if (_selectedMotorwayId == 'custom') ...[
-                  _buildPlacesSearchField(
-                    label: 'From',
+            padding: const EdgeInsets.all(12),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Motorway Selector
+                  _buildMotorwaySelector(),
+                  const SizedBox(height: 10),
+                  // For custom route, use Google Places search
+                  if (_selectedMotorwayId == 'custom') ...[
+                    _buildPlacesSearchField(
+                      label: 'From',
                     value: _customFromPlace?.name ?? 'Current Location',
                     icon: Icons.my_location,
                     isActive: _showFromSearch,
@@ -1842,6 +1847,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                   if (_showToSearch) _buildSearchDropdown(isFrom: false),
                 ],
               ],
+              ),
             ),
           ),
         ),
@@ -1939,8 +1945,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     final controller = isFrom ? _fromSearchController : _toSearchController;
 
     return Container(
-      margin: const EdgeInsets.only(top: 8),
-      constraints: const BoxConstraints(maxHeight: 180),
+      margin: const EdgeInsets.only(top: 4),
+      constraints: const BoxConstraints(maxHeight: 140),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
@@ -1950,21 +1956,21 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
         children: [
           // Search input
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             child: TextField(
               controller: controller,
-              style: const TextStyle(color: Colors.white, fontSize: 14),
+              style: const TextStyle(color: Colors.white, fontSize: 13),
               decoration: InputDecoration(
                 hintText: 'Search places...',
-                hintStyle: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 14),
+                hintStyle: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13),
                 border: InputBorder.none,
-                prefixIcon: Icon(Icons.search, color: Colors.white.withOpacity(0.7), size: 20),
+                prefixIcon: Icon(Icons.search, color: Colors.white.withOpacity(0.7), size: 18),
                 suffixIcon: _isSearchingPlaces
                     ? Padding(
                         padding: const EdgeInsets.all(10),
                         child: SizedBox(
-                          width: 14,
-                          height: 14,
+                          width: 12,
+                          height: 12,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
                             color: Colors.white.withOpacity(0.7),
@@ -1983,16 +1989,9 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
               },
             ),
           ),
-          // Current location option for "From"
+          // Current location option for "From" - more compact
           if (isFrom)
-            ListTile(
-              dense: true,
-              visualDensity: VisualDensity.compact,
-              leading: const Icon(Icons.my_location, color: _accentBlue, size: 18),
-              title: const Text(
-                'Current Location',
-                style: TextStyle(color: Colors.white, fontSize: 13),
-              ),
+            InkWell(
               onTap: () {
                 setState(() {
                   _customFromPlace = null;
@@ -2001,40 +2000,45 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                   _placeSuggestions = [];
                 });
               },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                child: Row(
+                  children: [
+                    const Icon(Icons.my_location, color: _accentBlue, size: 16),
+                    const SizedBox(width: 10),
+                    const Text('Current Location', style: TextStyle(color: Colors.white, fontSize: 12)),
+                  ],
+                ),
+              ),
             ),
-          // Place suggestions
+          // Place suggestions - limit to 3 for compact view
           if (_placeSuggestions.isNotEmpty)
             Flexible(
               child: ListView.builder(
                 shrinkWrap: true,
                 padding: EdgeInsets.zero,
-                itemCount: _placeSuggestions.length.clamp(0, 4), // Limit to 4 suggestions
+                itemCount: _placeSuggestions.length.clamp(0, 3),
                 itemBuilder: (context, index) {
                   final suggestion = _placeSuggestions[index];
-                  return ListTile(
-                    dense: true,
-                    visualDensity: VisualDensity.compact,
-                    leading: Icon(
-                      Icons.place,
-                      color: Colors.white.withOpacity(0.8),
-                      size: 18,
-                    ),
-                    title: Text(
-                      suggestion.mainText,
-                      style: const TextStyle(color: Colors.white, fontSize: 13),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    subtitle: Text(
-                      suggestion.secondaryText,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.6),
-                        fontSize: 10,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                  return InkWell(
                     onTap: () => _selectPlace(suggestion, isFrom),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      child: Row(
+                        children: [
+                          Icon(Icons.place, color: Colors.white.withOpacity(0.8), size: 16),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              suggestion.mainText,
+                              style: const TextStyle(color: Colors.white, fontSize: 12),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   );
                 },
               ),
