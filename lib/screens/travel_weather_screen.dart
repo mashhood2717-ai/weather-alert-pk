@@ -153,6 +153,20 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       _isLoading = true;
     });
 
+    // Ensure we have current position before fetching weather
+    if (_currentPosition == null) {
+      try {
+        final position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.medium,
+        );
+        if (mounted) {
+          setState(() => _currentPosition = position);
+        }
+      } catch (e) {
+        debugPrint('Error getting position: $e');
+      }
+    }
+
     // Fetch current location weather
     await _fetchCurrentLocationWeather();
 
