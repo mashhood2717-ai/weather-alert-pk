@@ -1940,7 +1940,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
 
     return Container(
       margin: const EdgeInsets.only(top: 8),
-      constraints: const BoxConstraints(maxHeight: 280),
+      constraints: const BoxConstraints(maxHeight: 180),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
@@ -1950,21 +1950,21 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
         children: [
           // Search input
           Padding(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             child: TextField(
               controller: controller,
-              style: const TextStyle(color: Colors.white),
+              style: const TextStyle(color: Colors.white, fontSize: 14),
               decoration: InputDecoration(
-                hintText: 'Search places in Pakistan...',
-                hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                hintText: 'Search places...',
+                hintStyle: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 14),
                 border: InputBorder.none,
-                prefixIcon: Icon(Icons.search, color: Colors.white.withOpacity(0.7)),
+                prefixIcon: Icon(Icons.search, color: Colors.white.withOpacity(0.7), size: 20),
                 suffixIcon: _isSearchingPlaces
                     ? Padding(
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(10),
                         child: SizedBox(
-                          width: 16,
-                          height: 16,
+                          width: 14,
+                          height: 14,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
                             color: Colors.white.withOpacity(0.7),
@@ -1973,6 +1973,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                       )
                     : null,
                 isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 8),
               ),
               onChanged: (query) {
                 _debounceTimer?.cancel();
@@ -1986,10 +1987,11 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
           if (isFrom)
             ListTile(
               dense: true,
-              leading: const Icon(Icons.my_location, color: _accentBlue, size: 20),
+              visualDensity: VisualDensity.compact,
+              leading: const Icon(Icons.my_location, color: _accentBlue, size: 18),
               title: const Text(
                 'Current Location',
-                style: TextStyle(color: Colors.white),
+                style: TextStyle(color: Colors.white, fontSize: 13),
               ),
               onTap: () {
                 setState(() {
@@ -2002,23 +2004,24 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
             ),
           // Place suggestions
           if (_placeSuggestions.isNotEmpty)
-            Expanded(
+            Flexible(
               child: ListView.builder(
                 shrinkWrap: true,
                 padding: EdgeInsets.zero,
-                itemCount: _placeSuggestions.length,
+                itemCount: _placeSuggestions.length.clamp(0, 4), // Limit to 4 suggestions
                 itemBuilder: (context, index) {
                   final suggestion = _placeSuggestions[index];
                   return ListTile(
                     dense: true,
+                    visualDensity: VisualDensity.compact,
                     leading: Icon(
                       Icons.place,
                       color: Colors.white.withOpacity(0.8),
-                      size: 20,
+                      size: 18,
                     ),
                     title: Text(
                       suggestion.mainText,
-                      style: const TextStyle(color: Colors.white),
+                      style: const TextStyle(color: Colors.white, fontSize: 13),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -2026,7 +2029,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                       suggestion.secondaryText,
                       style: TextStyle(
                         color: Colors.white.withOpacity(0.6),
-                        fontSize: 11,
+                        fontSize: 10,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -2039,10 +2042,10 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
           // Empty state
           if (_placeSuggestions.isEmpty && controller.text.isNotEmpty && !_isSearchingPlaces)
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(8),
               child: Text(
                 'No places found',
-                style: TextStyle(color: Colors.white.withOpacity(0.6)),
+                style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12),
               ),
             ),
         ],
@@ -3964,18 +3967,31 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   }
 
   Widget _buildRouteInfoCard() {
-    final startPoint = _fromId == null
-        ? 'Current Location'
-        : _currentMotorwayPoints
-            .firstWhere((p) => p.id == _fromId,
-                orElse: () => _currentMotorwayPoints.first)
-            .name;
-    final endPoint = _toId == null
-        ? 'Destination'
-        : _currentMotorwayPoints
-            .firstWhere((p) => p.id == _toId,
-                orElse: () => _currentMotorwayPoints.last)
-            .name;
+    // Handle custom route vs motorway route for start/end point names
+    String startPoint;
+    String endPoint;
+    
+    if (_selectedMotorwayId == 'custom') {
+      startPoint = _customFromPlace?.name ?? 'Current Location';
+      endPoint = _customToPlace?.name ?? 'Destination';
+    } else {
+      startPoint = _fromId == null
+          ? 'Current Location'
+          : (_currentMotorwayPoints.isNotEmpty
+              ? _currentMotorwayPoints
+                  .firstWhere((p) => p.id == _fromId,
+                      orElse: () => _currentMotorwayPoints.first)
+                  .name
+              : 'Start');
+      endPoint = _toId == null
+          ? 'Destination'
+          : (_currentMotorwayPoints.isNotEmpty
+              ? _currentMotorwayPoints
+                  .firstWhere((p) => p.id == _toId,
+                      orElse: () => _currentMotorwayPoints.last)
+                  .name
+              : 'End');
+    }
 
     // Calculate total distance and ETA
     final totalDistance = _routePoints.isNotEmpty
