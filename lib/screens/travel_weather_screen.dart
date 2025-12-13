@@ -3684,7 +3684,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                       children: [
                         Text(
                           hasMetar
-                              ? '${metar?['temp_c'] ?? '--'}°C'
+                              ? '${metar['temp_c'] ?? '--'}°C'
                               : '${weather?['temp_c']?.toStringAsFixed(0) ?? '--'}°C',
                           style: TextStyle(
                             fontSize: 24,
@@ -3723,7 +3723,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                     const SizedBox(height: 4),
                     Text(
                       hasMetar
-                          ? (metar?['condition_text'] ?? 'Current Weather')
+                          ? (metar['condition_text'] ?? 'Current Weather')
                           : (weather?['condition'] ?? 'Current Weather'),
                       style: TextStyle(
                         fontSize: 13,
@@ -3744,21 +3744,21 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                   _buildMapWeatherStat(
                     Icons.water_drop,
                     hasMetar
-                        ? '${metar?['humidity'] ?? '--'}%'
+                        ? '${metar['humidity'] ?? '--'}%'
                         : '${weather?['humidity'] ?? '--'}%',
                   ),
                   const SizedBox(height: 6),
                   _buildMapWeatherStat(
                     Icons.air,
                     hasMetar
-                        ? '${metar?['wind_kph'] ?? '--'} km/h'
+                        ? '${metar['wind_kph'] ?? '--'} km/h'
                         : '${weather?['wind_kph']?.toStringAsFixed(0) ?? '--'} km/h',
                   ),
                   if (hasMetar) ...[
                     const SizedBox(height: 6),
                     _buildMapWeatherStat(
                       Icons.visibility,
-                      '${metar?['visibility_km'] ?? '--'} km',
+                      '${metar['visibility_km'] ?? '--'} km',
                     ),
                   ],
                 ],
