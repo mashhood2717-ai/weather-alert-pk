@@ -135,13 +135,13 @@ class WeatherMonitorService {
     // Check immediately on start
     await checkWeatherConditions();
 
-    // Then check every 30 minutes
+    // Battery optimization: check every 45 minutes (vs 30 min)
     _monitorTimer?.cancel();
-    _monitorTimer = Timer.periodic(const Duration(minutes: 30), (_) {
+    _monitorTimer = Timer.periodic(const Duration(minutes: 45), (_) {
       checkWeatherConditions();
     });
 
-    print('Weather monitoring started (30 min interval)');
+    print('Weather monitoring started (45 min interval)');
   }
 
   /// Stop monitoring

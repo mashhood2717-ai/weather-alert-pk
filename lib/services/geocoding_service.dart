@@ -28,20 +28,9 @@ class GeocodingResult {
   });
 
   /// Returns the best available main location name
-  /// Priority: locality > district (if Rawalpindi) > city > district > extractedAreaName > province
-  /// Special handling for Rawalpindi/Islamabad: prefer district if it's Rawalpindi
+  /// Priority: locality > city > district > extractedAreaName > province
   String get mainLocationName {
     if (locality != null && locality!.isNotEmpty) return locality!;
-
-    // Special case: If district is Rawalpindi but city shows Islamabad, prefer Rawalpindi
-    // This handles the common case where Rawalpindi areas show as "Islamabad" city
-    if (district != null && district!.isNotEmpty) {
-      final districtLower = district!.toLowerCase();
-      if (districtLower.contains('rawalpindi')) {
-        return 'Rawalpindi';
-      }
-    }
-
     if (city != null && city!.isNotEmpty) return city!;
     if (district != null && district!.isNotEmpty) return district!;
     if (extractedAreaName != null && extractedAreaName!.isNotEmpty) {
@@ -67,6 +56,13 @@ class GeocodingResult {
 }
 
 class GeocodingService {
+    /// Returns true if coordinates are within Islamabad bounding box
+    static bool _isInIslamabad(double lat, double lon) {
+      // Rough bounding box for Islamabad city
+      // North: 33.85, South: 33.60, West: 72.80, East: 73.20
+      return lat >= 33.60 && lat <= 33.85 && lon >= 72.80 && lon <= 73.20;
+    }
+
   static const String _baseUrl =
       'https://maps.googleapis.com/maps/api/geocode/json';
 
@@ -95,7 +91,21 @@ class GeocodingService {
         final data = jsonDecode(response.body);
 
         if (data['status'] == 'OK' && data['results'].isNotEmpty) {
-          final result = _parseGeocodingResponse(data['results']);
+          var result = _parseGeocodingResponse(data['results']);
+          // Force city to Islamabad if inside bounding box
+          if (_isInIslamabad(lat, lon)) {
+            result = GeocodingResult(
+              streetAddress: result.streetAddress,
+              locality: result.locality,
+              subLocality: result.subLocality,
+              city: 'Islamabad',
+              district: result.district,
+              province: result.province,
+              country: result.country,
+              formattedAddress: result.formattedAddress,
+              extractedAreaName: result.extractedAreaName,
+            );
+          }
           _cache[cacheKey] = result;
           return result;
         }
@@ -291,12 +301,11 @@ class GeocodingService {
   static bool _isGenericName(String name) {
     final lower = name.toLowerCase();
     return lower == 'pakistan' ||
-        lower == 'punjab' ||
-        lower == 'sindh' ||
-        lower == 'kpk' ||
-        lower == 'balochistan' ||
-        lower == 'islamabad' ||
-        lower == 'ict';
+      lower == 'punjab' ||
+      lower == 'sindh' ||
+      lower == 'kpk' ||
+      lower == 'balochistan' ||
+      lower == 'ict';
   }
 
   /// Clear the cache (useful when memory is low)

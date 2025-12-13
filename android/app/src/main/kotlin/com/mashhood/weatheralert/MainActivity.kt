@@ -1,7 +1,9 @@
 package com.mashhood.weatheralert
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -11,8 +13,10 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val CHANNEL = "com.mashhood.weatheralert/persistent_notification"
         private const val WIDGET_CHANNEL = "com.mashhood.weatheralert/widget"
+        private const val SETTINGS_CHANNEL = "com.mashhood.weatheralert/settings"
         private var methodChannel: MethodChannel? = null
         private var widgetChannel: MethodChannel? = null
+        private var settingsChannel: MethodChannel? = null
 
         fun sendRefreshEvent() {
             methodChannel?.invokeMethod("onRefreshPressed", null)
@@ -25,6 +29,60 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // Settings channel for opening system settings
+        settingsChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SETTINGS_CHANNEL)
+        settingsChannel?.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "openExactAlarmSettings" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        try {
+                            val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                                data = Uri.parse("package:$packageName")
+                            }
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            // Fallback to app settings
+                            openAppSettings()
+                            result.success(false)
+                        }
+                    } else {
+                        result.success(true) // Not needed on older Android
+                    }
+                }
+                "openBatteryOptimizationSettings" -> {
+                    try {
+                        // Try to open battery optimization settings for this app
+                        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                            data = Uri.parse("package:$packageName")
+                        }
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        // Fallback to general battery settings
+                        try {
+                            val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (e2: Exception) {
+                            openAppSettings()
+                            result.success(false)
+                        }
+                    }
+                }
+                "openAutoStartSettings" -> {
+                    // OnePlus/Oppo/Xiaomi have AutoStart managers that block scheduled tasks
+                    val opened = openAutoStartSettings()
+                    result.success(opened)
+                }
+                "openAppSettings" -> {
+                    openAppSettings()
+                    result.success(true)
+                }
+                else -> result.notImplemented()
+            }
+        }
 
         // Persistent notification channel
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
@@ -127,5 +185,82 @@ class MainActivity : FlutterActivity() {
     private fun stopPersistentNotification() {
         val intent = Intent(this, PersistentNotificationService::class.java)
         stopService(intent)
+    }
+
+    /**
+     * Try to open AutoStart settings for Chinese OEMs (OnePlus, Oppo, Xiaomi, etc.)
+     * These manufacturers block AlarmManager scheduled tasks unless the app is whitelisted.
+     */
+    private fun openAutoStartSettings(): Boolean {
+        val intents = listOf(
+            // Xiaomi
+            Intent().setComponent(android.content.ComponentName(
+                "com.miui.securitycenter",
+                "com.miui.permcenter.autostart.AutoStartManagementActivity"
+            )),
+            // Oppo
+            Intent().setComponent(android.content.ComponentName(
+                "com.coloros.safecenter",
+                "com.coloros.safecenter.permission.startup.StartupAppListActivity"
+            )),
+            // Oppo (alternative)
+            Intent().setComponent(android.content.ComponentName(
+                "com.oppo.safe",
+                "com.oppo.safe.permission.startup.StartupAppListActivity"
+            )),
+            // OnePlus
+            Intent().setComponent(android.content.ComponentName(
+                "com.oneplus.security",
+                "com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity"
+            )),
+            // Vivo
+            Intent().setComponent(android.content.ComponentName(
+                "com.vivo.permissionmanager",
+                "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"
+            )),
+            // Huawei
+            Intent().setComponent(android.content.ComponentName(
+                "com.huawei.systemmanager",
+                "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"
+            )),
+            // Samsung (no dedicated autostart, use app settings)
+            Intent().setComponent(android.content.ComponentName(
+                "com.samsung.android.lool",
+                "com.samsung.android.sm.battery.ui.BatteryActivity"
+            )),
+            // Letv
+            Intent().setComponent(android.content.ComponentName(
+                "com.letv.android.letvsafe",
+                "com.letv.android.letvsafe.AutobootManageActivity"
+            )),
+            // Asus
+            Intent().setComponent(android.content.ComponentName(
+                "com.asus.mobilemanager",
+                "com.asus.mobilemanager.autostart.AutoStartActivity"
+            ))
+        )
+
+        for (intent in intents) {
+            try {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (packageManager.resolveActivity(intent, 0) != null) {
+                    startActivity(intent)
+                    return true
+                }
+            } catch (e: Exception) {
+                // Try next intent
+            }
+        }
+
+        // Fallback: open app settings
+        openAppSettings()
+        return false
+    }
+
+    private fun openAppSettings() {
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.parse("package:$packageName")
+        }
+        startActivity(intent)
     }
 }

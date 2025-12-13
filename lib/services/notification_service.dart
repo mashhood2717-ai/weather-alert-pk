@@ -1,14 +1,17 @@
 // lib/services/notification_service.dart
 
 import 'dart:convert';
+import 'dart:io' show Platform;
 import 'dart:typed_data';
 import 'package:flutter/material.dart' show Color, GlobalKey, NavigatorState;
+import 'package:flutter/services.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
+import 'package:device_info_plus/device_info_plus.dart';
 import '../models/weather_alert.dart';
 import 'alert_storage_service.dart';
 import 'prayer_service.dart'; // For PrayerNotificationMode enum
@@ -103,9 +106,11 @@ class NotificationService {
 
   // Prayer notification channel with azan sound
   // Note: For custom sound, place azan.mp3 in android/app/src/main/res/raw/
+  // IMPORTANT: Channel sound is set at channel creation time and cached by Android.
+  // If you change the sound, you must change the channel ID or uninstall the app.
   static const AndroidNotificationChannel _prayerChannel =
       AndroidNotificationChannel(
-    'prayer_notifications_v3', // Changed channel ID to force new channel creation
+    'prayer_azan_v4', // Changed channel ID to force new channel with azan sound
     'Prayer Time Azan',
     description: 'Prayer time notifications with azan sound',
     importance: Importance.max, // Max importance for prayer notifications
@@ -113,7 +118,8 @@ class NotificationService {
     enableVibration: true,
     enableLights: true,
     ledColor: Color(0xFF4CAF50),
-    // Custom sound will be set in AndroidNotificationDetails
+    sound: RawResourceAndroidNotificationSound(
+        'azan'), // Set sound at channel level
   );
 
   // Silent prayer reminder channel (for X minutes before)
@@ -169,6 +175,14 @@ class NotificationService {
     tz_data.initializeTimeZones();
     // Set local timezone to Pakistan (Asia/Karachi) - required before using tz.local
     tz.setLocalLocation(tz.getLocation('Asia/Karachi'));
+
+    // Check and request exact alarm permission on Android 12+ (non-blocking)
+    try {
+      await _checkExactAlarmPermission();
+    } catch (e) {
+      print('⚠️ Exact alarm permission check failed: $e');
+      // Continue initialization even if this fails
+    }
 
     // Get FCM token and save to Firestore
     String? token = await _messaging.getToken();
@@ -235,7 +249,7 @@ class NotificationService {
     // NOTE: Do NOT subscribe to weather_alerts_pk topic
     // That topic is only used as fallback and would bypass polygon/radius targeting
     // Only subscribe to city-specific topics based on user preference
-    
+
     // Unsubscribe from general topic if previously subscribed
     await _messaging.unsubscribeFromTopic('weather_alerts_pk');
 
@@ -432,6 +446,12 @@ class NotificationService {
         ? const RawResourceAndroidNotificationSound('azan')
         : null;
 
+    // Check if we can use exact alarms, otherwise use inexact
+    final canScheduleExact = await canScheduleExactAlarms();
+    final scheduleMode = canScheduleExact
+        ? AndroidScheduleMode.exactAllowWhileIdle
+        : AndroidScheduleMode.inexactAllowWhileIdle;
+
     try {
       await _localNotifications.zonedSchedule(
         id,
@@ -457,7 +477,7 @@ class NotificationService {
             ticker: title,
           ),
         ),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        androidScheduleMode: scheduleMode,
         matchDateTimeComponents: null,
         payload: 'prayer_$prayerName',
       );
@@ -473,10 +493,102 @@ class NotificationService {
     await _localNotifications.cancel(id);
   }
 
+  /// Check and request exact alarm permission on Android 12+
+  Future<bool> _checkExactAlarmPermission() async {
+    if (!Platform.isAndroid) return true;
+
+    try {
+      final androidPlugin = _localNotifications
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>();
+
+      if (androidPlugin == null) return false;
+
+      // Check Android version
+      final deviceInfo = DeviceInfoPlugin();
+      final androidInfo = await deviceInfo.androidInfo;
+      final sdkInt = androidInfo.version.sdkInt;
+
+      print('📱 Android SDK: $sdkInt');
+
+      // Android 12 (API 31) and above requires explicit exact alarm permission
+      if (sdkInt >= 31) {
+        final canSchedule = await androidPlugin.canScheduleExactNotifications();
+        print('🔔 Can schedule exact alarms: $canSchedule');
+
+        if (canSchedule != true) {
+          // Request exact alarm permission
+          print('⚠️ Requesting exact alarm permission...');
+          final granted = await androidPlugin.requestExactAlarmsPermission();
+          print('🔔 Exact alarm permission granted: $granted');
+          return granted ?? false;
+        }
+        return true;
+      }
+      return true;
+    } catch (e) {
+      print('Error checking exact alarm permission: $e');
+      return false;
+    }
+  }
+
+  /// Check if exact alarms can be scheduled
+  Future<bool> canScheduleExactAlarms() async {
+    if (!Platform.isAndroid) return true;
+    try {
+      final androidPlugin = _localNotifications
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>();
+      if (androidPlugin == null) return false;
+      return await androidPlugin.canScheduleExactNotifications() ?? false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Open exact alarm settings (Android 12+)
+  Future<void> openExactAlarmSettings() async {
+    if (!Platform.isAndroid) return;
+    try {
+      const platform = MethodChannel('com.mashhood.weatheralert/settings');
+      await platform.invokeMethod('openExactAlarmSettings');
+    } catch (e) {
+      print('Error opening exact alarm settings: $e');
+      // Fallback: try to open app settings
+      try {
+        const platform = MethodChannel('com.mashhood.weatheralert/settings');
+        await platform.invokeMethod('openAppSettings');
+      } catch (_) {}
+    }
+  }
+
+  /// Open battery optimization settings (for OnePlus/Oppo/Xiaomi phones)
+  Future<void> openBatteryOptimizationSettings() async {
+    if (!Platform.isAndroid) return;
+    try {
+      const platform = MethodChannel('com.mashhood.weatheralert/settings');
+      await platform.invokeMethod('openBatteryOptimizationSettings');
+    } catch (e) {
+      print('Error opening battery optimization settings: $e');
+      // Fallback: try to open app settings
+      try {
+        const platform = MethodChannel('com.mashhood.weatheralert/settings');
+        await platform.invokeMethod('openAppSettings');
+      } catch (_) {}
+    }
+  }
+
+  /// Get list of pending notifications (for debugging)
+  Future<List<PendingNotificationRequest>> getPendingNotifications() async {
+    return await _localNotifications.pendingNotificationRequests();
+  }
+
   /// Cancel all prayer notifications
   Future<void> cancelAllPrayerNotifications() async {
-    // Prayer notification IDs start from 1000
-    for (int i = 1000; i < 1020; i++) {
+    // Prayer notification IDs:
+    // Today: 1000-1009 (prayers), 1005-1014 (reminders)
+    // Tomorrow: 1020-1029 (prayers), 1030-1039 (reminders)
+    for (int i = 1000; i < 1040; i++) {
       await _localNotifications.cancel(i);
     }
     print('All prayer notifications cancelled');
@@ -536,7 +648,61 @@ class NotificationService {
       id++;
     }
 
-    print('Scheduled $scheduledCount prayer notifications');
+    print('Scheduled $scheduledCount prayer notifications for today');
+  }
+
+  /// Schedule tomorrow's prayer notifications (with offset IDs to avoid conflicts)
+  Future<void> scheduleTomorrowPrayerNotifications({
+    required Map<String, DateTime> prayerTimes,
+    required Map<String, PrayerNotificationMode> prayerModes,
+    int minutesBefore = 5,
+  }) async {
+    print('Scheduling tomorrow\'s prayer notifications...');
+
+    int id =
+        1020; // Start from 1020 for tomorrow's prayers (today uses 1000-1019)
+    int scheduledCount = 0;
+
+    for (final entry in prayerTimes.entries) {
+      // Prayer name has "_tomorrow" suffix, remove it for mode lookup
+      final fullName = entry.key;
+      final prayerName = fullName.replaceAll('_tomorrow', '');
+      final prayerTime = entry.value;
+      final mode = prayerModes[prayerName] ?? PrayerNotificationMode.azan;
+
+      // Skip if this prayer notification is off
+      if (mode == PrayerNotificationMode.off) {
+        print('Skipping tomorrow $prayerName - notifications off');
+        id++;
+        continue;
+      }
+
+      // Schedule notification at prayer time
+      await schedulePrayerNotification(
+        id: id,
+        prayerName: prayerName,
+        scheduledTime: prayerTime,
+        minutesBefore: 0,
+        mode: mode,
+      );
+      scheduledCount++;
+
+      // Also schedule a reminder before prayer time
+      if (minutesBefore > 0) {
+        await schedulePrayerNotification(
+          id: id + 10, // Offset ID for tomorrow's reminder
+          prayerName: prayerName,
+          scheduledTime: prayerTime,
+          minutesBefore: minutesBefore,
+          mode: PrayerNotificationMode.vibrationOnly,
+        );
+        scheduledCount++;
+      }
+
+      id++;
+    }
+
+    print('Scheduled $scheduledCount prayer notifications for tomorrow');
   }
 
   /// Show an immediate prayer notification (for testing)
@@ -569,5 +735,180 @@ class NotificationService {
       payload: 'prayer_$prayerName',
     );
     print('Immediate prayer notification shown for $prayerName');
+  }
+
+  /// Schedule a test prayer notification for 30 seconds from now (for testing)
+  Future<void> scheduleTestPrayerNotification() async {
+    _ensureTimezoneInitialized();
+
+    // First check exact alarm permission
+    final canScheduleExact = await canScheduleExactAlarms();
+    print('📱 Can schedule exact alarms: $canScheduleExact');
+
+    final scheduledTime = DateTime.now().add(const Duration(seconds: 30));
+    final tzScheduledTime = tz.TZDateTime.from(scheduledTime, tz.local);
+
+    final vibrationPattern =
+        Int64List.fromList([0, 500, 200, 500, 200, 500, 200, 500]);
+
+    // Use inexact if exact alarms not available
+    final scheduleMode = canScheduleExact 
+        ? AndroidScheduleMode.exactAllowWhileIdle 
+        : AndroidScheduleMode.inexactAllowWhileIdle;
+
+    print('📅 Using schedule mode: $scheduleMode');
+    print('📅 Current time: ${DateTime.now()}');
+    print('📅 Target time: $tzScheduledTime');
+    print('📅 Timezone: ${tz.local.name}');
+
+    try {
+      await _localNotifications.zonedSchedule(
+        998, // Test scheduled notification ID
+        '🕌 Test Prayer Time',
+        'Allahu Akbar - This is a scheduled test notification',
+        tzScheduledTime,
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            _prayerChannel.id,
+            _prayerChannel.name,
+            channelDescription: _prayerChannel.description,
+            importance: Importance.max,
+            priority: Priority.max,
+            icon: '@mipmap/ic_launcher',
+            color: const Color(0xFF4CAF50),
+            enableVibration: true,
+            vibrationPattern: vibrationPattern,
+            playSound: true,
+            sound: const RawResourceAndroidNotificationSound('azan'),
+            fullScreenIntent: true,
+            category: AndroidNotificationCategory.alarm,
+            visibility: NotificationVisibility.public,
+          ),
+        ),
+        androidScheduleMode: scheduleMode,
+        matchDateTimeComponents: null,
+        payload: 'prayer_test',
+      );
+      print('✅ Test prayer notification scheduled for $tzScheduledTime (30 seconds from now)');
+      
+      // Check pending notifications
+      final pending = await getPendingNotifications();
+      print('📋 Pending notifications count: ${pending.length}');
+      final testNotification = pending.where((n) => n.id == 998).toList();
+      if (testNotification.isNotEmpty) {
+        print('✅ Test notification (ID 998) is in pending list');
+        for (final n in testNotification) {
+          print('   - Title: ${n.title}');
+          print('   - Body: ${n.body}');
+          print('   - Payload: ${n.payload}');
+        }
+      } else {
+        print('❌ Test notification (ID 998) NOT FOUND in pending list!');
+      }
+    } catch (e) {
+      print('❌ Error scheduling test prayer notification: $e');
+    }
+  }
+
+  /// Schedule a test notification using show() with a delay (works around alarm issues)
+  Future<void> scheduleTestWithDelay() async {
+    print('📅 Starting delayed notification test...');
+    print('📅 Notification will show in 10 seconds...');
+    
+    // Delay 10 seconds then show immediately
+    await Future.delayed(const Duration(seconds: 10));
+    
+    await showImmediatePrayerNotification('Delayed Test');
+  }
+
+  /// Test BOTH methods simultaneously to diagnose which one works
+  /// This helps identify if the issue is with AlarmManager or the app
+  Future<void> testBothSchedulingMethods() async {
+    print('🧪 ========== DUAL SCHEDULING TEST ==========');
+    print('🧪 Testing both zonedSchedule AND Future.delayed simultaneously');
+    print('🧪 Current time: ${DateTime.now()}');
+    
+    _ensureTimezoneInitialized();
+    
+    // Check permissions
+    final canScheduleExact = await canScheduleExactAlarms();
+    print('🧪 Can schedule exact alarms: $canScheduleExact');
+    
+    // === Method 1: zonedSchedule (AlarmManager) ===
+    final scheduledTime = DateTime.now().add(const Duration(seconds: 15));
+    final tzScheduledTime = tz.TZDateTime.from(scheduledTime, tz.local);
+    
+    try {
+      await _localNotifications.zonedSchedule(
+        997, // Different ID for this test
+        '⏰ AlarmManager Test',
+        'This notification used zonedSchedule (ID 997)',
+        tzScheduledTime,
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            _prayerChannel.id,
+            _prayerChannel.name,
+            channelDescription: _prayerChannel.description,
+            importance: Importance.max,
+            priority: Priority.max,
+            icon: '@mipmap/ic_launcher',
+            color: const Color(0xFF4CAF50),
+            fullScreenIntent: true,
+            category: AndroidNotificationCategory.alarm,
+          ),
+        ),
+        androidScheduleMode: canScheduleExact 
+            ? AndroidScheduleMode.exactAllowWhileIdle 
+            : AndroidScheduleMode.inexactAllowWhileIdle,
+        payload: 'test_alarmmanager',
+      );
+      print('🧪 ✅ zonedSchedule registered for: $tzScheduledTime');
+      
+      // Verify it's in pending
+      final pending = await getPendingNotifications();
+      final found = pending.any((n) => n.id == 997);
+      print('🧪 Notification 997 in pending list: $found');
+    } catch (e) {
+      print('🧪 ❌ zonedSchedule error: $e');
+    }
+    
+    // === Method 2: Dart Timer (in-memory) ===
+    print('🧪 Starting Dart Timer for 15 seconds...');
+    Future.delayed(const Duration(seconds: 15), () async {
+      print('🧪 ⏰ Dart Timer fired! Showing notification...');
+      await _localNotifications.show(
+        996, // Different ID
+        '⏱️ Dart Timer Test',
+        'This notification used Future.delayed (ID 996)',
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            _prayerChannel.id,
+            _prayerChannel.name,
+            channelDescription: _prayerChannel.description,
+            importance: Importance.max,
+            priority: Priority.max,
+            icon: '@mipmap/ic_launcher',
+            color: const Color(0xFFFF9800),
+          ),
+        ),
+        payload: 'test_timer',
+      );
+    });
+    
+    print('🧪 ========================================');
+    print('🧪 Both methods scheduled. Watch for:');
+    print('🧪   - ID 996: Dart Timer (orange) - should always work if app open');
+    print('🧪   - ID 997: AlarmManager (green) - tests system scheduling');
+    print('🧪 If only 996 appears, AlarmManager is being blocked');
+    print('🧪 ========================================');
+  }
+
+  /// Cancel test notifications
+  Future<void> cancelTestNotifications() async {
+    await _localNotifications.cancel(996);
+    await _localNotifications.cancel(997);
+    await _localNotifications.cancel(998);
+    await _localNotifications.cancel(999);
+    print('🧹 Test notifications cancelled (IDs 996-999)');
   }
 }

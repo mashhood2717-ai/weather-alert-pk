@@ -75,6 +75,7 @@ class _PrayerWidgetState extends State<PrayerWidget> {
       return;
     }
 
+    final bool wasFirstLoad = _prayerTimes == null;
     setState(() => _loading = true);
 
     try {
@@ -90,8 +91,10 @@ class _PrayerWidgetState extends State<PrayerWidget> {
           _loading = false;
           _error = null;
         });
-        // Schedule notifications after calculating prayer times
-        await _scheduleNotifications();
+        // Only schedule notifications on first load, not on every refresh
+        if (wasFirstLoad) {
+          await _scheduleNotifications();
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -154,6 +157,39 @@ class _PrayerWidgetState extends State<PrayerWidget> {
       ),
     );
     await NotificationService().showImmediatePrayerNotification('Test');
+  }
+
+  /// Test scheduled notification (30 seconds from now)
+  Future<void> _testScheduledNotification() async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('⏰ Scheduling test notification in 30 seconds...'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+    await NotificationService().scheduleTestPrayerNotification();
+  }
+
+  /// Test delayed notification (10 seconds using Future.delayed - stays in foreground)
+  Future<void> _testDelayedNotification() async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('⏰ Stay in app - notification in 10 seconds...'),
+        duration: Duration(seconds: 3),
+      ),
+    );
+    await NotificationService().scheduleTestWithDelay();
+  }
+
+  /// DIAGNOSTIC: Test both scheduling methods simultaneously
+  Future<void> _testDualScheduling() async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('🧪 Testing BOTH methods - watch for 2 notifications in 15 sec...'),
+        duration: Duration(seconds: 4),
+      ),
+    );
+    await NotificationService().testBothSchedulingMethods();
   }
 
   @override
@@ -570,7 +606,7 @@ class _PrayerWidgetState extends State<PrayerWidget> {
             child: ElevatedButton.icon(
               onPressed: _testAzanNotification,
               icon: const Icon(Icons.notifications_active, size: 20),
-              label: const Text('Test Azan Sound & Vibration'),
+              label: const Text('Test Azan Sound (Immediate)'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
@@ -579,6 +615,144 @@ class _PrayerWidgetState extends State<PrayerWidget> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _testScheduledNotification,
+              icon: const Icon(Icons.schedule, size: 20),
+              label: const Text('Test Scheduled (30 sec)'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _testDelayedNotification,
+              icon: const Icon(Icons.timer, size: 20),
+              label: const Text('Test Delayed (10 sec) - Stay in App'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.purple,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // DIAGNOSTIC: Dual test button
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _testDualScheduling,
+              icon: const Icon(Icons.science, size: 20),
+              label: const Text('🧪 DIAGNOSTIC: Test Both Methods (15 sec)'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade700,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Exact Alarm Permission Button
+          FutureBuilder<bool>(
+            future: NotificationService().canScheduleExactAlarms(),
+            builder: (context, snapshot) {
+              final canSchedule = snapshot.data ?? false;
+              if (canSchedule) {
+                return Text(
+                  '✅ Exact alarm permission granted',
+                  style: TextStyle(color: Colors.green, fontSize: 12),
+                );
+              }
+              return Column(
+                children: [
+                  Text(
+                    '⚠️ Exact alarm permission required for prayer notifications',
+                    style: TextStyle(color: Colors.orange, fontSize: 12),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        await NotificationService().openExactAlarmSettings();
+                      },
+                      icon: const Icon(Icons.settings, size: 18),
+                      label: const Text('Open Alarm Permission Settings'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.orange,
+                        side: const BorderSide(color: Colors.orange),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+          // Battery Optimization Warning for OnePlus/Oppo/Xiaomi
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.red.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+            ),
+            child: Column(
+              children: [
+                Text(
+                  '🔋 OnePlus/Oppo/Xiaomi phones block scheduled notifications',
+                  style: TextStyle(color: Colors.red.shade700, fontSize: 12, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Tap below to disable battery optimization for this app, then select "Don\'t optimize" or "Allow"',
+                  style: TextStyle(color: Colors.red.shade600, fontSize: 11),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      await NotificationService().openBatteryOptimizationSettings();
+                    },
+                    icon: const Icon(Icons.battery_saver, size: 18),
+                    label: const Text('Disable Battery Optimization'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],

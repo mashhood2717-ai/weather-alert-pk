@@ -25,6 +25,11 @@ class CurrentWeather {
   // Street address from geocoding
   final String? streetAddress;
   final String? fullAddress;
+  // METAR station info
+  final String? metarStation; // ICAO code
+  final double? metarLat;
+  final double? metarLon;
+  final double? metarDistanceKm;
 
   CurrentWeather({
     required this.city,
@@ -49,6 +54,10 @@ class CurrentWeather {
     this.snowfall,
     this.streetAddress,
     this.fullAddress,
+    this.metarStation,
+    this.metarLat,
+    this.metarLon,
+    this.metarDistanceKm,
   });
 
   /// Create a copy with updated address and optionally city name
@@ -80,6 +89,47 @@ class CurrentWeather {
       snowfall: snowfall,
       streetAddress: streetAddress ?? this.streetAddress,
       fullAddress: fullAddress ?? this.fullAddress,
+      metarStation: metarStation,
+      metarLat: metarLat,
+      metarLon: metarLon,
+      metarDistanceKm: metarDistanceKm,
+    );
+  }
+
+  /// Create a copy with METAR station info
+  CurrentWeather copyWithMetar({
+    String? metarStation,
+    double? metarLat,
+    double? metarLon,
+    double? metarDistanceKm,
+  }) {
+    return CurrentWeather(
+      city: city,
+      tempC: tempC,
+      condition: condition,
+      icon: icon,
+      humidity: humidity,
+      windKph: windKph,
+      windDeg: windDeg,
+      feelsLikeC: feelsLikeC,
+      dewpointC: dewpointC,
+      pressureMb: pressureMb,
+      visKm: visKm,
+      gustKph: gustKph,
+      isDay: isDay,
+      lat: lat,
+      lon: lon,
+      uvIndex: uvIndex,
+      cloudCover: cloudCover,
+      precipitation: precipitation,
+      rain: rain,
+      snowfall: snowfall,
+      streetAddress: streetAddress,
+      fullAddress: fullAddress,
+      metarStation: metarStation ?? this.metarStation,
+      metarLat: metarLat ?? this.metarLat,
+      metarLon: metarLon ?? this.metarLon,
+      metarDistanceKm: metarDistanceKm ?? this.metarDistanceKm,
     );
   }
 }

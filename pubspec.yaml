@@ -24,6 +24,8 @@ dependencies:
   adhan: ^2.0.0+1
   timezone: ^0.10.1
   home_widget: ^0.8.1
+  google_maps_flutter: ^2.5.3
+  device_info_plus: ^12.3.0
 
 dev_dependencies:
   flutter_test:

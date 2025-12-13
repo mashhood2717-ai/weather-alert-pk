@@ -161,13 +161,13 @@ class PersistentNotificationService {
     // Only start background updates when notification is running (traveling mode)
     if (!_isRunning) return;
 
-    // Update time display every minute
-    _timeUpdateTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+    // Update time display every 2 minutes (saves battery vs 1 min)
+    _timeUpdateTimer = Timer.periodic(const Duration(minutes: 2), (_) {
       _updateTimeDisplay();
     });
 
-    // Refresh weather every 15 minutes when traveling
-    _updateTimer = Timer.periodic(const Duration(minutes: 15), (_) {
+    // Refresh weather every 30 minutes when traveling (saves battery vs 15 min)
+    _updateTimer = Timer.periodic(const Duration(minutes: 30), (_) {
       _onRefreshCallback?.call();
     });
   }

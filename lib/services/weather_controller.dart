@@ -82,18 +82,19 @@ class WeatherController {
     }
   }
 
-  // Pakistan airports with coordinates (lat, lon, ICAO)
+  // Pakistan airports with coordinates (lat, lon, ICAO) and custom radius
+  // Updated coordinates for new Islamabad International Airport
   static const List<Map<String, dynamic>> _airports = [
-    {"icao": "OPIS", "lat": 33.6167, "lon": 73.0992, "name": "Islamabad"},
-    {"icao": "OPLA", "lat": 31.5216, "lon": 74.4036, "name": "Lahore"},
-    {"icao": "OPFA", "lat": 31.3650, "lon": 72.9950, "name": "Faisalabad"},
-    {"icao": "OPKC", "lat": 24.9065, "lon": 67.1608, "name": "Karachi"},
-    {"icao": "OPST", "lat": 32.5356, "lon": 74.3639, "name": "Sialkot"},
-    {"icao": "OPMT", "lat": 30.2032, "lon": 71.4191, "name": "Multan"},
-    {"icao": "OPPS", "lat": 33.9939, "lon": 71.5147, "name": "Peshawar"},
-    {"icao": "OPQT", "lat": 30.2514, "lon": 66.9378, "name": "Quetta"},
-    {"icao": "OPGD", "lat": 25.2333, "lon": 62.3294, "name": "Gwadar"},
-    {"icao": "OPKD", "lat": 25.3181, "lon": 68.3661, "name": "Hyderabad"},
+    {"icao": "OPIS", "lat": 33.5605, "lon": 72.8495, "name": "Islamabad", "radius": 40.0}, // 40km - covers twin cities
+    {"icao": "OPLA", "lat": 31.5216, "lon": 74.4036, "name": "Lahore", "radius": 30.0},
+    {"icao": "OPFA", "lat": 31.3650, "lon": 72.9950, "name": "Faisalabad", "radius": 30.0},
+    {"icao": "OPKC", "lat": 24.9065, "lon": 67.1608, "name": "Karachi", "radius": 40.0}, // 40km - large metro
+    {"icao": "OPST", "lat": 32.5356, "lon": 74.3639, "name": "Sialkot", "radius": 30.0},
+    {"icao": "OPMT", "lat": 30.2032, "lon": 71.4191, "name": "Multan", "radius": 30.0},
+    {"icao": "OPPS", "lat": 33.9939, "lon": 71.5147, "name": "Peshawar", "radius": 30.0},
+    {"icao": "OPQT", "lat": 30.2514, "lon": 66.9378, "name": "Quetta", "radius": 30.0},
+    {"icao": "OPGD", "lat": 25.2333, "lon": 62.3294, "name": "Gwadar", "radius": 30.0},
+    {"icao": "OPKD", "lat": 25.3181, "lon": 68.3661, "name": "Hyderabad", "radius": 30.0},
   ];
 
   /// Calculate distance between two coordinates in km (Haversine formula)
@@ -112,16 +113,35 @@ class WeatherController {
 
   double _toRadians(double deg) => deg * (pi / 180);
 
-  /// Get ICAO code if location is within 20km of an airport
-  String? icaoFromCoordinates(double lat, double lon) {
+  /// Get ICAO code and airport info if location is within airport's radius
+  /// Returns null if no airport nearby, otherwise returns airport data with distance
+  Map<String, dynamic>? getAirportFromCoordinates(double lat, double lon) {
+    Map<String, dynamic>? nearestAirport;
+    double nearestDistance = double.infinity;
+
     for (final airport in _airports) {
+      final airportRadius = (airport["radius"] as double?) ?? 30.0;
       final distance = _calculateDistance(
           lat, lon, airport["lat"] as double, airport["lon"] as double);
-      if (distance <= 20.0) {
-        return airport["icao"] as String;
+      if (distance <= airportRadius && distance < nearestDistance) {
+        nearestAirport = {
+          "icao": airport["icao"],
+          "lat": airport["lat"],
+          "lon": airport["lon"],
+          "name": airport["name"],
+          "radius": airportRadius,
+          "distance": distance,
+        };
+        nearestDistance = distance;
       }
     }
-    return null;
+    return nearestAirport;
+  }
+
+  /// Get ICAO code if location is within airport's custom radius
+  String? icaoFromCoordinates(double lat, double lon) {
+    final airport = getAirportFromCoordinates(lat, lon);
+    return airport?["icao"] as String?;
   }
 
   String? icaoFromCity(String city) {
@@ -245,11 +265,11 @@ class WeatherController {
     // Otherwise use API data for current weather
     if (json != null) {
       _parseCurrentWeather(json);
-      // Fetch street address in background
+      // Fetch street address and wait for it to complete
       final lat = _toD(json['latitude']);
       final lon = _toD(json['longitude']);
       if (lat != 0.0 && lon != 0.0) {
-        _fetchAndUpdateStreetAddress(lat, lon);
+        await _fetchAndUpdateStreetAddress(lat, lon);
       }
     }
 
@@ -264,7 +284,12 @@ class WeatherController {
     lastCitySearched = cityName;
     isFromCurrentLocation = isCurrentLocation;
 
-    final icao = icaoFromCoordinates(lat, lon);
+    // Check by coordinates first, then fallback to city name match
+    String? icao = icaoFromCoordinates(lat, lon);
+    if (icao == null && cityName != null) {
+      icao = icaoFromCity(cityName);
+    }
+    
     final json = await OpenMeteoService.fetchWeather(lat, lon);
 
     if (json != null) {
@@ -279,10 +304,12 @@ class WeatherController {
         final m = await fetchMetar(icao);
         if (m != null) {
           metar = m;
-          _createCurrentFromMetarOnly(m);
+          _currentUserLat = lat;
+          _currentUserLon = lon;
+          _createCurrentFromMetarOnly(m, userLat: lat, userLon: lon);
           metarApplied = true;
-          // Fetch street address in background
-          _fetchAndUpdateStreetAddress(lat, lon);
+          // Fetch street address and wait for it to complete
+          await _fetchAndUpdateStreetAddress(lat, lon);
           onDataLoaded?.call();
           return;
         }
@@ -291,8 +318,8 @@ class WeatherController {
       _parseCurrentWeather(json);
       metarApplied = false;
       metar = null;
-      // Fetch street address in background
-      _fetchAndUpdateStreetAddress(lat, lon);
+      // Fetch street address and wait for it to complete
+      await _fetchAndUpdateStreetAddress(lat, lon);
       onDataLoaded?.call();
     }
   }
@@ -317,10 +344,12 @@ class WeatherController {
           final m = await fetchMetar(icao);
           if (m != null) {
             metar = m;
-            _createCurrentFromMetarOnly(m);
+            _currentUserLat = lat;
+            _currentUserLon = lon;
+            _createCurrentFromMetarOnly(m, userLat: lat, userLon: lon);
             metarApplied = true;
-            // Fetch street address in background
-            _fetchAndUpdateStreetAddress(lat, lon);
+            // Fetch street address and wait for it to complete - force update for GPS location
+            await _fetchAndUpdateStreetAddress(lat, lon, forceUpdateCity: true);
             onDataLoaded?.call();
             return;
           }
@@ -329,8 +358,8 @@ class WeatherController {
         _parseCurrentWeather(json);
         metarApplied = false;
         metar = null;
-        // Fetch street address in background
-        _fetchAndUpdateStreetAddress(lat, lon);
+        // Fetch street address and wait for it to complete - force update for GPS location
+        await _fetchAndUpdateStreetAddress(lat, lon, forceUpdateCity: true);
         onDataLoaded?.call();
       }
     } catch (e) {
@@ -340,18 +369,30 @@ class WeatherController {
   }
 
   /// Fetch street address from geocoding and update current weather
-  Future<void> _fetchAndUpdateStreetAddress(double lat, double lon) async {
+  Future<void> _fetchAndUpdateStreetAddress(double lat, double lon,
+      {bool forceUpdateCity = false}) async {
     try {
       final result = await GeocodingService.reverseGeocode(lat, lon);
       if (result != null && current.value != null) {
-        // Update city name if current city is "Unknown" or generic
+        // Update city name if current city is "Unknown", generic, or force update requested
         String? newCityName;
         final currentCity = current.value!.city;
-        if (currentCity == 'Unknown' ||
+        
+        // Get the geocoded main location (has special Rawalpindi handling)
+        final mainLocation = result.mainLocationName;
+        
+        // Force update for GPS locations, or if current city is generic
+        final shouldUpdateCity = forceUpdateCity ||
+            currentCity == 'Unknown' ||
             currentCity.isEmpty ||
-            currentCity.startsWith('Lat:')) {
-          // Use the best available main location name from geocoding
-          final mainLocation = result.mainLocationName;
+            currentCity.startsWith('Lat:');
+        
+        // Special case: Always prefer Rawalpindi over Islamabad
+        // If geocoding says Rawalpindi but city shows Islamabad, update it
+        final isCurrentIslamabad = currentCity.toLowerCase() == 'islamabad';
+        final isGeocodedRawalpindi = mainLocation.toLowerCase() == 'rawalpindi';
+        
+        if (shouldUpdateCity || (isCurrentIslamabad && isGeocodedRawalpindi)) {
           if (mainLocation != 'Unknown') {
             newCityName = mainLocation;
           }
@@ -504,7 +545,11 @@ class WeatherController {
     );
   }
 
-  void _createCurrentFromMetarOnly(Map<String, dynamic> m) {
+  // Store the current user location for METAR calculations
+  double? _currentUserLat;
+  double? _currentUserLon;
+
+  void _createCurrentFromMetarOnly(Map<String, dynamic> m, {double? userLat, double? userLon}) {
     String metarRawText = m["raw_text"]?.toString().toUpperCase() ?? "";
     String primaryCode = _extractPrimaryMetarCode(metarRawText);
 
@@ -518,16 +563,29 @@ class WeatherController {
 
     final stationIcao = m["station"]?.toString().toUpperCase() ?? "";
     String cityName = lastCitySearched ?? "Unknown";
-    double lat = _toD(m["latitude"]);
-    double lon = _toD(m["longitude"]);
+    
+    // Get airport coordinates for METAR station
+    double airportLat = 0.0;
+    double airportLon = 0.0;
 
     for (final airport in _airports) {
       if (airport["icao"] == stationIcao) {
-        cityName = airport["name"] as String;
-        lat = airport["lat"] as double;
-        lon = airport["lon"] as double;
+        airportLat = airport["lat"] as double;
+        airportLon = airport["lon"] as double;
         break;
       }
+    }
+
+    // Use user's actual location if provided, otherwise fall back to airport location
+    final displayLat = userLat ?? _currentUserLat ?? airportLat;
+    final displayLon = userLon ?? _currentUserLon ?? airportLon;
+    
+    // Calculate distance from user to airport
+    double? distanceToAirport;
+    if (userLat != null && userLon != null && airportLat != 0.0) {
+      distanceToAirport = _calculateDistance(userLat, userLon, airportLat, airportLon);
+    } else if (_currentUserLat != null && _currentUserLon != null && airportLat != 0.0) {
+      distanceToAirport = _calculateDistance(_currentUserLat!, _currentUserLon!, airportLat, airportLon);
     }
 
     current.value = CurrentWeather(
@@ -544,13 +602,17 @@ class WeatherController {
       visKm: _toD(m["visibility_km"]),
       gustKph: null,
       isDay: isDay,
-      lat: lat,
-      lon: lon,
+      lat: displayLat,
+      lon: displayLon,
       uvIndex: null,
       cloudCover: null,
       precipitation: null,
       rain: null,
       snowfall: null,
+      metarStation: stationIcao,
+      metarLat: airportLat,
+      metarLon: airportLon,
+      metarDistanceKm: distanceToAirport,
     );
   }
 

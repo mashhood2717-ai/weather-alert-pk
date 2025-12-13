@@ -32,6 +32,7 @@ import '../widgets/prayer_widget.dart';
 import '../models/daily_weather.dart';
 import '../models/current_weather.dart';
 import 'settings_screen.dart';
+import 'travel_weather_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -99,6 +100,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     )..repeat();
 
     controller.onDataLoaded = _onWeatherDataLoaded;
+    controller.current.addListener(_onCurrentWeatherChanged);
     _initSettings();
     _loadInitial();
     _loadFavorites();
@@ -132,6 +134,52 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     // Sync persistent notification with traveling mode
     await _persistentNotification
         .syncWithTravelingMode(_settings.travelingMode);
+
+    // Schedule prayer notifications for today (and tomorrow's Fajr)
+    _schedulePrayerNotificationsOnStartup();
+  }
+
+  /// Schedule prayer notifications when app starts
+  /// This ensures notifications are always scheduled, even if user doesn't open prayer widget
+  Future<void> _schedulePrayerNotificationsOnStartup() async {
+    try {
+      // Get current location from controller or use default
+      final coords = controller.getCurrentCoordinates();
+      double lat = coords?.$1 ?? 33.6844; // Default Islamabad
+      double lon = coords?.$2 ?? 73.0479;
+
+      // Try to get device location if controller doesn't have it yet
+      if (coords == null) {
+        try {
+          final position = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.low,
+            timeLimit: const Duration(seconds: 5),
+          );
+          lat = position.latitude;
+          lon = position.longitude;
+        } catch (_) {
+          // Use default coordinates
+        }
+      }
+
+      debugPrint('🕌 Scheduling prayer notifications for lat=$lat, lon=$lon');
+
+      // Schedule notifications
+      await PrayerService.scheduleNotifications(
+        latitude: lat,
+        longitude: lon,
+      );
+      debugPrint('✅ Prayer notifications scheduled on app startup');
+
+      // Debug: Print pending notifications
+      final pending = await NotificationService().getPendingNotifications();
+      debugPrint('📋 Pending notifications: ${pending.length}');
+      for (final n in pending.where((p) => p.id >= 1000 && p.id < 1040)) {
+        debugPrint('   🔔 ID ${n.id}: ${n.title} - ${n.body}');
+      }
+    } catch (e) {
+      debugPrint('❌ Error scheduling prayer notifications on startup: $e');
+    }
   }
 
   /// Handle refresh button press from notification
@@ -161,6 +209,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
+  // Track last city to detect geocoding updates
+  String? _lastNotifiedCity;
+
+  /// Called when current weather value changes (e.g. after geocoding updates city)
+  void _onCurrentWeatherChanged() {
+    final weather = controller.current.value;
+    if (weather == null) return;
+
+    // If city changed from Unknown to a real name, update notification
+    final newCity = weather.city;
+    if (_lastNotifiedCity == 'Unknown' &&
+        newCity != 'Unknown' &&
+        newCity.isNotEmpty) {
+      final coords = controller.getCurrentCoordinates();
+      if (coords != null && controller.isFromCurrentLocation) {
+        _updatePersistentNotification(coords.$1, coords.$2);
+      }
+    }
+  }
+
   @override
   void dispose() {
     _fadeController.dispose();
@@ -170,6 +238,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _debounceTimer?.cancel();
     _locationRefreshTimer?.cancel();
     _settings.removeListener(_onSettingsChanged);
+    controller.current.removeListener(_onCurrentWeatherChanged);
     _persistentNotification.dispose();
     super.dispose();
   }
@@ -177,9 +246,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   /// Start auto-refreshing location for travelers
   void _startLocationAutoRefresh() {
     // Check location based on traveling mode
+    // Battery optimization: reduced frequency (3 min traveling, 15 min normal)
     final interval = _settings.travelingMode
-        ? const Duration(minutes: 1) // More frequent when traveling
-        : const Duration(minutes: 5); // Less frequent normally
+        ? const Duration(minutes: 3) // Traveling mode - balanced
+        : const Duration(minutes: 15); // Normal mode - battery saving
 
     _locationRefreshTimer = Timer.periodic(
       interval,
@@ -199,9 +269,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (!_settings.travelingMode) return;
 
     try {
+      // Battery optimization: medium accuracy is sufficient for weather updates
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy:
-            LocationAccuracy.high, // Higher accuracy when traveling
+            LocationAccuracy.medium, // Balanced accuracy - saves battery
       );
 
       if (_lastKnownPosition != null) {
@@ -411,7 +482,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         }
       }
 
-      // Update notification
+      // Update notification (track city for geocoding updates)
+      _lastNotifiedCity = weather.city;
       await _persistentNotification.updateNotification(
         condition: weather.condition,
         temperature: tempStr,
@@ -1310,6 +1382,15 @@ Is GPS: ${controller.isFromCurrentLocation}
                     builder: (context) => SettingsScreen(isDay: isDay)))),
         const SizedBox(width: 6),
         _buildAppBarButton(
+            icon: Icons.directions_car,
+            isDay: isDay,
+            iconColor: isDay ? Colors.blue.shade700 : Colors.blue.shade300,
+            onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (context) => TravelWeatherScreen(isDay: isDay)))),
+        const SizedBox(width: 6),
+        _buildAppBarButton(
             icon: Icons.admin_panel_settings,
             isDay: isDay,
             iconColor: isDay ? Colors.deepPurple : Colors.purple.shade300,
@@ -1583,15 +1664,15 @@ Is GPS: ${controller.isFromCurrentLocation}
             streetAddress: c?.streetAddress),
         if (controller.metarApplied)
           Positioned(
-              top: 12,
-              right: 12,
+              top: 14,
+              right: 28,
               child: ClipRRect(
                   borderRadius: BorderRadius.circular(10),
                   child: BackdropFilter(
                       filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
                       child: Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
+                              horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
                               color: Colors.red.shade400.withValues(alpha: 0.9),
                               borderRadius: BorderRadius.circular(10),
@@ -1602,11 +1683,11 @@ Is GPS: ${controller.isFromCurrentLocation}
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(Icons.flight,
-                                    size: 12, color: Colors.white),
+                                    size: 11, color: Colors.white),
                                 SizedBox(width: 4),
                                 Text('METAR',
                                     style: TextStyle(
-                                        fontSize: 10,
+                                        fontSize: 9,
                                         color: Colors.white,
                                         fontWeight: FontWeight.bold,
                                         letterSpacing: 0.3))

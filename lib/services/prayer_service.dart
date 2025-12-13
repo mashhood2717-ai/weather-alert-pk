@@ -372,6 +372,7 @@ class PrayerService {
   }
 
   /// Schedule prayer notifications based on current preferences
+  /// Schedules today's prayers AND tomorrow's prayers to ensure coverage
   static Future<void> scheduleNotifications({
     required double latitude,
     required double longitude,
@@ -379,10 +380,20 @@ class PrayerService {
     AsrMadhab? madhab,
   }) async {
     try {
-      // Get prayer times
-      final prayerTimesData = await calculatePrayerTimes(
+      // Get today's prayer times
+      final todayPrayerTimes = await calculatePrayerTimes(
         latitude: latitude,
         longitude: longitude,
+        method: method,
+        madhab: madhab,
+      );
+
+      // Get tomorrow's prayer times
+      final tomorrow = DateTime.now().add(const Duration(days: 1));
+      final tomorrowPrayerTimes = await calculatePrayerTimes(
+        latitude: latitude,
+        longitude: longitude,
+        date: tomorrow,
         method: method,
         madhab: madhab,
       );
@@ -391,16 +402,34 @@ class PrayerService {
       final notificationPrefs = await getNotificationPrefs();
 
       // Build prayer times map (only main prayers, not sunrise)
+      // Include both today's remaining prayers and tomorrow's prayers
       final prayerTimes = <String, DateTime>{};
-      for (final prayer in prayerTimesData.prayers) {
+
+      // Add today's prayers
+      for (final prayer in todayPrayerTimes.prayers) {
         if (prayer.name != 'Sunrise') {
           prayerTimes[prayer.name] = prayer.time;
         }
       }
 
-      // Schedule notifications
+      // Add tomorrow's prayers with "_tomorrow" suffix to avoid ID conflicts
+      final tomorrowPrayerTimes2 = <String, DateTime>{};
+      for (final prayer in tomorrowPrayerTimes.prayers) {
+        if (prayer.name != 'Sunrise') {
+          tomorrowPrayerTimes2['${prayer.name}_tomorrow'] = prayer.time;
+        }
+      }
+
+      // Schedule today's notifications
       await NotificationService().scheduleAllPrayerNotifications(
         prayerTimes: prayerTimes,
+        prayerModes: notificationPrefs,
+        minutesBefore: 5,
+      );
+
+      // Schedule tomorrow's notifications (with offset IDs)
+      await NotificationService().scheduleTomorrowPrayerNotifications(
+        prayerTimes: tomorrowPrayerTimes2,
         prayerModes: notificationPrefs,
         minutesBefore: 5,
       );

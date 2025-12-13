@@ -23,6 +23,7 @@ Future<Position> determinePosition() async {
     return Future.error('Location permissions are permanently denied.');
   }
 
+  // Use medium accuracy - saves battery while still being accurate enough for weather
   return await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high);
+      desiredAccuracy: LocationAccuracy.medium);
 }
