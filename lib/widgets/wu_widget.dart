@@ -10,8 +10,10 @@ import '../utils/background_utils.dart';
 class WuWidget extends StatefulWidget {
   final bool isDay;
   final Function(Map<String, dynamic>? data)? onDataLoaded;
+  final String? city; // City from main app to sync with
 
-  const WuWidget({super.key, required this.isDay, this.onDataLoaded});
+  const WuWidget(
+      {super.key, required this.isDay, this.onDataLoaded, this.city});
 
   @override
   State<WuWidget> createState() => _WuWidgetState();
@@ -29,7 +31,52 @@ class _WuWidgetState extends State<WuWidget> {
   @override
   void initState() {
     super.initState();
-    if (wuStationsByCity.isNotEmpty) {
+    _initializeCity();
+  }
+
+  @override
+  void didUpdateWidget(WuWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // If city prop changed, update selection
+    if (oldWidget.city != widget.city && widget.city != null) {
+      _syncCityFromProp();
+    }
+  }
+
+  void _initializeCity() {
+    if (widget.city != null) {
+      _syncCityFromProp();
+    } else if (wuStationsByCity.isNotEmpty) {
+      _selectedCity = wuStationsByCity.keys.first;
+    }
+  }
+
+  /// Sync the selected city from the passed prop
+  /// Matches the city name to available WU station cities
+  void _syncCityFromProp() {
+    final cityProp = widget.city;
+    if (cityProp == null || cityProp.isEmpty) return;
+
+    final cityLower = cityProp.toLowerCase();
+
+    // Find matching city in wuStationsByCity
+    for (final availableCity in wuStationsByCity.keys) {
+      if (availableCity.toLowerCase() == cityLower ||
+          cityLower.contains(availableCity.toLowerCase()) ||
+          availableCity.toLowerCase().contains(cityLower)) {
+        if (_selectedCity != availableCity) {
+          setState(() {
+            _selectedCity = availableCity;
+            _selectedStationId = null; // Reset station selection
+            _currentData = null;
+          });
+        }
+        return;
+      }
+    }
+
+    // If no match found, keep current selection or use first available
+    if (_selectedCity == null && wuStationsByCity.isNotEmpty) {
       _selectedCity = wuStationsByCity.keys.first;
     }
   }

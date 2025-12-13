@@ -232,15 +232,19 @@ class NotificationService {
   }
 
   Future<void> subscribeToAlerts() async {
-    // Subscribe to general weather alerts
-    await _messaging.subscribeToTopic('weather_alerts_pk');
+    // NOTE: Do NOT subscribe to weather_alerts_pk topic
+    // That topic is only used as fallback and would bypass polygon/radius targeting
+    // Only subscribe to city-specific topics based on user preference
+    
+    // Unsubscribe from general topic if previously subscribed
+    await _messaging.unsubscribeFromTopic('weather_alerts_pk');
 
     // Subscribe to city-specific topics (can be dynamic based on user preference)
     await _messaging.subscribeToTopic('alerts_islamabad');
     await _messaging.subscribeToTopic('alerts_lahore');
     await _messaging.subscribeToTopic('alerts_karachi');
 
-    print('Subscribed to weather alert topics');
+    print('Subscribed to weather alert topics (city-specific only)');
   }
 
   Future<void> subscribeToCity(String city) async {

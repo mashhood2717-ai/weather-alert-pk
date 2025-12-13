@@ -17,6 +17,7 @@ import '../services/settings_service.dart';
 import '../services/persistent_notification_service.dart';
 import '../services/prayer_service.dart';
 import '../services/widget_service.dart';
+import '../services/manual_alert_service.dart';
 import '../utils/background_utils.dart';
 import '../utils/wind_utils.dart';
 import '../widgets/current_weather_tile.dart';
@@ -221,9 +222,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             isCurrentLocation: true,
           );
           await _fetchAqiData(position.latitude, position.longitude);
+
+          // Update Firestore location for accurate alert targeting while traveling
+          ManualAlertService().refreshLocation();
         }
       } else {
         _lastKnownPosition = position;
+        // Also update Firestore on first location acquisition
+        ManualAlertService().refreshLocation();
       }
     } catch (e) {
       // Silently fail - location refresh is optional
@@ -1230,7 +1236,11 @@ Is GPS: ${controller.isFromCurrentLocation}
                                 _buildAqiTab(isDay),
                                 _buildWindyTab(),
                                 _buildMetarTab(isDay),
-                                WuWidget(isDay: isDay, onDataLoaded: (data) {}),
+                                WuWidget(
+                                  isDay: isDay,
+                                  city: c?.city ?? controller.lastCitySearched,
+                                  onDataLoaded: (data) {},
+                                ),
                                 _buildPrayerTab(c, isDay),
                               ])),
                               _buildModernTabBar(isDay),

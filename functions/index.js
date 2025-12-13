@@ -55,27 +55,9 @@ exports.sendAlertNotification = onDocumentCreated(
     console.log(`Found ${usersToNotify.length} users in target area`);
 
     if (usersToNotify.length === 0) {
-      // If no specific users found, send to topic
-      console.log("Sending to weather_alerts_pk topic");
-      try {
-        const topicResult = await messaging.send({
-          topic: "weather_alerts_pk",
-          notification: notification,
-          data: data,
-          android: {
-            priority: "high",
-            notification: {
-              channelId: getChannelId(severity),
-              priority: getPriority(severity),
-              defaultSound: true,
-              defaultVibrateTimings: true,
-            },
-          },
-        });
-        console.log("Topic notification sent:", topicResult);
-      } catch (error) {
-        console.error("Error sending topic notification:", error);
-      }
+      // No users found in target area - do NOT fallback to topic
+      // This ensures polygon/radius targeting is respected
+      console.log("No users found in target area - alert not sent (respecting polygon/radius targeting)");
       return null;
     }
 

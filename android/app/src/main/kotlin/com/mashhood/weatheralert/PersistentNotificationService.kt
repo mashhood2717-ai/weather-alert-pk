@@ -27,9 +27,10 @@ class PersistentNotificationService : Service() {
             temperature: String,
             nextPrayer: String,
             nextPrayerTime: String,
-            city: String
+            city: String,
+            lastUpdated: String
         ) {
-            instance?.updateNotificationContent(condition, temperature, nextPrayer, nextPrayerTime, city)
+            instance?.updateNotificationContent(condition, temperature, nextPrayer, nextPrayerTime, city, lastUpdated)
         }
 
         fun isRunning(): Boolean = instance != null
@@ -40,6 +41,7 @@ class PersistentNotificationService : Service() {
     private var nextPrayer = "--"
     private var nextPrayerTime = "--"
     private var city = "--"
+    private var lastUpdated = "now"
 
     override fun onCreate() {
         super.onCreate()
@@ -61,6 +63,7 @@ class PersistentNotificationService : Service() {
                     nextPrayer = it.getStringExtra("nextPrayer") ?: nextPrayer
                     nextPrayerTime = it.getStringExtra("nextPrayerTime") ?: nextPrayerTime
                     city = it.getStringExtra("city") ?: city
+                    lastUpdated = it.getStringExtra("lastUpdated") ?: lastUpdated
                 }
 
                 // Start foreground with notification
@@ -118,7 +121,7 @@ class PersistentNotificationService : Service() {
 
         // Build the notification with custom content
         val title = "$condition • $temperature"
-        val text = "$nextPrayer at $nextPrayerTime • $city"
+        val text = "$nextPrayer at $nextPrayerTime • $city • $lastUpdated"
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
@@ -143,13 +146,15 @@ class PersistentNotificationService : Service() {
         temperature: String,
         nextPrayer: String,
         nextPrayerTime: String,
-        city: String
+        city: String,
+        lastUpdated: String
     ) {
         this.condition = condition
         this.temperature = temperature
         this.nextPrayer = nextPrayer
         this.nextPrayerTime = nextPrayerTime
         this.city = city
+        this.lastUpdated = lastUpdated
 
         val notification = buildNotification()
         val manager = getSystemService(NotificationManager::class.java)

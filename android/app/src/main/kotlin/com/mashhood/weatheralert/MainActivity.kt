@@ -36,8 +36,9 @@ class MainActivity : FlutterActivity() {
                     val nextPrayer = call.argument<String>("nextPrayer") ?: "--"
                     val nextPrayerTime = call.argument<String>("nextPrayerTime") ?: "--"
                     val city = call.argument<String>("city") ?: "--"
+                    val lastUpdated = call.argument<String>("lastUpdated") ?: "now"
 
-                    startPersistentNotification(condition, temperature, nextPrayer, nextPrayerTime, city)
+                    startPersistentNotification(condition, temperature, nextPrayer, nextPrayerTime, city, lastUpdated)
                     result.success(true)
                 }
                 "stopNotification" -> {
@@ -50,9 +51,10 @@ class MainActivity : FlutterActivity() {
                     val nextPrayer = call.argument<String>("nextPrayer") ?: "--"
                     val nextPrayerTime = call.argument<String>("nextPrayerTime") ?: "--"
                     val city = call.argument<String>("city") ?: "--"
+                    val lastUpdated = call.argument<String>("lastUpdated") ?: "now"
 
                     PersistentNotificationService.updateNotification(
-                        this, condition, temperature, nextPrayer, nextPrayerTime, city
+                        this, condition, temperature, nextPrayer, nextPrayerTime, city, lastUpdated
                     )
                     result.success(true)
                 }
@@ -103,7 +105,8 @@ class MainActivity : FlutterActivity() {
         temperature: String,
         nextPrayer: String,
         nextPrayerTime: String,
-        city: String
+        city: String,
+        lastUpdated: String
     ) {
         val intent = Intent(this, PersistentNotificationService::class.java).apply {
             putExtra("condition", condition)
@@ -111,6 +114,7 @@ class MainActivity : FlutterActivity() {
             putExtra("nextPrayer", nextPrayer)
             putExtra("nextPrayerTime", nextPrayerTime)
             putExtra("city", city)
+            putExtra("lastUpdated", lastUpdated)
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

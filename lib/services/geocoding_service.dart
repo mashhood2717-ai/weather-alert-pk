@@ -28,9 +28,20 @@ class GeocodingResult {
   });
 
   /// Returns the best available main location name
-  /// Priority: locality > city > district > extractedAreaName > province
+  /// Priority: locality > district (if Rawalpindi) > city > district > extractedAreaName > province
+  /// Special handling for Rawalpindi/Islamabad: prefer district if it's Rawalpindi
   String get mainLocationName {
     if (locality != null && locality!.isNotEmpty) return locality!;
+
+    // Special case: If district is Rawalpindi but city shows Islamabad, prefer Rawalpindi
+    // This handles the common case where Rawalpindi areas show as "Islamabad" city
+    if (district != null && district!.isNotEmpty) {
+      final districtLower = district!.toLowerCase();
+      if (districtLower.contains('rawalpindi')) {
+        return 'Rawalpindi';
+      }
+    }
+
     if (city != null && city!.isNotEmpty) return city!;
     if (district != null && district!.isNotEmpty) return district!;
     if (extractedAreaName != null && extractedAreaName!.isNotEmpty) {

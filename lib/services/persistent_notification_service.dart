@@ -16,6 +16,7 @@ class PersistentNotificationService {
       MethodChannel('com.mashhood.weatheralert/persistent_notification');
 
   Timer? _updateTimer;
+  Timer? _timeUpdateTimer;
   bool _isRunning = false;
 
   // Current notification data
@@ -24,6 +25,7 @@ class PersistentNotificationService {
   String _nextPrayer = '--';
   String _nextPrayerTime = '--';
   String _city = '--';
+  DateTime? _lastUpdated;
 
   bool get isRunning => _isRunning;
 
@@ -71,12 +73,14 @@ class PersistentNotificationService {
   /// Start the persistent notification
   Future<bool> startNotification() async {
     try {
+      _lastUpdated = DateTime.now();
       final result = await _channel.invokeMethod('startNotification', {
         'condition': _condition,
         'temperature': _temperature,
         'nextPrayer': _nextPrayer,
         'nextPrayerTime': _nextPrayerTime,
         'city': _city,
+        'lastUpdated': _getTimeSinceUpdate(),
       });
 
       _isRunning = result == true;
@@ -134,6 +138,8 @@ class PersistentNotificationService {
 
     if (!_isRunning) return;
 
+    _lastUpdated = DateTime.now();
+
     try {
       await _channel.invokeMethod('updateNotification', {
         'condition': _condition,
@@ -141,6 +147,7 @@ class PersistentNotificationService {
         'nextPrayer': _nextPrayer,
         'nextPrayerTime': _nextPrayerTime,
         'city': _city,
+        'lastUpdated': _getTimeSinceUpdate(),
       });
     } on PlatformException catch (e) {
       print('Failed to update notification: ${e.message}');
@@ -154,16 +161,49 @@ class PersistentNotificationService {
     // Only start background updates when notification is running (traveling mode)
     if (!_isRunning) return;
 
-    // Update every 15 minutes when traveling
+    // Update time display every minute
+    _timeUpdateTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      _updateTimeDisplay();
+    });
+
+    // Refresh weather every 15 minutes when traveling
     _updateTimer = Timer.periodic(const Duration(minutes: 15), (_) {
       _onRefreshCallback?.call();
     });
+  }
+
+  /// Update just the time display without full refresh
+  Future<void> _updateTimeDisplay() async {
+    if (!_isRunning) return;
+    try {
+      await _channel.invokeMethod('updateNotification', {
+        'condition': _condition,
+        'temperature': _temperature,
+        'nextPrayer': _nextPrayer,
+        'nextPrayerTime': _nextPrayerTime,
+        'city': _city,
+        'lastUpdated': _getTimeSinceUpdate(),
+      });
+    } catch (_) {}
+  }
+
+  /// Get human-readable time since last update
+  String _getTimeSinceUpdate() {
+    if (_lastUpdated == null) return 'now';
+    final diff = DateTime.now().difference(_lastUpdated!);
+    if (diff.inMinutes < 1) return 'now';
+    if (diff.inMinutes == 1) return '1 min ago';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
+    if (diff.inHours == 1) return '1 hour ago';
+    return '${diff.inHours} hours ago';
   }
 
   /// Stop background updates
   void _stopBackgroundUpdates() {
     _updateTimer?.cancel();
     _updateTimer = null;
+    _timeUpdateTimer?.cancel();
+    _timeUpdateTimer = null;
   }
 
   /// Toggle notification based on traveling mode

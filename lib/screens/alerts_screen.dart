@@ -682,9 +682,14 @@ class _AlertsScreenState extends State<AlertsScreen>
       metaItems.add(_buildMetaItem(
           Icons.info_outline, 'Match', data['match_reason'], fg));
     }
-    if (data['radius'] != null) {
+    if (data['zone_name'] != null) {
       metaItems.add(
-          _buildMetaItem(Icons.radar, 'Radius', '${data['radius']} km', fg));
+          _buildMetaItem(Icons.place, 'Zone', data['zone_name'], fg));
+    }
+    if (data['mode'] != null) {
+      final modeLabel = data['mode'] == 'polygon' ? 'Custom Area' : 'Radius';
+      metaItems.add(
+          _buildMetaItem(Icons.radar, 'Coverage', modeLabel, fg));
     }
 
     if (metaItems.isEmpty) return const SizedBox.shrink();

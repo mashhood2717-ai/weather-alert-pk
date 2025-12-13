@@ -2,12 +2,14 @@
 // Handles manual alerts from admin portal with location-based targeting
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/weather_alert.dart';
 import 'alert_storage_service.dart';
+import 'favorites_service.dart';
 import 'notification_service.dart';
 
 class ManualAlertService {
@@ -26,19 +28,14 @@ class ManualAlertService {
   /// Initialize manual alert listening
   Future<void> initialize() async {
     try {
-      print('ManualAlertService: Starting initialization...');
       await _getDeviceId();
-      print('ManualAlertService: Device ID = $_deviceId');
 
       // Don't await location - do it in background
-      _updateUserLocation().catchError((e) {
-        print('ManualAlertService: Location update error: $e');
-      });
+      _updateUserLocation().catchError((_) {});
 
       _listenForManualAlerts();
-      print('ManualAlertService initialized successfully');
-    } catch (e) {
-      print('ManualAlertService: Initialization error: $e');
+    } catch (_) {
+      // Initialization error handled silently
     }
   }
 
@@ -72,8 +69,6 @@ class ManualAlertService {
 
       if (permission == LocationPermission.deniedForever ||
           permission == LocationPermission.denied) {
-        print(
-            'Location permission denied - using subscribed cities for alerts');
         return;
       }
 
@@ -95,103 +90,94 @@ class ManualAlertService {
           'lastUpdated': FieldValue.serverTimestamp(),
           'platform': 'android',
         }, SetOptions(merge: true));
-
-        print(
-            'User location updated: ${_lastKnownPosition!.latitude}, ${_lastKnownPosition!.longitude}');
       }
     } catch (e) {
-      print('Error updating user location: $e');
+      // Silently handle location update errors
     }
   }
 
   /// Listen for new manual alerts
   void _listenForManualAlerts() {
-    print('Setting up manual alerts listener...');
-
     _alertSubscription = _firestore
         .collection('manual_alerts')
         .orderBy('timestamp', descending: true)
         .limit(10)
         .snapshots()
         .listen((snapshot) {
-      print('Firestore snapshot received: ${snapshot.docs.length} documents');
       for (var change in snapshot.docChanges) {
-        print('Document change: ${change.type} - ${change.doc.id}');
         if (change.type == DocumentChangeType.added) {
           _processNewAlert(change.doc);
         }
       }
-    }, onError: (e) {
-      print('Error listening for manual alerts: $e');
     });
-
-    print('Listening for manual alerts...');
   }
 
   /// Process a new alert and check if user should receive it
   Future<void> _processNewAlert(DocumentSnapshot doc) async {
     try {
       final data = doc.data() as Map<String, dynamic>?;
-      if (data == null) {
-        print('Alert data is null');
-        return;
-      }
+      if (data == null) return;
 
       final alertId = doc.id;
-      print('Processing alert: $alertId');
-      print('Alert data: $data');
 
       // Check if already processed
       final prefs = await SharedPreferences.getInstance();
       final processedAlerts =
           prefs.getStringList('processed_manual_alerts') ?? [];
       if (processedAlerts.contains(alertId)) {
-        print('Alert already processed: $alertId');
         return; // Already shown this alert
       }
 
       // Get alert location
       final location = data['location'] as Map<String, dynamic>?;
-      if (location == null) {
-        print('Alert has no location data');
-        return;
-      }
+      if (location == null) return;
 
       final alertLat = (location['lat'] as num?)?.toDouble();
       final alertLng = (location['lng'] as num?)?.toDouble();
       final radiusKm = (location['radius'] as num?)?.toDouble() ?? 25.0;
       final cityName = location['city'] as String? ?? 'Unknown';
+      final mode = location['mode'] as String? ?? 'radius';
+      final polygon = location['polygon'] as List<dynamic>?;
 
-      print(
-          'Alert location: $cityName ($alertLat, $alertLng) radius: ${radiusKm}km');
+      // Ensure we have fresh location for checking
+      if (_lastKnownPosition == null) {
+        try {
+          _lastKnownPosition = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.low,
+          );
+        } catch (e) {
+          // GPS not available
+        }
+      }
 
-      // Check if user is within radius
+      // Check if user is within target area
       bool shouldReceive = false;
       String matchReason = '';
 
       // Method 1: Check by GPS location
-      if (_lastKnownPosition != null && alertLat != null && alertLng != null) {
-        final distance = _calculateDistance(
-          _lastKnownPosition!.latitude,
-          _lastKnownPosition!.longitude,
-          alertLat,
-          alertLng,
-        );
-        print('User distance from alert: ${distance.toStringAsFixed(1)}km');
+      if (_lastKnownPosition != null) {
+        final userLat = _lastKnownPosition!.latitude;
+        final userLng = _lastKnownPosition!.longitude;
 
-        if (distance <= radiusKm) {
-          shouldReceive = true;
-          matchReason =
-              'You are within ${distance.toStringAsFixed(1)}km of the alert area';
+        if (mode == 'polygon' && polygon != null && polygon.length >= 3) {
+          if (_isPointInPolygon(userLat, userLng, polygon)) {
+            shouldReceive = true;
+            matchReason = 'You are inside the alert zone';
+          }
+        } else if (alertLat != null && alertLng != null) {
+          final distance =
+              _calculateDistance(userLat, userLng, alertLat, alertLng);
+          if (distance <= radiusKm) {
+            shouldReceive = true;
+            matchReason =
+                'You are within ${distance.toStringAsFixed(1)}km of the alert area';
+          }
         }
-      } else {
-        print('No GPS position available for distance check');
       }
 
       // Method 2: Check by subscribed cities
       if (!shouldReceive) {
         final subscribedCities = prefs.getStringList('subscribed_cities') ?? [];
-        print('User subscribed cities: $subscribedCities');
         final alertCity = cityName.toLowerCase();
 
         for (final city in subscribedCities) {
@@ -199,18 +185,34 @@ class ManualAlertService {
               city.toLowerCase().contains(alertCity)) {
             shouldReceive = true;
             matchReason = 'Alert for your subscribed city: $cityName';
-            print('City match found: $city matches $alertCity');
             break;
           }
         }
       }
 
+      // Method 3: Check by favorite locations
       if (!shouldReceive) {
-        print('Alert not relevant for user: $cityName (radius: ${radiusKm}km)');
-        return;
+        final favorites = await _getFavoriteLocations(prefs);
+
+        for (final fav in favorites) {
+          if (mode == 'polygon' && polygon != null && polygon.length >= 3) {
+            if (_isPointInPolygon(fav.lat, fav.lon, polygon)) {
+              matchReason = 'Alert affects your favorite location: ${fav.name}';
+              break;
+            }
+          } else if (alertLat != null && alertLng != null) {
+            final distance =
+                _calculateDistance(fav.lat, fav.lon, alertLat, alertLng);
+            if (distance <= radiusKm) {
+              shouldReceive = true;
+              matchReason = 'Alert affects your favorite location: ${fav.name}';
+              break;
+            }
+          }
+        }
       }
 
-      print('✅ User should receive this alert! Reason: $matchReason');
+      if (!shouldReceive) return;
 
       // Mark as processed
       processedAlerts.add(alertId);
@@ -230,25 +232,29 @@ class ManualAlertService {
         receivedAt: DateTime.now(),
         data: {
           'type': data['type'] ?? 'other',
-          'radius': radiusKm.toString(),
+          'mode': mode,
+          'zone_name': location['zoneName'] ?? cityName,
           'match_reason': matchReason,
           'source': 'admin_portal',
         },
       );
 
-      // Save to storage
+      // Save to storage (for alerts history)
       await _alertStorage.saveAlert(alert);
 
-      // Show notification
+      // Show local notification since Cloud Functions may not be deployed
+      // This ensures user gets notified when app detects they're in alert zone
       await _notificationService.showWeatherAlert(
-        title: '${_getAlertEmoji(data['type'])} ${alert.title}',
-        body: '📍 $cityName\n${alert.body}',
-        severity: alert.severity ?? 'medium',
+        title: alert.title,
+        body: '${alert.city}: ${alert.body}',
+        payload: jsonEncode({
+          'type': 'manual_alert',
+          'alert_id': alertId,
+          'city': cityName,
+        }),
       );
-
-      print('Manual alert shown: ${alert.title} for $cityName');
     } catch (e) {
-      print('Error processing manual alert: $e');
+      // Error processing alert
     }
   }
 
@@ -273,26 +279,42 @@ class ManualAlertService {
 
   double _toRadians(double degrees) => degrees * pi / 180;
 
-  String _getAlertEmoji(String? type) {
-    switch (type) {
-      case 'rain':
-        return '🌧️';
-      case 'heat':
-        return '🌡️';
-      case 'cold':
-        return '❄️';
-      case 'storm':
-        return '⛈️';
-      case 'wind':
-        return '💨';
-      case 'fog':
-        return '🌫️';
-      case 'dust':
-        return '🌪️';
-      case 'snow':
-        return '🌨️';
-      default:
-        return '⚠️';
+  /// Check if a point is inside a polygon using ray casting algorithm
+  bool _isPointInPolygon(double lat, double lng, List<dynamic> polygon) {
+    if (polygon.length < 3) return false;
+
+    bool inside = false;
+    final n = polygon.length;
+
+    for (int i = 0, j = n - 1; i < n; j = i++) {
+      final pi = polygon[i] as Map<String, dynamic>;
+      final pj = polygon[j] as Map<String, dynamic>;
+
+      final xi = (pi['lat'] as num?)?.toDouble() ?? 0;
+      final yi = (pi['lng'] as num?)?.toDouble() ?? 0;
+      final xj = (pj['lat'] as num?)?.toDouble() ?? 0;
+      final yj = (pj['lng'] as num?)?.toDouble() ?? 0;
+
+      final intersect = (yi > lng) != (yj > lng) &&
+          lat < (xj - xi) * (lng - yi) / (yj - yi) + xi;
+
+      if (intersect) inside = !inside;
+    }
+
+    return inside;
+  }
+
+  /// Get favorite locations from SharedPreferences
+  Future<List<FavoriteLocation>> _getFavoriteLocations(
+      SharedPreferences prefs) async {
+    try {
+      final String? favoritesJson = prefs.getString('favorite_locations');
+      if (favoritesJson == null) return [];
+
+      final List<dynamic> decoded = jsonDecode(favoritesJson);
+      return decoded.map((json) => FavoriteLocation.fromJson(json)).toList();
+    } catch (e) {
+      return [];
     }
   }
 
