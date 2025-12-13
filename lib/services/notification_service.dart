@@ -498,8 +498,8 @@ class NotificationService {
     if (!Platform.isAndroid) return true;
 
     try {
-      final androidPlugin = _localNotifications
-          .resolvePlatformSpecificImplementation<
+      final androidPlugin =
+          _localNotifications.resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>();
 
       if (androidPlugin == null) return false;
@@ -536,8 +536,8 @@ class NotificationService {
   Future<bool> canScheduleExactAlarms() async {
     if (!Platform.isAndroid) return true;
     try {
-      final androidPlugin = _localNotifications
-          .resolvePlatformSpecificImplementation<
+      final androidPlugin =
+          _localNotifications.resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>();
       if (androidPlugin == null) return false;
       return await androidPlugin.canScheduleExactNotifications() ?? false;
@@ -752,8 +752,8 @@ class NotificationService {
         Int64List.fromList([0, 500, 200, 500, 200, 500, 200, 500]);
 
     // Use inexact if exact alarms not available
-    final scheduleMode = canScheduleExact 
-        ? AndroidScheduleMode.exactAllowWhileIdle 
+    final scheduleMode = canScheduleExact
+        ? AndroidScheduleMode.exactAllowWhileIdle
         : AndroidScheduleMode.inexactAllowWhileIdle;
 
     print('📅 Using schedule mode: $scheduleMode');
@@ -789,8 +789,9 @@ class NotificationService {
         matchDateTimeComponents: null,
         payload: 'prayer_test',
       );
-      print('✅ Test prayer notification scheduled for $tzScheduledTime (30 seconds from now)');
-      
+      print(
+          '✅ Test prayer notification scheduled for $tzScheduledTime (30 seconds from now)');
+
       // Check pending notifications
       final pending = await getPendingNotifications();
       print('📋 Pending notifications count: ${pending.length}');
@@ -814,10 +815,10 @@ class NotificationService {
   Future<void> scheduleTestWithDelay() async {
     print('📅 Starting delayed notification test...');
     print('📅 Notification will show in 10 seconds...');
-    
+
     // Delay 10 seconds then show immediately
     await Future.delayed(const Duration(seconds: 10));
-    
+
     await showImmediatePrayerNotification('Delayed Test');
   }
 
@@ -827,17 +828,17 @@ class NotificationService {
     print('🧪 ========== DUAL SCHEDULING TEST ==========');
     print('🧪 Testing both zonedSchedule AND Future.delayed simultaneously');
     print('🧪 Current time: ${DateTime.now()}');
-    
+
     _ensureTimezoneInitialized();
-    
+
     // Check permissions
     final canScheduleExact = await canScheduleExactAlarms();
     print('🧪 Can schedule exact alarms: $canScheduleExact');
-    
+
     // === Method 1: zonedSchedule (AlarmManager) ===
     final scheduledTime = DateTime.now().add(const Duration(seconds: 15));
     final tzScheduledTime = tz.TZDateTime.from(scheduledTime, tz.local);
-    
+
     try {
       await _localNotifications.zonedSchedule(
         997, // Different ID for this test
@@ -857,13 +858,13 @@ class NotificationService {
             category: AndroidNotificationCategory.alarm,
           ),
         ),
-        androidScheduleMode: canScheduleExact 
-            ? AndroidScheduleMode.exactAllowWhileIdle 
+        androidScheduleMode: canScheduleExact
+            ? AndroidScheduleMode.exactAllowWhileIdle
             : AndroidScheduleMode.inexactAllowWhileIdle,
         payload: 'test_alarmmanager',
       );
       print('🧪 ✅ zonedSchedule registered for: $tzScheduledTime');
-      
+
       // Verify it's in pending
       final pending = await getPendingNotifications();
       final found = pending.any((n) => n.id == 997);
@@ -871,7 +872,7 @@ class NotificationService {
     } catch (e) {
       print('🧪 ❌ zonedSchedule error: $e');
     }
-    
+
     // === Method 2: Dart Timer (in-memory) ===
     print('🧪 Starting Dart Timer for 15 seconds...');
     Future.delayed(const Duration(seconds: 15), () async {
@@ -894,10 +895,11 @@ class NotificationService {
         payload: 'test_timer',
       );
     });
-    
+
     print('🧪 ========================================');
     print('🧪 Both methods scheduled. Watch for:');
-    print('🧪   - ID 996: Dart Timer (orange) - should always work if app open');
+    print(
+        '🧪   - ID 996: Dart Timer (orange) - should always work if app open');
     print('🧪   - ID 997: AlarmManager (green) - tests system scheduling');
     print('🧪 If only 996 appears, AlarmManager is being blocked');
     print('🧪 ========================================');

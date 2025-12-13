@@ -185,7 +185,8 @@ class _PrayerWidgetState extends State<PrayerWidget> {
   Future<void> _testDualScheduling() async {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('🧪 Testing BOTH methods - watch for 2 notifications in 15 sec...'),
+        content: Text(
+            '🧪 Testing BOTH methods - watch for 2 notifications in 15 sec...'),
         duration: Duration(seconds: 4),
       ),
     );
@@ -724,7 +725,10 @@ class _PrayerWidgetState extends State<PrayerWidget> {
               children: [
                 Text(
                   '🔋 OnePlus/Oppo/Xiaomi phones block scheduled notifications',
-                  style: TextStyle(color: Colors.red.shade700, fontSize: 12, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                      color: Colors.red.shade700,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 4),
@@ -738,7 +742,8 @@ class _PrayerWidgetState extends State<PrayerWidget> {
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: () async {
-                      await NotificationService().openBatteryOptimizationSettings();
+                      await NotificationService()
+                          .openBatteryOptimizationSettings();
                     },
                     icon: const Icon(Icons.battery_saver, size: 18),
                     label: const Text('Disable Battery Optimization'),

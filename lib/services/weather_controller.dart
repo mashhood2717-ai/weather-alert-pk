@@ -85,16 +85,76 @@ class WeatherController {
   // Pakistan airports with coordinates (lat, lon, ICAO) and custom radius
   // Updated coordinates for new Islamabad International Airport
   static const List<Map<String, dynamic>> _airports = [
-    {"icao": "OPIS", "lat": 33.5605, "lon": 72.8495, "name": "Islamabad", "radius": 40.0}, // 40km - covers twin cities
-    {"icao": "OPLA", "lat": 31.5216, "lon": 74.4036, "name": "Lahore", "radius": 30.0},
-    {"icao": "OPFA", "lat": 31.3650, "lon": 72.9950, "name": "Faisalabad", "radius": 30.0},
-    {"icao": "OPKC", "lat": 24.9065, "lon": 67.1608, "name": "Karachi", "radius": 40.0}, // 40km - large metro
-    {"icao": "OPST", "lat": 32.5356, "lon": 74.3639, "name": "Sialkot", "radius": 30.0},
-    {"icao": "OPMT", "lat": 30.2032, "lon": 71.4191, "name": "Multan", "radius": 30.0},
-    {"icao": "OPPS", "lat": 33.9939, "lon": 71.5147, "name": "Peshawar", "radius": 30.0},
-    {"icao": "OPQT", "lat": 30.2514, "lon": 66.9378, "name": "Quetta", "radius": 30.0},
-    {"icao": "OPGD", "lat": 25.2333, "lon": 62.3294, "name": "Gwadar", "radius": 30.0},
-    {"icao": "OPKD", "lat": 25.3181, "lon": 68.3661, "name": "Hyderabad", "radius": 30.0},
+    {
+      "icao": "OPIS",
+      "lat": 33.5605,
+      "lon": 72.8495,
+      "name": "Islamabad",
+      "radius": 40.0
+    }, // 40km - covers twin cities
+    {
+      "icao": "OPLA",
+      "lat": 31.5216,
+      "lon": 74.4036,
+      "name": "Lahore",
+      "radius": 30.0
+    },
+    {
+      "icao": "OPFA",
+      "lat": 31.3650,
+      "lon": 72.9950,
+      "name": "Faisalabad",
+      "radius": 30.0
+    },
+    {
+      "icao": "OPKC",
+      "lat": 24.9065,
+      "lon": 67.1608,
+      "name": "Karachi",
+      "radius": 40.0
+    }, // 40km - large metro
+    {
+      "icao": "OPST",
+      "lat": 32.5356,
+      "lon": 74.3639,
+      "name": "Sialkot",
+      "radius": 30.0
+    },
+    {
+      "icao": "OPMT",
+      "lat": 30.2032,
+      "lon": 71.4191,
+      "name": "Multan",
+      "radius": 30.0
+    },
+    {
+      "icao": "OPPS",
+      "lat": 33.9939,
+      "lon": 71.5147,
+      "name": "Peshawar",
+      "radius": 30.0
+    },
+    {
+      "icao": "OPQT",
+      "lat": 30.2514,
+      "lon": 66.9378,
+      "name": "Quetta",
+      "radius": 30.0
+    },
+    {
+      "icao": "OPGD",
+      "lat": 25.2333,
+      "lon": 62.3294,
+      "name": "Gwadar",
+      "radius": 30.0
+    },
+    {
+      "icao": "OPKD",
+      "lat": 25.3181,
+      "lon": 68.3661,
+      "name": "Hyderabad",
+      "radius": 30.0
+    },
   ];
 
   /// Calculate distance between two coordinates in km (Haversine formula)
@@ -289,7 +349,7 @@ class WeatherController {
     if (icao == null && cityName != null) {
       icao = icaoFromCity(cityName);
     }
-    
+
     final json = await OpenMeteoService.fetchWeather(lat, lon);
 
     if (json != null) {
@@ -377,21 +437,21 @@ class WeatherController {
         // Update city name if current city is "Unknown", generic, or force update requested
         String? newCityName;
         final currentCity = current.value!.city;
-        
+
         // Get the geocoded main location (has special Rawalpindi handling)
         final mainLocation = result.mainLocationName;
-        
+
         // Force update for GPS locations, or if current city is generic
         final shouldUpdateCity = forceUpdateCity ||
             currentCity == 'Unknown' ||
             currentCity.isEmpty ||
             currentCity.startsWith('Lat:');
-        
+
         // Special case: Always prefer Rawalpindi over Islamabad
         // If geocoding says Rawalpindi but city shows Islamabad, update it
         final isCurrentIslamabad = currentCity.toLowerCase() == 'islamabad';
         final isGeocodedRawalpindi = mainLocation.toLowerCase() == 'rawalpindi';
-        
+
         if (shouldUpdateCity || (isCurrentIslamabad && isGeocodedRawalpindi)) {
           if (mainLocation != 'Unknown') {
             newCityName = mainLocation;
@@ -549,7 +609,8 @@ class WeatherController {
   double? _currentUserLat;
   double? _currentUserLon;
 
-  void _createCurrentFromMetarOnly(Map<String, dynamic> m, {double? userLat, double? userLon}) {
+  void _createCurrentFromMetarOnly(Map<String, dynamic> m,
+      {double? userLat, double? userLon}) {
     String metarRawText = m["raw_text"]?.toString().toUpperCase() ?? "";
     String primaryCode = _extractPrimaryMetarCode(metarRawText);
 
@@ -563,7 +624,7 @@ class WeatherController {
 
     final stationIcao = m["station"]?.toString().toUpperCase() ?? "";
     String cityName = lastCitySearched ?? "Unknown";
-    
+
     // Get airport coordinates for METAR station
     double airportLat = 0.0;
     double airportLon = 0.0;
@@ -579,13 +640,17 @@ class WeatherController {
     // Use user's actual location if provided, otherwise fall back to airport location
     final displayLat = userLat ?? _currentUserLat ?? airportLat;
     final displayLon = userLon ?? _currentUserLon ?? airportLon;
-    
+
     // Calculate distance from user to airport
     double? distanceToAirport;
     if (userLat != null && userLon != null && airportLat != 0.0) {
-      distanceToAirport = _calculateDistance(userLat, userLon, airportLat, airportLon);
-    } else if (_currentUserLat != null && _currentUserLon != null && airportLat != 0.0) {
-      distanceToAirport = _calculateDistance(_currentUserLat!, _currentUserLon!, airportLat, airportLon);
+      distanceToAirport =
+          _calculateDistance(userLat, userLon, airportLat, airportLon);
+    } else if (_currentUserLat != null &&
+        _currentUserLon != null &&
+        airportLat != 0.0) {
+      distanceToAirport = _calculateDistance(
+          _currentUserLat!, _currentUserLon!, airportLat, airportLon);
     }
 
     current.value = CurrentWeather(
