@@ -37,7 +37,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   static const int _cacheMinutes = 15; // Cache duration in minutes
 
   // Motorway selection
-  String _selectedMotorwayId = 'm2'; // Default to M2 Islamabad-Lahore
+  String _selectedMotorwayId = 'm2'; // Default to M2 (Islamabad-Lahore)
 
   // Search state
   String? _fromId; // null means current location
@@ -153,9 +153,6 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
 
     // Fetch current location weather
     await _fetchCurrentLocationWeather();
-
-    // Update UI with fetched weather
-    if (mounted) setState(() {});
 
     // Load route data
     await _loadRoute();
@@ -1102,24 +1099,21 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
 
   /// Initial view showing route selection before loading data
   Widget _buildRouteSelectionView() {
-    // Check destination based on route type
     final hasDestination = _toId != null;
-
-    String? destinationName;
-    if (hasDestination) {
-      destinationName = _currentMotorwayPoints
-          .firstWhere((p) => p.id == _toId,
-              orElse: () => _currentMotorwayPoints.last)
-          .name;
-    }
+    final destinationName = hasDestination
+        ? _currentMotorwayPoints
+            .firstWhere((p) => p.id == _toId,
+                orElse: () => _currentMotorwayPoints.last)
+            .name
+        : null;
 
     // Calculate route preview (without loading weather)
-    final previewPoints = !hasDestination
-        ? <MotorwayPoint>[]
-        : (_fromId == null
+    final previewPoints = hasDestination
+        ? (_fromId == null
             ? PakistanMotorways.getPointsTo(_selectedMotorwayId, _toId!)
             : PakistanMotorways.getPointsBetween(
-                _selectedMotorwayId, _fromId!, _toId!));
+                _selectedMotorwayId, _fromId!, _toId!))
+        : <MotorwayPoint>[];
 
     final totalDistance = previewPoints.isNotEmpty
         ? previewPoints.last.distanceFromStart -
@@ -1470,9 +1464,6 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   Widget _buildSearchSection() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      constraints: BoxConstraints(
-        maxHeight: _showFromSearch || _showToSearch ? 280 : 200,
-      ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
         child: BackdropFilter(
@@ -1483,58 +1474,54 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: Colors.white.withOpacity(0.2)),
             ),
-            padding: const EdgeInsets.all(12),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Motorway Selector
-                  _buildMotorwaySelector(),
-                  const SizedBox(height: 10),
-                  // Motorway search
-                  // From field
-                  _buildSearchField(
-                    label: 'From',
-                    value: _fromId == null
-                        ? 'Current Location'
-                        : _currentMotorwayPoints
-                            .firstWhere((p) => p.id == _fromId,
-                                orElse: () => _currentMotorwayPoints.first)
-                            .name,
-                    icon: Icons.my_location,
-                    isActive: _showFromSearch,
-                    controller: _fromSearchController,
-                    onTap: () {
-                      setState(() {
-                        _showFromSearch = !_showFromSearch;
-                        _showToSearch = false;
-                      });
-                    },
-                  ),
-                  if (_showFromSearch) _buildSearchDropdown(isFrom: true),
-                  const SizedBox(height: 12),
-                  // To field
-                  _buildSearchField(
-                    label: 'To',
-                    value: _toId == null
-                        ? 'Select Destination'
-                        : _currentMotorwayPoints
-                            .firstWhere((p) => p.id == _toId,
-                                orElse: () => _currentMotorwayPoints.last)
-                            .name,
-                    icon: Icons.location_on,
-                    isActive: _showToSearch,
-                    controller: _toSearchController,
-                    onTap: () {
-                      setState(() {
-                        _showToSearch = !_showToSearch;
-                        _showFromSearch = false;
-                      });
-                    },
-                  ),
-                  if (_showToSearch) _buildSearchDropdown(isFrom: false),
-                ],
-              ),
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                // Motorway Selector
+                _buildMotorwaySelector(),
+                const SizedBox(height: 12),
+                // From field
+                _buildSearchField(
+                  label: 'From',
+                  value: _fromId == null
+                      ? 'Current Location'
+                      : _currentMotorwayPoints
+                          .firstWhere((p) => p.id == _fromId,
+                              orElse: () => _currentMotorwayPoints.first)
+                          .name,
+                  icon: Icons.my_location,
+                  isActive: _showFromSearch,
+                  controller: _fromSearchController,
+                  onTap: () {
+                    setState(() {
+                      _showFromSearch = !_showFromSearch;
+                      _showToSearch = false;
+                    });
+                  },
+                ),
+                if (_showFromSearch) _buildSearchDropdown(isFrom: true),
+                const SizedBox(height: 12),
+                // To field
+                _buildSearchField(
+                  label: 'To',
+                  value: _toId == null
+                      ? 'Select Destination'
+                      : _currentMotorwayPoints
+                          .firstWhere((p) => p.id == _toId,
+                              orElse: () => _currentMotorwayPoints.last)
+                          .name,
+                  icon: Icons.location_on,
+                  isActive: _showToSearch,
+                  controller: _toSearchController,
+                  onTap: () {
+                    setState(() {
+                      _showToSearch = !_showToSearch;
+                      _showFromSearch = false;
+                    });
+                  },
+                ),
+                if (_showToSearch) _buildSearchDropdown(isFrom: false),
+              ],
             ),
           ),
         ),
@@ -1543,8 +1530,6 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   }
 
   Widget _buildMotorwaySelector() {
-    final routeOptions = PakistanMotorways.motorways;
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
@@ -1559,7 +1544,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
           icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white),
           dropdownColor: _darkBlue,
           style: const TextStyle(color: Colors.white),
-          items: routeOptions.map((motorway) {
+          items: PakistanMotorways.motorways.map((motorway) {
             return DropdownMenuItem<String>(
               value: motorway.id,
               child: Row(
@@ -1576,26 +1561,21 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
                           motorway.name,
                           style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w600,
-                            fontSize: 13,
+                            fontSize: 14,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
                         Text(
                           '${motorway.subtitle} • ${motorway.distanceKm} km',
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.7),
-                            fontSize: 10,
+                            fontSize: 11,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
@@ -1614,8 +1594,6 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                 _routePoints = [];
                 _roadRoutePoints = [];
                 _routeConfirmed = false;
-                _fromSearchController.clear();
-                _toSearchController.clear();
               });
             }
           },
@@ -3061,71 +3039,9 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   }
 
   Widget _buildMapWeatherCard() {
-    // Try to get METAR from current location or closest route point
-    Map<String, dynamic>? metar = _currentLocationMetar;
-
-    // During navigation, try to get METAR from closest route point if available
-    if (_isNavigating &&
-        _routePoints.isNotEmpty &&
-        _currentPointIndex < _routePoints.length) {
-      final closestPoint =
-          _routePoints[_currentPointIndex.clamp(0, _routePoints.length - 1)];
-      // Check if we have METAR data for this point (airports like Islamabad, Lahore)
-      if (_metarData.containsKey(closestPoint.point.id) &&
-          _metarData[closestPoint.point.id] != null) {
-        metar = _metarData[closestPoint.point.id];
-      }
-    }
-
-    // Fallback: check if any route point has METAR data
-    if (metar == null && _routePoints.isNotEmpty) {
-      for (final point in _routePoints) {
-        if (_metarData.containsKey(point.point.id) &&
-            _metarData[point.point.id] != null) {
-          metar = _metarData[point.point.id];
-          break;
-        }
-      }
-    }
-
-    final hasMetar = metar != null;
-
-    // Try to get weather from current location, or from closest route point during navigation
-    Map<String, dynamic>? weather = _currentLocationWeather;
-
-    // During navigation, use weather from current/closest route point if available
-    if (_isNavigating &&
-        _routePoints.isNotEmpty &&
-        _currentPointIndex < _routePoints.length) {
-      final closestPoint =
-          _routePoints[_currentPointIndex.clamp(0, _routePoints.length - 1)];
-      if (closestPoint.weather != null) {
-        weather = {
-          'temp_c': closestPoint.weather!.tempC,
-          'humidity': closestPoint.weather!.humidity,
-          'wind_kph': closestPoint.weather!.windKph,
-          'condition': closestPoint.weather!.condition,
-          'icon': closestPoint.weather!.icon,
-        };
-      }
-    }
-
-    // Fallback: if still no weather and route points exist, use first point's weather
-    if (weather == null && _routePoints.isNotEmpty) {
-      final firstWithWeather = _routePoints.firstWhere(
-        (p) => p.weather != null,
-        orElse: () => _routePoints.first,
-      );
-      if (firstWithWeather.weather != null) {
-        weather = {
-          'temp_c': firstWithWeather.weather!.tempC,
-          'humidity': firstWithWeather.weather!.humidity,
-          'wind_kph': firstWithWeather.weather!.windKph,
-          'condition': firstWithWeather.weather!.condition,
-          'icon': firstWithWeather.weather!.icon,
-        };
-      }
-    }
+    final hasMetar = _currentLocationMetar != null;
+    final metar = _currentLocationMetar;
+    final weather = _currentLocationWeather;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
@@ -3176,7 +3092,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                       children: [
                         Text(
                           hasMetar
-                              ? '${metar['temp_c'] ?? '--'}°C'
+                              ? '${metar?['temp_c'] ?? '--'}°C'
                               : '${weather?['temp_c']?.toStringAsFixed(0) ?? '--'}°C',
                           style: TextStyle(
                             fontSize: 24,
@@ -3215,7 +3131,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                     const SizedBox(height: 4),
                     Text(
                       hasMetar
-                          ? (metar['condition_text'] ?? 'Current Weather')
+                          ? (metar?['condition_text'] ?? 'Current Weather')
                           : (weather?['condition'] ?? 'Current Weather'),
                       style: TextStyle(
                         fontSize: 13,
@@ -3236,21 +3152,21 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                   _buildMapWeatherStat(
                     Icons.water_drop,
                     hasMetar
-                        ? '${metar['humidity'] ?? '--'}%'
+                        ? '${metar?['humidity'] ?? '--'}%'
                         : '${weather?['humidity'] ?? '--'}%',
                   ),
                   const SizedBox(height: 6),
                   _buildMapWeatherStat(
                     Icons.air,
                     hasMetar
-                        ? '${metar['wind_kph'] ?? '--'} km/h'
+                        ? '${metar?['wind_kph'] ?? '--'} km/h'
                         : '${weather?['wind_kph']?.toStringAsFixed(0) ?? '--'} km/h',
                   ),
                   if (hasMetar) ...[
                     const SizedBox(height: 6),
                     _buildMapWeatherStat(
                       Icons.visibility,
-                      '${metar['visibility_km'] ?? '--'} km',
+                      '${metar?['visibility_km'] ?? '--'} km',
                     ),
                   ],
                 ],
@@ -3456,26 +3372,18 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   }
 
   Widget _buildRouteInfoCard() {
-    // Get start/end point names from motorway points
-    String startPoint;
-    String endPoint;
-
-    startPoint = _fromId == null
+    final startPoint = _fromId == null
         ? 'Current Location'
-        : (_currentMotorwayPoints.isNotEmpty
-            ? _currentMotorwayPoints
-                .firstWhere((p) => p.id == _fromId,
-                    orElse: () => _currentMotorwayPoints.first)
-                .name
-            : 'Start');
-    endPoint = _toId == null
+        : _currentMotorwayPoints
+            .firstWhere((p) => p.id == _fromId,
+                orElse: () => _currentMotorwayPoints.first)
+            .name;
+    final endPoint = _toId == null
         ? 'Destination'
-        : (_currentMotorwayPoints.isNotEmpty
-            ? _currentMotorwayPoints
-                .firstWhere((p) => p.id == _toId,
-                    orElse: () => _currentMotorwayPoints.last)
-                .name
-            : 'End');
+        : _currentMotorwayPoints
+            .firstWhere((p) => p.id == _toId,
+                orElse: () => _currentMotorwayPoints.last)
+            .name;
 
     // Calculate total distance and ETA
     final totalDistance = _routePoints.isNotEmpty
