@@ -128,12 +128,14 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.medium,
       );
-      _currentPosition = position;
+      if (mounted) {
+        setState(() => _currentPosition = position);
+      }
       // DON'T load route here - wait for user to confirm destination
     } catch (e) {
-      setState(() => _error = 'Failed to get location: $e');
+      if (mounted) setState(() => _error = 'Failed to get location: $e');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -333,7 +335,10 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       );
 
       if (airport != null) {
-        _currentLocationMetar = await fetchMetar(airport['icao']);
+        final metar = await fetchMetar(airport['icao']);
+        if (mounted && metar != null) {
+          setState(() => _currentLocationMetar = metar);
+        }
       }
 
       // Fetch weather from OpenMeteo
@@ -348,14 +353,16 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
         ),
       ]);
 
-      if (weather.isNotEmpty) {
-        _currentLocationWeather = {
-          'temp_c': weather[0].tempC,
-          'humidity': weather[0].humidity,
-          'wind_kph': weather[0].windKph,
-          'condition': weather[0].condition,
-          'icon': weather[0].icon,
-        };
+      if (weather.isNotEmpty && mounted) {
+        setState(() {
+          _currentLocationWeather = {
+            'temp_c': weather[0].tempC,
+            'humidity': weather[0].humidity,
+            'wind_kph': weather[0].windKph,
+            'condition': weather[0].condition,
+            'icon': weather[0].icon,
+          };
+        });
       }
     } catch (e) {
       debugPrint('Error fetching current location weather: $e');
