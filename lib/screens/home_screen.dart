@@ -1860,19 +1860,27 @@ Is GPS: ${controller.isFromCurrentLocation}
               final metarTempC = controller.metar!["temp_c"];
               final metarWindKph = controller.metar!["wind_kph"];
               final metarDewC = controller.metar!["dewpoint_c"];
-              final tempDisplay = metarTempC != null
+              
+              // Safe parsing for values that might be String or num
+              double? parseDouble(dynamic v) {
+                if (v == null || v == '--') return null;
+                if (v is num) return v.toDouble();
+                return double.tryParse(v.toString());
+              }
+              
+              final tempDisplay = parseDouble(metarTempC) != null
                   ? _settings
-                      .convertTemperature((metarTempC as num).toDouble())
+                      .convertTemperature(parseDouble(metarTempC)!)
                       .toStringAsFixed(1)
                   : "--";
-              final windDisplay = metarWindKph != null
+              final windDisplay = parseDouble(metarWindKph) != null
                   ? _settings
-                      .convertWindSpeedHybrid((metarWindKph as num).toDouble())
+                      .convertWindSpeedHybrid(parseDouble(metarWindKph)!)
                       .toStringAsFixed(0)
                   : "--";
-              final dewDisplay = metarDewC != null
+              final dewDisplay = parseDouble(metarDewC) != null
                   ? _settings
-                      .convertTemperature((metarDewC as num).toDouble())
+                      .convertTemperature(parseDouble(metarDewC)!)
                       .toStringAsFixed(1)
                   : "--";
               return MetarTile(

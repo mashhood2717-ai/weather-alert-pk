@@ -2,10 +2,10 @@
 
 import 'dart:convert';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/motorway_point.dart';
 import '../secrets.dart';
-import 'open_meteo_service.dart';
 
 /// Simple lat/lng class for route points (renamed to avoid conflict with google_maps_flutter)
 class RouteLatLng {
@@ -73,12 +73,102 @@ class RouteData {
   });
 }
 
+/// Simple cache wrapper for weather data
+class _CachedWeather {
+  final TravelWeather weather;
+  final DateTime fetchedAt;
+  _CachedWeather(this.weather) : fetchedAt = DateTime.now();
+
+  bool get isValid => DateTime.now().difference(fetchedAt).inMinutes < 10;
+}
+
 /// Service to fetch travel route data, weather, and ETAs
 class TravelWeatherService {
   static TravelWeatherService? _instance;
   static TravelWeatherService get instance =>
       _instance ??= TravelWeatherService._();
   TravelWeatherService._();
+
+  // In-memory weather cache with timestamp (cache for 10 minutes)
+  static final Map<String, _CachedWeather> _weatherCache = {};
+
+  /// Clear the weather cache (call when loading a new route)
+  void clearWeatherCache() {
+    _weatherCache.clear();
+    debugPrint('🗑️ Weather cache cleared');
+  }
+
+  // Cloudflare Worker URL for Pakistan METAR
+  static const String _workerUrl =
+      'https://travel-weather-api.mashhood2717.workers.dev';
+
+  // Worker is deployed and ready
+  static const bool _useWorker = true;
+
+  /// Fetch weather + METAR from Cloudflare Worker (single request)
+  /// Returns a map with 'weather' and 'metar' data
+  Future<Map<String, dynamic>> fetchTravelDataFromWorker({
+    required List<MotorwayPoint> points,
+    required List<String> icaoCodes,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$_workerUrl/travel-weather'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'points': points
+                  .map((p) => {
+                        'id': p.id,
+                        'lat': p.lat,
+                        'lon': p.lon,
+                      })
+                  .toList(),
+              'icao_codes': icaoCodes,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      throw Exception('Worker error: ${response.statusCode}');
+    } catch (e) {
+      debugPrint('Worker fetch failed: $e');
+      rethrow;
+    }
+  }
+
+  /// Convert worker weather response to TravelWeather objects
+  List<TravelWeather> parseWorkerWeather(
+    Map<String, dynamic> weatherMap,
+    List<MotorwayPoint> points,
+  ) {
+    return points.map((point) {
+      final data = weatherMap[point.id] as Map<String, dynamic>?;
+      if (data == null || data['error'] != null) {
+        return TravelWeather(
+          tempC: 0,
+          condition: 'Unknown',
+          icon: '',
+          humidity: 0,
+          windKph: 0,
+        );
+      }
+      return TravelWeather(
+        tempC: (data['temp_c'] as num?)?.toDouble() ?? 0,
+        condition: data['condition'] as String? ?? 'Unknown',
+        icon: data['icon'] as String? ?? '',
+        humidity: (data['humidity'] as num?)?.toInt() ?? 0,
+        windKph: (data['wind_kph'] as num?)?.toDouble() ?? 0,
+        rainChance: null, // WeatherAPI doesn't include in current
+      );
+    }).toList();
+  }
+
+  /// Check if worker is enabled and configured
+  bool get isWorkerEnabled =>
+      _useWorker && !_workerUrl.contains('YOUR_SUBDOMAIN');
 
   /// Get full route with road-level polyline from Google Directions API
   Future<RouteData?> getRoutePolyline({
@@ -170,7 +260,7 @@ class TravelWeatherService {
                   step['polyline']['points'] != null) {
                 final stepPolyline = step['polyline']['points'] as String;
                 final stepPoints = _decodePolyline(stepPolyline);
-                
+
                 // Add points, avoiding duplicates at step boundaries
                 for (final pt in stepPoints) {
                   if (detailedPoints.isEmpty ||
@@ -188,7 +278,8 @@ class TravelWeatherService {
               ? detailedPoints
               : _decodePolyline(overviewPolyline);
 
-          print('🛣️ Route polyline: ${finalPoints.length} points (detailed from ${steps.length} steps)');
+          print(
+              '🛣️ Route polyline: ${finalPoints.length} points (detailed from ${steps.length} steps)');
 
           return RouteData(
             polylinePoints: finalPoints,
@@ -437,61 +528,192 @@ class TravelWeatherService {
     throw Exception('Failed to get directions');
   }
 
-  /// Batch fetch weather for multiple points
+  /// Batch fetch weather for multiple points using Cloudflare Worker
+  /// This is much faster as it fetches all points in a single request
   Future<List<TravelWeather>> getWeatherForPoints(
     List<MotorwayPoint> points,
   ) async {
-    final List<TravelWeather> weatherList = [];
+    // Check cache first for all points
+    final results = <int, TravelWeather>{};
+    final pointsToFetch = <int, MotorwayPoint>{};
 
-    for (final point in points) {
-      try {
-        final weather = await _fetchWeatherForPoint(point.lat, point.lon);
-        weatherList.add(weather);
-      } catch (e) {
-        // Add placeholder weather on error
-        weatherList.add(TravelWeather(
-          tempC: 0,
-          condition: 'Unknown',
-          icon: '',
-          humidity: 0,
-          windKph: 0,
-        ));
+    for (int i = 0; i < points.length; i++) {
+      final point = points[i];
+      final cacheKey =
+          '${point.lat.toStringAsFixed(2)}_${point.lon.toStringAsFixed(2)}';
+
+      final cached = _weatherCache[cacheKey];
+      if (cached != null && cached.isValid) {
+        results[i] = cached.weather;
+        debugPrint('📋 Weather cache HIT: ${point.name}');
+      } else {
+        pointsToFetch[i] = point;
       }
     }
 
-    return weatherList;
+    debugPrint(
+        '🌤️ Weather: ${results.length} cached, ${pointsToFetch.length} to fetch');
+
+    if (pointsToFetch.isEmpty) {
+      return List.generate(points.length, (i) => results[i]!);
+    }
+
+    // Batch fetch from Cloudflare Worker
+    try {
+      final requestPoints = pointsToFetch.entries.map((e) => {
+        'id': e.value.id,  // Use actual point ID (m2_17, etc.) for worker cache lookup
+        'idx': e.key.toString(),  // Also send index for response mapping
+        'lat': e.value.lat,
+        'lon': e.value.lon,
+        'name': e.value.name,
+      }).toList();
+
+      debugPrint('🚀 Fetching ${requestPoints.length} points from worker...');
+      
+      final response = await http.post(
+        Uri.parse('$travelWeatherWorkerUrl/travel-weather'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'points': requestPoints}),
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final weatherData = data['weather'] as Map<String, dynamic>? ?? {};
+
+        for (final entry in weatherData.entries) {
+          // Look up by point ID to find the index
+          final pointId = entry.key;
+          int? idx;
+          for (final e in pointsToFetch.entries) {
+            if (e.value.id == pointId) {
+              idx = e.key;
+              break;
+            }
+          }
+          if (idx != null) {
+            final w = entry.value as Map<String, dynamic>;
+            final source = w['source']?.toString() ?? 'weatherapi';
+            final weather = TravelWeather(
+              tempC: (w['temp_c'] as num?)?.toDouble() ?? 0,
+              condition: w['condition']?.toString() ?? 'Unknown',
+              icon: w['icon']?.toString() ?? '',
+              humidity: (w['humidity'] as num?)?.toInt() ?? 0,
+              windKph: (w['wind_kph'] as num?)?.toDouble() ?? 0,
+              rainChance: null, // Worker doesn't provide this yet
+            );
+            results[idx] = weather;
+            
+            // Cache the result
+            final point = pointsToFetch[idx]!;
+            final cacheKey =
+                '${point.lat.toStringAsFixed(2)}_${point.lon.toStringAsFixed(2)}';
+            _weatherCache[cacheKey] = _CachedWeather(weather);
+            
+            // Log with source indicator
+            if (source == 'metar') {
+              debugPrint('✅ METAR: ${point.name} = ${weather.tempC}°C (${w['airport_name']})');
+            } else {
+              debugPrint('✅ WeatherAPI: ${point.name} = ${weather.tempC}°C');
+            }
+          }
+        }
+        
+        debugPrint('✅ Worker batch complete: ${weatherData.length} points');
+      } else {
+        debugPrint('❌ Worker error: ${response.statusCode}');
+        // Fall back to individual fetches
+        await _fetchWeatherIndividually(pointsToFetch, results);
+      }
+    } catch (e) {
+      debugPrint('❌ Worker batch failed: $e');
+      // Fall back to individual fetches using WeatherAPI directly
+      await _fetchWeatherIndividually(pointsToFetch, results);
+    }
+
+    // Fill any missing with default
+    for (int i = 0; i < points.length; i++) {
+      results.putIfAbsent(i, () => TravelWeather(
+        tempC: 0,
+        condition: 'Unknown',
+        icon: '',
+        humidity: 0,
+        windKph: 0,
+      ));
+    }
+
+    return List.generate(points.length, (i) => results[i]!);
   }
 
-  /// Fetch weather for a single point
-  Future<TravelWeather> _fetchWeatherForPoint(double lat, double lon) async {
-    final json = await OpenMeteoService.fetchWeather(lat, lon);
-    if (json == null) throw Exception('Weather fetch failed');
+  /// Fallback: fetch weather individually using WeatherAPI
+  Future<void> _fetchWeatherIndividually(
+    Map<int, MotorwayPoint> pointsToFetch,
+    Map<int, TravelWeather> results,
+  ) async {
+    debugPrint('⚠️ Falling back to individual WeatherAPI fetches...');
+    
+    final entries = pointsToFetch.entries.toList();
+    for (int i = 0; i < entries.length; i += 5) {
+      final batch = entries.skip(i).take(5).toList();
 
-    final current = json['current'] as Map<String, dynamic>?;
-    if (current == null) throw Exception('No current weather');
+      final futures = batch.map((entry) async {
+        try {
+          final weather = await _fetchWeatherFromWeatherAPI(
+            entry.value.lat, 
+            entry.value.lon,
+          );
+          final cacheKey =
+              '${entry.value.lat.toStringAsFixed(2)}_${entry.value.lon.toStringAsFixed(2)}';
+          _weatherCache[cacheKey] = _CachedWeather(weather);
+          debugPrint('✅ WeatherAPI: ${entry.value.name} = ${weather.tempC}°C');
+          return MapEntry(entry.key, weather);
+        } catch (e) {
+          debugPrint('❌ WeatherAPI FAILED for ${entry.value.name}: $e');
+          return MapEntry(
+            entry.key,
+            TravelWeather(
+              tempC: 0,
+              condition: 'Unknown',
+              icon: '',
+              humidity: 0,
+              windKph: 0,
+            ),
+          );
+        }
+      }).toList();
 
-    final weatherCode = current['weather_code'] ?? 0;
-    final isDay = current['is_day'] == 1;
-    final condition = OpenMeteoService.getWeatherDescription(weatherCode);
-    final icon = OpenMeteoService.getWeatherIcon(weatherCode, isDay);
+      final fetched = await Future.wait(futures);
+      for (final entry in fetched) {
+        results[entry.key] = entry.value;
+      }
 
-    // Get rain chance from hourly if available
-    double? rainChance;
-    final hourly = json['hourly'] as Map<String, dynamic>?;
-    if (hourly != null) {
-      final precipProb = hourly['precipitation_probability'] as List?;
-      if (precipProb != null && precipProb.isNotEmpty) {
-        rainChance = (precipProb[0] as num?)?.toDouble();
+      if (i + 5 < entries.length) {
+        await Future.delayed(const Duration(milliseconds: 200));
       }
     }
+  }
 
+  /// Fetch weather from WeatherAPI.com directly (fallback)
+  Future<TravelWeather> _fetchWeatherFromWeatherAPI(double lat, double lon) async {
+    final url = Uri.parse(
+      'https://api.weatherapi.com/v1/current.json?key=$weatherApiKey&q=$lat,$lon&aqi=no',
+    );
+    
+    final response = await http.get(url).timeout(const Duration(seconds: 10));
+    
+    if (response.statusCode != 200) {
+      throw Exception('WeatherAPI error: ${response.statusCode}');
+    }
+    
+    final data = jsonDecode(response.body);
+    final current = data['current'];
+    
     return TravelWeather(
-      tempC: (current['temperature_2m'] as num?)?.toDouble() ?? 0,
-      condition: condition,
-      icon: icon,
-      humidity: (current['relative_humidity_2m'] as num?)?.toInt() ?? 0,
-      windKph: (current['wind_speed_10m'] as num?)?.toDouble() ?? 0,
-      rainChance: rainChance,
+      tempC: (current['temp_c'] as num?)?.toDouble() ?? 0,
+      condition: current['condition']?['text']?.toString() ?? 'Unknown',
+      icon: current['condition']?['icon']?.toString() ?? '',
+      humidity: (current['humidity'] as num?)?.toInt() ?? 0,
+      windKph: (current['wind_kph'] as num?)?.toDouble() ?? 0,
+      rainChance: null,
     );
   }
 

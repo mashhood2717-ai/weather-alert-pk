@@ -3,7 +3,7 @@ import 'dart:math';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
-import '../services/metar_service.dart';
+import '../metar_service.dart';
 import '../services/open_meteo_service.dart';
 import '../services/geocoding_service.dart';
 import '../utils/icon_mapper.dart';
@@ -91,7 +91,7 @@ class WeatherController {
       "lon": 72.8495,
       "name": "Islamabad",
       "radius": 40.0
-    }, // 40km - covers twin cities
+    },
     {
       "icao": "OPLA",
       "lat": 31.5216,
@@ -198,6 +198,32 @@ class WeatherController {
     return nearestAirport;
   }
 
+  /// Get the nearest airport within a maximum distance (for travel routes)
+  /// This is less strict than getAirportFromCoordinates which uses airport-specific radii
+  Map<String, dynamic>? getNearestAirport(double lat, double lon,
+      {double maxDistanceKm = 100}) {
+    Map<String, dynamic>? nearestAirport;
+    double nearestDistance = double.infinity;
+
+    for (final airport in _airports) {
+      final distance = _calculateDistance(
+          lat, lon, airport["lat"] as double, airport["lon"] as double);
+      if (distance <= maxDistanceKm && distance < nearestDistance) {
+        final airportRadius = (airport["radius"] as double?) ?? 30.0;
+        nearestAirport = {
+          "icao": airport["icao"],
+          "lat": airport["lat"],
+          "lon": airport["lon"],
+          "name": airport["name"],
+          "radius": airportRadius,
+          "distance": distance,
+        };
+        nearestDistance = distance;
+      }
+    }
+    return nearestAirport;
+  }
+
   /// Get ICAO code if location is within airport's custom radius
   String? icaoFromCoordinates(double lat, double lon) {
     final airport = getAirportFromCoordinates(lat, lon);
@@ -275,9 +301,6 @@ class WeatherController {
     lastCitySearched = city;
     isFromCurrentLocation = false; // This is a search, not GPS location
 
-    final isIcao = RegExp(r'^[A-Za-z]{4}$').hasMatch(city.trim());
-    final icao = icaoFromCity(city);
-
     // Show cached data instantly if available
     await loadCachedWeather();
 
@@ -288,54 +311,37 @@ class WeatherController {
       rawWeatherJson = json;
       _parseForecastsOnly(json);
       await saveWeatherToCache(json);
-    }
 
-    // If direct ICAO code entered, use METAR for current weather
-    if (isIcao) {
-      final m = await fetchMetar(city.toUpperCase());
-      if (m != null) {
-        metar = m;
-        _createCurrentFromMetarOnly(m);
-        metarApplied = true;
-        // Fetch street address in background
-        if (current.value != null) {
-          _fetchAndUpdateStreetAddress(current.value!.lat, current.value!.lon);
-        }
-        onDataLoaded?.call();
-        return;
-      }
-    }
-
-    // If major Pakistani city, use METAR for current weather
-    if (icao != null) {
-      final m = await fetchMetar(icao);
-      if (m != null) {
-        metar = m;
-        _createCurrentFromMetarOnly(m);
-        metarApplied = true;
-        // Fetch street address in background
-        if (current.value != null) {
-          _fetchAndUpdateStreetAddress(current.value!.lat, current.value!.lon);
-        }
-        onDataLoaded?.call();
-        return;
-      }
-    }
-
-    // Otherwise use API data for current weather
-    if (json != null) {
-      _parseCurrentWeather(json);
-      // Fetch street address and wait for it to complete
+      // Get coordinates from the geocoded result
       final lat = _toD(json['latitude']);
       final lon = _toD(json['longitude']);
+
+      // Try worker METAR first (cached, no API calls)
+      if (lat != 0.0 && lon != 0.0) {
+        final workerMetar = await fetchMetarFromWorker(lat, lon);
+        if (workerMetar != null) {
+          metar = workerMetar;
+          _currentUserLat = lat;
+          _currentUserLon = lon;
+          _createCurrentFromMetarOnly(workerMetar, userLat: lat, userLon: lon);
+          metarApplied = true;
+          debugPrint('✅ Using WORKER METAR for city: $city');
+          await _fetchAndUpdateStreetAddress(lat, lon);
+          onDataLoaded?.call();
+          return;
+        }
+      }
+
+      // Outside METAR range - use Open-Meteo (free)
+      debugPrint('📍 City outside METAR range - using Open-Meteo (free)');
+      _parseCurrentWeather(json);
+      metarApplied = false;
+      metar = null;
       if (lat != 0.0 && lon != 0.0) {
         await _fetchAndUpdateStreetAddress(lat, lon);
       }
+      onDataLoaded?.call();
     }
-
-    metarApplied = false;
-    metar = null;
-    onDataLoaded?.call();
   }
 
   /// Load weather by coordinates (from search/favorites - not GPS)
@@ -343,12 +349,6 @@ class WeatherController {
       {String? cityName, bool isCurrentLocation = false}) async {
     lastCitySearched = cityName;
     isFromCurrentLocation = isCurrentLocation;
-
-    // Check by coordinates first, then fallback to city name match
-    String? icao = icaoFromCoordinates(lat, lon);
-    if (icao == null && cityName != null) {
-      icao = icaoFromCity(cityName);
-    }
 
     final json = await OpenMeteoService.fetchWeather(lat, lon);
 
@@ -360,25 +360,25 @@ class WeatherController {
       _parseForecastsOnly(json);
       await saveWeatherToCache(json);
 
-      if (icao != null) {
-        final m = await fetchMetar(icao);
-        if (m != null) {
-          metar = m;
-          _currentUserLat = lat;
-          _currentUserLon = lon;
-          _createCurrentFromMetarOnly(m, userLat: lat, userLon: lon);
-          metarApplied = true;
-          // Fetch street address and wait for it to complete
-          await _fetchAndUpdateStreetAddress(lat, lon);
-          onDataLoaded?.call();
-          return;
-        }
+      // Try worker METAR first (cached, no API calls)
+      final workerMetar = await fetchMetarFromWorker(lat, lon);
+      if (workerMetar != null) {
+        metar = workerMetar;
+        _currentUserLat = lat;
+        _currentUserLon = lon;
+        _createCurrentFromMetarOnly(workerMetar, userLat: lat, userLon: lon);
+        metarApplied = true;
+        debugPrint('✅ Using WORKER METAR for current weather');
+        await _fetchAndUpdateStreetAddress(lat, lon);
+        onDataLoaded?.call();
+        return;
       }
 
+      // Outside METAR range - use Open-Meteo (free)
+      debugPrint('📍 Outside METAR range - using Open-Meteo (free)');
       _parseCurrentWeather(json);
       metarApplied = false;
       metar = null;
-      // Fetch street address and wait for it to complete
       await _fetchAndUpdateStreetAddress(lat, lon);
       onDataLoaded?.call();
     }
@@ -392,7 +392,6 @@ class WeatherController {
       final lat = position.latitude;
       final lon = position.longitude;
 
-      final icao = icaoFromCoordinates(lat, lon);
       final json = await OpenMeteoService.fetchWeather(lat, lon);
 
       if (json != null) {
@@ -400,25 +399,25 @@ class WeatherController {
         _parseForecastsOnly(json);
         await saveWeatherToCache(json);
 
-        if (icao != null) {
-          final m = await fetchMetar(icao);
-          if (m != null) {
-            metar = m;
-            _currentUserLat = lat;
-            _currentUserLon = lon;
-            _createCurrentFromMetarOnly(m, userLat: lat, userLon: lon);
-            metarApplied = true;
-            // Fetch street address and wait for it to complete - force update for GPS location
-            await _fetchAndUpdateStreetAddress(lat, lon, forceUpdateCity: true);
-            onDataLoaded?.call();
-            return;
-          }
+        // Try worker METAR first (cached, no API calls)
+        final workerMetar = await fetchMetarFromWorker(lat, lon);
+        if (workerMetar != null) {
+          metar = workerMetar;
+          _currentUserLat = lat;
+          _currentUserLon = lon;
+          _createCurrentFromMetarOnly(workerMetar, userLat: lat, userLon: lon);
+          metarApplied = true;
+          debugPrint('✅ Using WORKER METAR for GPS location');
+          await _fetchAndUpdateStreetAddress(lat, lon, forceUpdateCity: true);
+          onDataLoaded?.call();
+          return;
         }
 
+        // Outside METAR range - use Open-Meteo (free)
+        debugPrint('📍 GPS outside METAR range - using Open-Meteo (free)');
         _parseCurrentWeather(json);
         metarApplied = false;
         metar = null;
-        // Fetch street address and wait for it to complete - force update for GPS location
         await _fetchAndUpdateStreetAddress(lat, lon, forceUpdateCity: true);
         onDataLoaded?.call();
       }

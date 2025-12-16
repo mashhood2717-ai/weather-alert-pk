@@ -133,6 +133,22 @@ class NotificationService {
     enableVibration: true,
   );
 
+  // Navigation notification channel (persistent, like Google Maps)
+  static const AndroidNotificationChannel _navigationChannel =
+      AndroidNotificationChannel(
+    'navigation_channel',
+    'Navigation',
+    description: 'Turn-by-turn navigation directions',
+    importance:
+        Importance.low, // Low importance = no sound, stays in notification bar
+    playSound: false,
+    enableVibration: false,
+    showBadge: false,
+  );
+
+  // Navigation notification ID (constant so we can update it)
+  static const int _navigationNotificationId = 9999;
+
   Future<void> initialize() async {
     // Request permission
     NotificationSettings settings = await _messaging.requestPermission(
@@ -169,6 +185,7 @@ class NotificationService {
       await androidPlugin.createNotificationChannel(_channelLow);
       await androidPlugin.createNotificationChannel(_prayerChannel);
       await androidPlugin.createNotificationChannel(_prayerReminderChannel);
+      await androidPlugin.createNotificationChannel(_navigationChannel);
     }
 
     // Initialize timezone for scheduled notifications
@@ -912,5 +929,75 @@ class NotificationService {
     await _localNotifications.cancel(998);
     await _localNotifications.cancel(999);
     print('🧹 Test notifications cancelled (IDs 996-999)');
+  }
+
+  // ==================== NAVIGATION NOTIFICATIONS ====================
+
+  /// Show navigation notification (like Google Maps)
+  /// Call this when navigation starts
+  Future<void> showNavigationNotification({
+    required String instruction,
+    required String distance,
+    String? roadName,
+    int? remainingMinutes,
+  }) async {
+    final String title = instruction;
+    final String body = roadName != null ? '$distance • $roadName' : distance;
+    final String? subText =
+        remainingMinutes != null ? '${remainingMinutes} min remaining' : null;
+
+    final AndroidNotificationDetails androidDetails =
+        AndroidNotificationDetails(
+      _navigationChannel.id,
+      _navigationChannel.name,
+      channelDescription: _navigationChannel.description,
+      importance: Importance.low,
+      priority: Priority.low,
+      ongoing: true, // Makes it persistent (can't be swiped away)
+      autoCancel: false,
+      showWhen: false,
+      playSound: false,
+      enableVibration: false,
+      category: AndroidNotificationCategory.navigation,
+      visibility: NotificationVisibility.public,
+      subText: subText,
+      styleInformation: const BigTextStyleInformation(''),
+      icon: '@mipmap/ic_launcher',
+      colorized: true,
+      color: const Color(0xFF1565C0), // Blue color
+    );
+
+    final NotificationDetails details = NotificationDetails(
+      android: androidDetails,
+    );
+
+    await _localNotifications.show(
+      _navigationNotificationId,
+      title,
+      body,
+      details,
+    );
+  }
+
+  /// Update navigation notification with new instruction
+  Future<void> updateNavigationNotification({
+    required String instruction,
+    required String distance,
+    String? roadName,
+    int? remainingMinutes,
+  }) async {
+    // Just call show again - it will update the existing notification
+    await showNavigationNotification(
+      instruction: instruction,
+      distance: distance,
+      roadName: roadName,
+      remainingMinutes: remainingMinutes,
+    );
+  }
+
+  /// Cancel navigation notification
+  /// Call this when navigation ends
+  Future<void> cancelNavigationNotification() async {
+    await _localNotifications.cancel(_navigationNotificationId);
   }
 }

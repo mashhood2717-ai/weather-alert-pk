@@ -37,6 +37,7 @@ class TravelPoint {
   final String? nextPrayer;
   final String? nextPrayerTime;
   final bool isPassed;
+  final int distanceFromUser; // Dynamic distance in km from user's start position
 
   TravelPoint({
     required this.point,
@@ -46,6 +47,7 @@ class TravelPoint {
     this.nextPrayer,
     this.nextPrayerTime,
     this.isPassed = false,
+    this.distanceFromUser = 0,
   });
 
   TravelPoint copyWith({
@@ -55,6 +57,7 @@ class TravelPoint {
     String? nextPrayer,
     String? nextPrayerTime,
     bool? isPassed,
+    int? distanceFromUser,
   }) {
     return TravelPoint(
       point: point,
@@ -64,6 +67,7 @@ class TravelPoint {
       nextPrayer: nextPrayer ?? this.nextPrayer,
       nextPrayerTime: nextPrayerTime ?? this.nextPrayerTime,
       isPassed: isPassed ?? this.isPassed,
+      distanceFromUser: distanceFromUser ?? this.distanceFromUser,
     );
   }
 }
@@ -85,6 +89,26 @@ class TravelWeather {
     required this.windKph,
     this.rainChance,
   });
+
+  Map<String, dynamic> toJson() => {
+        'tempC': tempC,
+        'condition': condition,
+        'icon': icon,
+        'humidity': humidity,
+        'windKph': windKph,
+        'rainChance': rainChance,
+      };
+
+  factory TravelWeather.fromJson(Map<String, dynamic> json) => TravelWeather(
+        tempC: (json['tempC'] as num).toDouble(),
+        condition: json['condition'] as String,
+        icon: json['icon'] as String,
+        humidity: json['humidity'] as int,
+        windKph: (json['windKph'] as num).toDouble(),
+        rainChance: json['rainChance'] != null
+            ? (json['rainChance'] as num).toDouble()
+            : null,
+      );
 }
 
 /// M2 Motorway Data (Islamabad to Lahore)
@@ -109,7 +133,7 @@ class M2Motorway {
       name: 'Thalian',
       lat: 33.535637,
       lon: 72.901509,
-      type: PointType.interchange,
+      type: PointType.tollPlaza,
       distanceFromStart: 8,
     ),
     MotorwayPoint(
@@ -117,7 +141,7 @@ class M2Motorway {
       name: 'Capital Smart City',
       lat: 33.455312,
       lon: 72.836096,
-      type: PointType.interchange,
+      type: PointType.tollPlaza,
       distanceFromStart: 22,
     ),
     MotorwayPoint(
@@ -125,7 +149,7 @@ class M2Motorway {
       name: 'Chakri',
       lat: 33.30822,
       lon: 72.78097,
-      type: PointType.serviceArea,
+      type: PointType.tollPlaza,
       distanceFromStart: 40,
       facilities: 'Rest Area, Fuel, Food',
     ),
@@ -134,7 +158,7 @@ class M2Motorway {
       name: 'Neelah Dullah',
       lat: 33.16597,
       lon: 72.65091,
-      type: PointType.interchange,
+      type: PointType.tollPlaza,
       distanceFromStart: 60,
     ),
     MotorwayPoint(
@@ -142,7 +166,7 @@ class M2Motorway {
       name: 'Balkasar',
       lat: 32.93740,
       lon: 72.68220,
-      type: PointType.interchange,
+      type: PointType.tollPlaza,
       distanceFromStart: 85,
     ),
     MotorwayPoint(
@@ -150,7 +174,7 @@ class M2Motorway {
       name: 'Kallar Kahar',
       lat: 32.77400,
       lon: 72.71890,
-      type: PointType.serviceArea,
+      type: PointType.tollPlaza,
       distanceFromStart: 105,
       facilities: 'Rest Area, Food Court, Fuel, Mosque',
     ),
@@ -159,7 +183,7 @@ class M2Motorway {
       name: 'Lillah',
       lat: 32.57670,
       lon: 72.79930,
-      type: PointType.interchange,
+      type: PointType.tollPlaza,
       distanceFromStart: 130,
     ),
     MotorwayPoint(
@@ -167,7 +191,7 @@ class M2Motorway {
       name: 'Bhera',
       lat: 32.46050,
       lon: 72.87490,
-      type: PointType.interchange,
+      type: PointType.tollPlaza,
       distanceFromStart: 150,
     ),
     MotorwayPoint(
@@ -175,7 +199,7 @@ class M2Motorway {
       name: 'Salam',
       lat: 32.31410,
       lon: 73.01990,
-      type: PointType.interchange,
+      type: PointType.tollPlaza,
       distanceFromStart: 175,
     ),
     MotorwayPoint(
@@ -183,7 +207,7 @@ class M2Motorway {
       name: 'Kot Momin',
       lat: 32.19940,
       lon: 73.03220,
-      type: PointType.interchange,
+      type: PointType.tollPlaza,
       distanceFromStart: 195,
     ),
     MotorwayPoint(
@@ -191,7 +215,7 @@ class M2Motorway {
       name: 'Sial Morr/Makhdoom',
       lat: 31.97300,
       lon: 73.10800,
-      type: PointType.serviceArea,
+      type: PointType.tollPlaza,
       distanceFromStart: 220,
       facilities: 'Rest Area, Fuel, Food',
     ),
@@ -200,7 +224,7 @@ class M2Motorway {
       name: 'Pindi Bhattian',
       lat: 31.93165,
       lon: 73.28644,
-      type: PointType.interchange,
+      type: PointType.tollPlaza,
       distanceFromStart: 240,
     ),
     MotorwayPoint(
@@ -208,7 +232,7 @@ class M2Motorway {
       name: 'Kot Sarwar',
       lat: 31.91450,
       lon: 73.49960,
-      type: PointType.interchange,
+      type: PointType.tollPlaza,
       distanceFromStart: 262,
     ),
     MotorwayPoint(
@@ -216,7 +240,7 @@ class M2Motorway {
       name: 'Khangah Dogran',
       lat: 31.87418,
       lon: 73.66956,
-      type: PointType.interchange,
+      type: PointType.tollPlaza,
       distanceFromStart: 280,
     ),
     MotorwayPoint(
@@ -224,7 +248,7 @@ class M2Motorway {
       name: 'Hiran Minar',
       lat: 31.76670,
       lon: 73.95070,
-      type: PointType.serviceArea,
+      type: PointType.tollPlaza,
       distanceFromStart: 305,
       facilities: 'Rest Area, Fuel, Food, Historical Site',
     ),
@@ -233,7 +257,7 @@ class M2Motorway {
       name: 'Sheikhupura',
       lat: 31.747390,
       lon: 74.007271,
-      type: PointType.interchange,
+      type: PointType.tollPlaza,
       distanceFromStart: 315,
     ),
     MotorwayPoint(
@@ -241,7 +265,7 @@ class M2Motorway {
       name: 'Kot Pindi Daas',
       lat: 31.69770,
       lon: 74.16670,
-      type: PointType.interchange,
+      type: PointType.tollPlaza,
       distanceFromStart: 335,
     ),
     MotorwayPoint(
@@ -249,7 +273,7 @@ class M2Motorway {
       name: 'Faizpur',
       lat: 31.592222,
       lon: 74.218446,
-      type: PointType.interchange,
+      type: PointType.tollPlaza,
       distanceFromStart: 352,
     ),
     MotorwayPoint(
@@ -257,17 +281,18 @@ class M2Motorway {
       name: 'Ravi Toll Plaza',
       lat: 31.55840,
       lon: 74.24170,
-      type: PointType.destination,
+      type: PointType.tollPlaza,
       distanceFromStart: 367,
       facilities: 'Toll Plaza, Fuel',
     ),
   ];
 
-  /// Get points from start to destination
+  /// Get ALL points on the motorway - direction will be determined by
+  /// _filterPointsOnRoute based on user's actual GPS position
   static List<MotorwayPoint> getPointsTo(String destinationId) {
-    final destIndex = points.indexWhere((p) => p.id == destinationId);
-    if (destIndex == -1) return points;
-    return points.sublist(0, destIndex + 1);
+    // Return ALL points - the screen will filter based on user position
+    // and determine the correct travel direction
+    return List<MotorwayPoint>.from(points);
   }
 
   /// Get points between two points
@@ -391,11 +416,12 @@ class M1Motorway {
     ),
   ];
 
-  /// Get points from start to destination
+  /// Get ALL points on the motorway - direction will be determined by
+  /// _filterPointsOnRoute based on user's actual GPS position
   static List<MotorwayPoint> getPointsTo(String destinationId) {
-    final destIndex = points.indexWhere((p) => p.id == destinationId);
-    if (destIndex == -1) return points;
-    return points.sublist(0, destIndex + 1);
+    // Return ALL points - the screen will filter based on user position
+    // and determine the correct travel direction
+    return List<MotorwayPoint>.from(points);
   }
 
   /// Get points between two points
@@ -426,6 +452,13 @@ class PakistanMotorways {
       subtitle: 'Islamabad - Peshawar',
       distanceKm: 155,
     ),
+    MotorwayInfo(
+      id: 'm1m2',
+      name: 'M1 + M2 Combined',
+      subtitle: 'Lahore - Peshawar (via Islamabad)',
+      distanceKm: 522, // 367 + 155
+      isCombined: true,
+    ),
   ];
 
   /// Get all points for a motorway
@@ -433,10 +466,58 @@ class PakistanMotorways {
     switch (motorwayId) {
       case 'm1':
         return M1Motorway.points;
+      case 'm1m2':
+        return getCombinedM1M2Points();
       case 'm2':
       default:
         return M2Motorway.points;
     }
+  }
+
+  /// Get combined M1+M2 points for Lahore to Peshawar journey
+  /// Points are ordered: Lahore -> Islamabad (M2) -> Peshawar (M1)
+  static List<MotorwayPoint> getCombinedM1M2Points() {
+    // M2: Lahore to Islamabad (reversed since M2 is ISB to LHR)
+    final m2Points = M2Motorway.points.reversed.toList();
+    
+    // M1: Islamabad to Peshawar
+    final m1Points = M1Motorway.points.toList();
+    
+    // Combine: M2 reversed + M1 (skip first M1 point as it's near M2 end)
+    final combined = <MotorwayPoint>[];
+    
+    // Add all M2 points (Lahore to Islamabad direction)
+    int cumulativeDistance = 0;
+    for (int i = 0; i < m2Points.length; i++) {
+      final p = m2Points[i];
+      final distFromLahore = M2Motorway.totalDistanceKm - p.distanceFromStart;
+      combined.add(MotorwayPoint(
+        id: p.id,
+        name: p.name,
+        lat: p.lat,
+        lon: p.lon,
+        type: p.type,
+        distanceFromStart: distFromLahore,
+        facilities: p.facilities,
+      ));
+      cumulativeDistance = distFromLahore;
+    }
+    
+    // Add M1 points (skip first one which is Islamabad - already covered)
+    for (int i = 1; i < m1Points.length; i++) {
+      final p = m1Points[i];
+      combined.add(MotorwayPoint(
+        id: p.id,
+        name: p.name,
+        lat: p.lat,
+        lon: p.lon,
+        type: p.type,
+        distanceFromStart: cumulativeDistance + p.distanceFromStart,
+        facilities: p.facilities,
+      ));
+    }
+    
+    return combined;
   }
 
   /// Get points to destination on specific motorway
@@ -445,6 +526,8 @@ class PakistanMotorways {
     switch (motorwayId) {
       case 'm1':
         return M1Motorway.getPointsTo(destinationId);
+      case 'm1m2':
+        return getCombinedM1M2Points();
       case 'm2':
       default:
         return M2Motorway.getPointsTo(destinationId);
@@ -457,10 +540,27 @@ class PakistanMotorways {
     switch (motorwayId) {
       case 'm1':
         return M1Motorway.getPointsBetween(fromId, toId);
+      case 'm1m2':
+        return _getCombinedPointsBetween(fromId, toId);
       case 'm2':
       default:
         return M2Motorway.getPointsBetween(fromId, toId);
     }
+  }
+  
+  /// Get points between two points on the combined M1+M2 route
+  static List<MotorwayPoint> _getCombinedPointsBetween(String fromId, String toId) {
+    final allPoints = getCombinedM1M2Points();
+    final fromIndex = allPoints.indexWhere((p) => p.id == fromId);
+    final toIndex = allPoints.indexWhere((p) => p.id == toId);
+    
+    if (fromIndex == -1 || toIndex == -1) return allPoints;
+    
+    if (fromIndex > toIndex) {
+      // Reverse direction (Peshawar to Lahore)
+      return allPoints.sublist(toIndex, fromIndex + 1).reversed.toList();
+    }
+    return allPoints.sublist(fromIndex, toIndex + 1);
   }
 }
 
@@ -470,11 +570,13 @@ class MotorwayInfo {
   final String name;
   final String subtitle;
   final int distanceKm;
+  final bool isCombined;
 
   const MotorwayInfo({
     required this.id,
     required this.name,
     required this.subtitle,
     required this.distanceKm,
+    this.isCombined = false,
   });
 }

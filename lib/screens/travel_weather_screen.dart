@@ -4,6 +4,8 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,8 +13,10 @@ import 'dart:convert';
 import '../models/motorway_point.dart';
 import '../services/travel_weather_service.dart';
 import '../services/prayer_service.dart';
+import '../services/notification_service.dart';
 import '../metar_service.dart';
 import '../services/weather_controller.dart';
+import '../utils/icon_mapper.dart';
 
 class TravelWeatherScreen extends StatefulWidget {
   final bool isDay;
@@ -24,7 +28,7 @@ class TravelWeatherScreen extends StatefulWidget {
 }
 
 class _TravelWeatherScreenState extends State<TravelWeatherScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   // View toggle: 0 = Timeline, 1 = Map
   int _currentView = 0;
 
@@ -33,8 +37,20 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   bool _isNavigating = false; // NEW: Real-time navigation mode
   double _currentSpeed = 0.0; // Current speed in km/h
 
-  // Cache settings
-  static const int _cacheMinutes = 15; // Cache duration in minutes
+  // Departure time selection
+  DateTime? _departureTime; // null means "Now"
+
+  // Timeline slider state
+  bool _showTimelineSlider = false;
+  double _sliderValue = 0.0; // 0.0 to 1.0 representing position along route
+  int _sliderPointIndex = 0; // Current point index based on slider
+  bool _isSliderPlaying = false; // Auto-play slider
+  Timer? _sliderPlayTimer; // Timer for auto-play
+
+  // Map layer selection
+  String _selectedMapLayer =
+      'temp'; // 'temp', 'humidity', 'visibility', 'wind', 'uv'
+  bool _showLayerPicker = false;
 
   // Motorway selection
   String _selectedMotorwayId = 'm2'; // Default to M2 (Islamabad-Lahore)
@@ -81,17 +97,46 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   double _roadBearing =
       0; // Bearing calculated from road polyline (more accurate)
   bool _isFollowingUser = true; // Whether map is auto-following user location
+  bool _isProgrammaticCameraMove =
+      false; // Flag to distinguish programmatic vs user camera moves
   int _closestPolylineIndex = 0; // Index of closest point on polyline
+
+  // Off-route detection and auto-rerouting
+  bool _isOffRoute = false;
+  static const double _offRouteThresholdMeters =
+      150; // 150m threshold for off-route (increased for GPS accuracy)
+
+  // Ultra-smooth 60fps map animation with continuous motion
+  Ticker? _mapTicker;
+  double _targetLat = 0;
+  double _targetLon = 0;
+  double _targetBearing = 0;
+  double _displayLat = 0;
+  double _displayLon = 0;
+  double _displayBearing = 0;
+  DateTime? _lastTickTime;
+
+  // Continuous motion - keeps moving forward based on speed
+  double _motionSpeedMps = 0; // Current speed in meters per second
+  double _motionBearingRad = 0; // Current bearing in radians
+
+  // Smoothing for motion (low-pass filter)
+  double _smoothMotionSpeed = 0;
+  double _smoothMotionBearing = 0;
 
   // Animation
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
 
-  // Blue theme colors
+  // Blue theme colors - Updated to dark theme like Apple Weather
   static const Color _primaryBlue = Color(0xFF1565C0);
   static const Color _lightBlue = Color(0xFF42A5F5);
   static const Color _darkBlue = Color(0xFF0D47A1);
   static const Color _accentBlue = Color(0xFF64B5F6);
+  static const Color _bgDark = Color(0xFF1C1C1E); // Apple-style dark background
+  static const Color _cardDark = Color(0xFF2C2C2E); // Card background
+  static const Color _orangeAccent =
+      Color(0xFFFF9500); // Orange accent like Apple
 
   @override
   void initState() {
@@ -106,6 +151,9 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     // Don't set default destination - let user choose
     _toId = null;
 
+    // Create custom marker icons
+    _createCustomMarkerIcons();
+
     // Just get current location, don't load route yet
     _initializeLocation();
   }
@@ -113,10 +161,18 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   @override
   void dispose() {
     _animController.dispose();
+    _mapTicker?.dispose();
     _fromSearchController.dispose();
     _toSearchController.dispose();
     _mapController?.dispose();
     _positionStream?.cancel(); // Cancel location tracking
+    _sliderPlayTimer?.cancel(); // Cancel slider auto-play
+
+    // Cancel navigation notification when leaving screen
+    if (_isNavigating) {
+      NotificationService().cancelNavigationNotification();
+    }
+
     super.dispose();
   }
 
@@ -124,16 +180,33 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     setState(() => _isLoading = true);
 
     try {
-      // Battery optimization: medium accuracy for initial position
+      // First try last known position (instant, no GPS wait)
+      Position? lastKnown;
+      try {
+        lastKnown = await Geolocator.getLastKnownPosition();
+      } catch (_) {}
+
+      if (lastKnown != null && mounted) {
+        setState(() {
+          _currentPosition = lastKnown;
+          _isLoading = false; // Show UI immediately with last known
+        });
+      }
+
+      // Then get fresh position in background (only if needed)
       final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.medium,
+        desiredAccuracy: LocationAccuracy.low, // Use low for faster response
+        timeLimit: const Duration(seconds: 5), // Don't wait too long
       );
       if (mounted) {
         setState(() => _currentPosition = position);
       }
       // DON'T load route here - wait for user to confirm destination
     } catch (e) {
-      if (mounted) setState(() => _error = 'Failed to get location: $e');
+      // If we have last known, don't show error
+      if (_currentPosition == null && mounted) {
+        setState(() => _error = 'Failed to get location: $e');
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -181,15 +254,77 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     setState(() {
       _isNavigating = true;
       _isFollowingUser = true; // Start following user when navigation begins
+      _isOffRoute = false;
     });
     _currentPointIndex = 0;
+    _currentStepIndex = 0;
 
-    // Start listening to location updates
-    // Battery optimization: use medium accuracy and larger distance filter
+    // Initialize smoothed values to current position/heading immediately
+    if (_currentPosition != null) {
+      _smoothedLat = _currentPosition!.latitude;
+      _smoothedLon = _currentPosition!.longitude;
+      _smoothedBearing = _roadBearing != 0 ? _roadBearing : _currentHeading;
+
+      // Initialize display position for smooth animation
+      _displayLat = _smoothedLat;
+      _displayLon = _smoothedLon;
+      _displayBearing = _smoothedBearing;
+      _targetLat = _smoothedLat;
+      _targetLon = _smoothedLon;
+      _targetBearing = _smoothedBearing;
+
+      // Initialize motion parameters for continuous movement
+      _motionSpeedMps = 0;
+      _motionBearingRad = _smoothedBearing * (3.14159 / 180);
+      _smoothMotionSpeed = 0;
+      _smoothMotionBearing = _motionBearingRad;
+    }
+
+    // Start 60fps smooth map animation ticker
+    _startMapTicker();
+
+    // Immediately recenter map on current location with navigation view
+    if (_currentPosition != null && _mapController != null && mounted) {
+      final bearing = _roadBearing != 0 ? _roadBearing : _currentHeading;
+      _isProgrammaticCameraMove =
+          true; // Prevent onCameraMove from disabling follow
+      try {
+        _mapController!
+            .animateCamera(
+          CameraUpdate.newCameraPosition(
+            CameraPosition(
+              target: LatLng(
+                  _currentPosition!.latitude, _currentPosition!.longitude),
+              zoom: 18, // Close zoom for navigation
+              bearing: bearing,
+              tilt: 60, // 3D tilt for immersive navigation
+            ),
+          ),
+        )
+            .then((_) {
+          if (mounted) _isProgrammaticCameraMove = false;
+        });
+      } catch (e) {
+        debugPrint('⚠️ Map animation error: $e');
+        _isProgrammaticCameraMove = false;
+      }
+    }
+
+    // Update markers to show navigation mode
+    _updateMapMarkers();
+
+    // Show navigation notification (like Google Maps)
+    _showNavigationNotification();
+
+    // Start listening to location updates - ULTRA REAL-TIME
+    // Force updates every 100ms for smooth navigation
     _positionStream = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.medium, // Saves battery vs high
-        distanceFilter: 150, // Update every 150 meters - reduces GPS calls
+      locationSettings: AndroidSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 0,
+        intervalDuration:
+            const Duration(milliseconds: 100), // Force 10 updates/sec
+        forceLocationManager: false,
       ),
     ).listen(_onLocationUpdate);
   }
@@ -198,28 +333,193 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   void _stopNavigation() {
     _positionStream?.cancel();
     _positionStream = null;
+
+    // Stop smooth map animation
+    _mapTicker?.dispose();
+    _mapTicker = null;
+
+    // Cancel navigation notification
+    NotificationService().cancelNavigationNotification();
+
     setState(() {
       _isNavigating = false;
       _isFollowingUser = true; // Reset for next navigation
     });
   }
 
-  /// Handle location updates during navigation
-  void _onLocationUpdate(Position position) {
-    _currentPosition = position;
+  /// Show/update navigation notification
+  void _showNavigationNotification() {
+    if (!_isNavigating) return;
 
-    // Update speed (convert m/s to km/h)
-    _currentSpeed = (position.speed * 3.6).clamp(0, 300);
+    String instruction = 'Head to destination';
+    String distance = '';
+    String? roadName;
+    int? remainingMinutes;
 
-    // Update heading from GPS if moving fast enough
-    if (position.heading >= 0 && position.speed > 2) {
-      _currentHeading = position.heading;
+    // Get current navigation step
+    if (_navigationSteps.isNotEmpty &&
+        _currentStepIndex < _navigationSteps.length) {
+      final step = _navigationSteps[_currentStepIndex];
+      instruction =
+          step.cleanInstruction; // Use clean instruction (HTML removed)
+      // Format distance from meters
+      if (step.distanceMeters >= 1000) {
+        distance = '${(step.distanceMeters / 1000).toStringAsFixed(1)} km';
+      } else {
+        distance = '${step.distanceMeters} m';
+      }
+      roadName = step.roadName;
     }
 
-    // Calculate road bearing from polyline (more accurate for display)
-    _calculateRoadBearing(position);
+    // Calculate remaining time
+    if (_routeDurationSeconds > 0) {
+      remainingMinutes = (_routeDurationSeconds / 60).round();
+    }
 
-    // Check if user has passed any points
+    // Calculate remaining distance
+    if (_routeDistanceMeters > 0) {
+      if (_routeDistanceMeters >= 1000) {
+        distance = '${(_routeDistanceMeters / 1000).toStringAsFixed(1)} km';
+      } else {
+        distance = '$_routeDistanceMeters m';
+      }
+    }
+
+    NotificationService().showNavigationNotification(
+      instruction: instruction,
+      distance: distance,
+      roadName: roadName,
+      remainingMinutes: remainingMinutes,
+    );
+  }
+
+  // Smoothed values for animation
+  double _smoothedLat = 0;
+  double _smoothedLon = 0;
+  double _smoothedBearing = 0;
+  // ignore: unused_field
+  DateTime? _lastLocationUpdate;
+
+  /// Recenter on user location
+  /// [resetHeading] - if true, also resets the camera bearing to heading direction (like Google Maps double-tap)
+  void _recenterOnUser(bool resetHeading) {
+    if (_currentPosition == null) return;
+
+    setState(() => _isFollowingUser = true);
+
+    if (_isNavigating) {
+      // Use smoothed position if available, otherwise current position
+      final lat = _smoothedLat != 0 ? _smoothedLat : _currentPosition!.latitude;
+      final lon =
+          _smoothedLon != 0 ? _smoothedLon : _currentPosition!.longitude;
+
+      // For double-tap, use current heading/road bearing
+      // For single-tap, keep current camera bearing unless we're recalculating
+      double bearing = _smoothedBearing;
+      if (resetHeading) {
+        bearing = _roadBearing != 0 ? _roadBearing : _currentHeading;
+      }
+
+      _isProgrammaticCameraMove =
+          true; // Prevent onCameraMove from disabling follow
+      _mapController
+          ?.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: LatLng(lat, lon),
+            zoom: 18,
+            bearing: bearing,
+            tilt: 60,
+          ),
+        ),
+      )
+          .then((_) {
+        _isProgrammaticCameraMove = false;
+      });
+    } else {
+      // Not navigating, just move to current location (no tilt/bearing)
+      _mapController?.animateCamera(
+        CameraUpdate.newLatLng(
+          LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+        ),
+      );
+    }
+  }
+
+  /// Handle location updates during navigation - SMOOTH like Google Maps
+  void _onLocationUpdate(Position position) {
+    if (!mounted) return;
+
+    final now = DateTime.now();
+    _currentPosition = position;
+
+    // INSTANT SPEED - no lag for speedometer
+    final newSpeed = (position.speed * 3.6).clamp(0.0, 300.0);
+    _currentSpeed = newSpeed; // Instant update, no smoothing
+
+    // SMOOTH HEADING - interpolate to avoid jumps
+    if (position.heading >= 0 && position.speed > 0.3) {
+      // Smooth bearing transition (handle 360/0 wraparound)
+      double targetBearing = position.heading;
+      double diff = targetBearing - _currentHeading;
+
+      // Handle wraparound (e.g., 350 to 10 should go through 0, not back through 180)
+      if (diff > 180) diff -= 360;
+      if (diff < -180) diff += 360;
+
+      _currentHeading = (_currentHeading + diff * 0.4) % 360;
+      if (_currentHeading < 0) _currentHeading += 360;
+    }
+
+    // Calculate road bearing from polyline
+    final distanceFromRoute = _calculateRoadBearing(position);
+
+    // BEARING for map rotation - prefer road bearing, fallback to GPS heading
+    // GPS heading is only reliable when moving (speed > 0.5 m/s)
+    double targetBearing;
+    if (_roadBearing != 0) {
+      targetBearing = _roadBearing;
+    } else if (position.heading >= 0 && position.speed > 0.5) {
+      targetBearing = position.heading;
+    } else {
+      targetBearing = _smoothedBearing; // Keep current if no valid source
+    }
+
+    // Update smoothed bearing
+    if (_smoothedBearing == 0) {
+      // First time - set directly
+      _smoothedBearing = targetBearing;
+    } else if (targetBearing != _smoothedBearing) {
+      // Smooth bearing transition (handle 360/0 wraparound)
+      double diff = targetBearing - _smoothedBearing;
+      if (diff > 180) diff -= 360;
+      if (diff < -180) diff += 360;
+      _smoothedBearing = (_smoothedBearing + diff * 0.5) % 360;
+      if (_smoothedBearing < 0) _smoothedBearing += 360;
+    }
+
+    // SMOOTH POSITION - interpolate lat/lon for smoother animation
+    if (_smoothedLat == 0) {
+      _smoothedLat = position.latitude;
+      _smoothedLon = position.longitude;
+    } else {
+      // Use faster interpolation for more responsive movement
+      _smoothedLat = _smoothedLat * 0.4 + position.latitude * 0.6;
+      _smoothedLon = _smoothedLon * 0.4 + position.longitude * 0.6;
+    }
+
+    // OFF-ROUTE DETECTION
+    if (distanceFromRoute > _offRouteThresholdMeters) {
+      if (!_isOffRoute && !_isRecalculatingRoute) {
+        _isOffRoute = true;
+        _recalculateRoute();
+      }
+    } else {
+      _isOffRoute = false;
+    }
+
+    // Check if user has passed any points - INTELLIGENT EXIT DETECTION
+    // Use a simple approach: if user is closer to the NEXT point than the current one, they've passed it
     for (int i = _currentPointIndex; i < _routePoints.length; i++) {
       final point = _routePoints[i].point;
       final distance = Geolocator.distanceBetween(
@@ -229,62 +529,292 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
         point.lon,
       );
 
-      // If within 500m of a point, mark it as passed
-      if (distance < 500) {
+      // Check if there's a next point to compare
+      final hasNextPoint = i + 1 < _routePoints.length;
+      double? distanceToNext;
+      if (hasNextPoint) {
+        final nextPoint = _routePoints[i + 1].point;
+        distanceToNext = Geolocator.distanceBetween(
+          position.latitude,
+          position.longitude,
+          nextPoint.lat,
+          nextPoint.lon,
+        );
+      }
+
+      // Mark as passed if:
+      // 1. Very close to the point (< 300m) - user reached it
+      // 2. OR user is closer to the next point than the current one (passed it)
+      // 3. OR user is far from current point AND heading away from it
+      bool shouldMarkPassed = false;
+
+      if (distance < 300) {
+        // Very close - definitely passed or at the point
+        shouldMarkPassed = true;
+      } else if (hasNextPoint &&
+          distanceToNext != null &&
+          distanceToNext < distance) {
+        // User is closer to the next point - they've passed this one
+        shouldMarkPassed = true;
+      } else if (distance < 1000) {
+        // Within 1km - check bearing to see if heading away
+        final bearingToPoint = Geolocator.bearingBetween(
+          position.latitude,
+          position.longitude,
+          point.lat,
+          point.lon,
+        );
+        final bearingDiff = (bearingToPoint - _smoothedBearing).abs();
+        final normalizedDiff =
+            bearingDiff > 180 ? 360 - bearingDiff : bearingDiff;
+        // If bearing difference > 90 degrees, user is heading away from the point
+        if (normalizedDiff > 90) {
+          shouldMarkPassed = true;
+        }
+      }
+
+      if (shouldMarkPassed && _currentPointIndex != i + 1) {
         _currentPointIndex = i + 1;
-        // Save progress
         _saveNavigationProgress();
+        debugPrint(
+            '✅ Passed point: ${point.name} (distance: ${distance.toStringAsFixed(0)}m, type: ${point.type})');
       }
     }
 
-    // Update current navigation step based on position
     _updateCurrentNavigationStep(position);
 
-    // Update map camera to follow user with compass effect (check if controller is still valid)
-    if (_mapController != null && mounted && _isFollowingUser) {
-      try {
-        // Use road bearing for smoother navigation (falls back to GPS heading)
-        final bearing = _roadBearing != 0 ? _roadBearing : _currentHeading;
+    // Update TARGET position for smooth 60fps animation (ticker will interpolate)
+    if (_isNavigating && _isFollowingUser) {
+      // Offset the camera target forward in the direction of travel
+      // This places the user marker in the lower 1/3 of the screen
+      final bearingRad = _smoothedBearing * (3.14159 / 180);
+      const offsetMeters = 150.0; // Offset 150m ahead
+      _targetLat = _smoothedLat + (offsetMeters / 111000) * cos(bearingRad);
+      _targetLon = _smoothedLon +
+          (offsetMeters / (111000 * cos(_smoothedLat * 3.14159 / 180))) *
+              sin(bearingRad);
+      _targetBearing = _smoothedBearing;
 
-        // Calculate offset target to show more road ahead (like Google Maps)
-        // Move camera target slightly ahead in the direction of travel
-        final offsetDistance = 0.0008; // ~80 meters ahead
-        final radians = bearing * (3.14159265359 / 180);
-        final aheadLat = position.latitude + (offsetDistance * cos(radians));
-        final aheadLon = position.longitude +
-            (offsetDistance *
-                sin(radians) /
-                cos(position.latitude * 3.14159265359 / 180));
+      // Update motion parameters INSTANTLY for lightning-fast response
+      _motionSpeedMps = _currentSpeed / 3.6; // km/h to m/s - INSTANT
+      _motionBearingRad = bearingRad;
 
-        _mapController!.animateCamera(
-          CameraUpdate.newCameraPosition(
-            CameraPosition(
-              target: LatLng(aheadLat, aheadLon), // Look ahead
-              zoom: 18, // Closer zoom for better road visibility
-              bearing: bearing, // Use road bearing for smooth rotation
-              tilt: 60, // More tilt for immersive 3D view like Google Maps
-            ),
-          ),
-        );
-      } catch (_) {
-        // Controller may have been disposed
-      }
+      // Faster smoothing for quicker response (0.5/0.5 blend)
+      _smoothMotionSpeed = _smoothMotionSpeed * 0.5 + _motionSpeedMps * 0.5;
+      _smoothMotionBearing =
+          bearingRad; // Use direct bearing, it's already smoothed
     }
 
     _updateMapMarkers();
+    _lastLocationUpdate = now;
+
+    // Only setState for speed/UI updates
     if (mounted) setState(() {});
+  }
+
+  /// Start 60fps smooth map animation ticker with CONTINUOUS MOTION
+  /// The car keeps moving forward at current speed - never stops/pauses
+  void _startMapTicker() {
+    _mapTicker?.dispose();
+    _lastTickTime = DateTime.now();
+
+    _mapTicker = createTicker((Duration elapsed) {
+      if (!mounted ||
+          !_isNavigating ||
+          !_isFollowingUser ||
+          _mapController == null) return;
+
+      final now = DateTime.now();
+      final dt = _lastTickTime != null
+          ? (now.difference(_lastTickTime!).inMicroseconds / 1000000.0)
+              .clamp(0.001, 0.05)
+          : 0.016; // ~60fps default
+      _lastTickTime = now;
+
+      // === CONTINUOUS FORWARD MOTION ===
+      // Move forward continuously based on current speed and bearing
+      // This creates the "always moving" effect like Google Maps navigation
+
+      if (_smoothMotionSpeed > 0.5) {
+        // Only move if speed > 0.5 m/s (~2 km/h)
+        // Calculate how far to move this frame (distance = speed * time)
+        final distanceMeters = _smoothMotionSpeed * dt;
+
+        // Convert meters to lat/lon delta
+        final latDelta =
+            (distanceMeters / 111000.0) * cos(_smoothMotionBearing);
+        final lonDelta =
+            (distanceMeters / (111000.0 * cos(_displayLat * 3.14159 / 180))) *
+                sin(_smoothMotionBearing);
+
+        // Move display position forward
+        _displayLat += latDelta;
+        _displayLon += lonDelta;
+
+        // Also move target forward to keep the offset consistent
+        _targetLat += latDelta;
+        _targetLon += lonDelta;
+      }
+
+      // === FAST CORRECTION TOWARDS GPS TARGET ===
+      // Quick blend towards the actual GPS position for instant response
+      final latDiff = _targetLat - _displayLat;
+      final lonDiff = _targetLon - _displayLon;
+
+      // Fast correction for lightning-quick GPS sync
+      const correctionStrength = 6.0; // Fast correction
+      _displayLat += latDiff * correctionStrength * dt;
+      _displayLon += lonDiff * correctionStrength * dt;
+
+      // Smooth bearing interpolation with wraparound handling
+      double bearingDiff = _targetBearing - _displayBearing;
+      if (bearingDiff > 180) bearingDiff -= 360;
+      if (bearingDiff < -180) bearingDiff += 360;
+
+      // Fast bearing change
+      _displayBearing += bearingDiff * 6.0 * dt;
+
+      // Keep bearing in 0-360 range
+      _displayBearing = _displayBearing % 360;
+      if (_displayBearing < 0) _displayBearing += 360;
+
+      // Update camera - ALWAYS update when navigating for smooth continuous motion
+      _isProgrammaticCameraMove = true;
+      _mapController!.moveCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: LatLng(_displayLat, _displayLon),
+            zoom: 18,
+            bearing: _displayBearing,
+            tilt: 55,
+          ),
+        ),
+      );
+      _isProgrammaticCameraMove = false;
+
+      // Update user location marker at ~30fps for ultra-smooth movement
+      _markerUpdateCounter++;
+      if (_markerUpdateCounter >= 2) {
+        // Every 2nd tick (~30fps)
+        _markerUpdateCounter = 0;
+        _updateUserMarkerOnly();
+      }
+    });
+
+    _mapTicker!.start();
+  }
+
+  int _markerUpdateCounter = 0;
+
+  /// Update only the user location marker (called ~30fps for ultra-smooth movement)
+  void _updateUserMarkerOnly() {
+    if (_currentPosition == null) return;
+
+    // Remove old user marker
+    _markers.removeWhere((m) => m.markerId.value == 'current_location');
+
+    // Use the actual smoothed GPS position for marker (not display position)
+    // This keeps the marker aligned with real location while camera moves smoothly
+    final markerLat =
+        _smoothedLat != 0 ? _smoothedLat : _currentPosition!.latitude;
+    final markerLon =
+        _smoothedLon != 0 ? _smoothedLon : _currentPosition!.longitude;
+    final displayPosition = LatLng(markerLat, markerLon);
+
+    // Choose icon based on mode (always use nav icon when navigating)
+    BitmapDescriptor markerIcon;
+
+    if (_isNavigating) {
+      // Always use navigation icon when navigating
+      if (_useCarIcon && _carIcon != null) {
+        markerIcon = _carIcon!;
+      } else if (_navigationArrowIcon != null) {
+        markerIcon = _navigationArrowIcon!;
+      } else {
+        markerIcon =
+            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
+      }
+    } else {
+      // Not navigating - use blue dot
+      markerIcon = _blueDotIcon ??
+          BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueCyan);
+    }
+
+    _markers.add(
+      Marker(
+        markerId: const MarkerId('current_location'),
+        position: displayPosition,
+        icon: markerIcon,
+        rotation: _isNavigating ? _displayBearing : 0,
+        anchor: const Offset(0.5, 0.5),
+        flat: _isNavigating,
+        zIndex: 100,
+      ),
+    );
+
+    // Force marker update
+    if (mounted) setState(() {});
+  }
+
+  // Flag to prevent multiple simultaneous route recalculations
+  bool _isRecalculatingRoute = false;
+
+  /// Recalculate route when user goes off-route - FAST like Google Maps
+  Future<void> _recalculateRoute() async {
+    if (_currentPosition == null || _toId == null) return;
+    if (_isRecalculatingRoute) return;
+
+    _isRecalculatingRoute = true;
+    debugPrint('🔄 Recalculating route from current position...');
+
+    try {
+      final destination = _routePoints.last.point;
+      final routeData = await TravelWeatherService.instance.getRoutePolyline(
+        startLat: _currentPosition!.latitude,
+        startLon: _currentPosition!.longitude,
+        endLat: destination.lat,
+        endLon: destination.lon,
+      );
+
+      if (routeData != null && mounted) {
+        _roadRoutePoints = routeData.polylinePoints
+            .map((p) => LatLng(p.latitude, p.longitude))
+            .toList();
+        _navigationSteps = routeData.steps;
+        _currentStepIndex = 0;
+        _closestPolylineIndex = 0;
+        _routeDistanceMeters = routeData.distanceMeters;
+        _routeDurationSeconds = routeData.durationSeconds;
+
+        _updateMapMarkers();
+        setState(() => _isOffRoute = false);
+
+        debugPrint(
+            '✅ Route recalculated with ${_roadRoutePoints.length} points');
+      }
+    } catch (e) {
+      debugPrint('❌ Error recalculating route: $e');
+    } finally {
+      _isRecalculatingRoute = false;
+    }
   }
 
   /// Calculate road bearing from polyline for smoother navigation
   /// This gives more accurate direction than GPS heading when following the road
-  void _calculateRoadBearing(Position position) {
-    if (_roadRoutePoints.length < 2) return;
+  /// Returns the distance from the route (for off-route detection)
+  double _calculateRoadBearing(Position position) {
+    if (_roadRoutePoints.length < 2) return 0;
 
-    // Find closest point on polyline
+    // Find closest point on polyline with more efficient algorithm
     double minDistance = double.infinity;
     int closestIndex = 0;
+    LatLng? snappedPosition;
 
-    for (int i = 0; i < _roadRoutePoints.length; i++) {
+    // Start search from current index for efficiency
+    final searchStart = max(0, _closestPolylineIndex - 10);
+    final searchEnd = min(_roadRoutePoints.length, _closestPolylineIndex + 50);
+
+    for (int i = searchStart; i < searchEnd; i++) {
       final point = _roadRoutePoints[i];
       final distance = Geolocator.distanceBetween(
         position.latitude,
@@ -295,14 +825,43 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       if (distance < minDistance) {
         minDistance = distance;
         closestIndex = i;
+        snappedPosition = point;
+      }
+    }
+
+    // If not found in narrow range, search entire route
+    if (minDistance > 200) {
+      for (int i = 0; i < _roadRoutePoints.length; i++) {
+        if (i >= searchStart && i < searchEnd) continue;
+        final point = _roadRoutePoints[i];
+        final distance = Geolocator.distanceBetween(
+          position.latitude,
+          position.longitude,
+          point.latitude,
+          point.longitude,
+        );
+        if (distance < minDistance) {
+          minDistance = distance;
+          closestIndex = i;
+          snappedPosition = point;
+        }
       }
     }
 
     _closestPolylineIndex = closestIndex;
 
+    // SNAP TO ROAD: Store the snapped position for marker display
+    if (snappedPosition != null && minDistance < 50) {
+      // Within 50m - snap to road for smooth display
+      _snappedLatLng = snappedPosition;
+    } else {
+      // Too far from road - use actual position
+      _snappedLatLng = null;
+    }
+
     // Calculate bearing to next point on polyline (look ahead for smoother rotation)
-    // Look 3-5 points ahead for smoother bearing
-    final lookAhead = min(closestIndex + 5, _roadRoutePoints.length - 1);
+    // Look 5-10 points ahead for smoother bearing on motorway
+    final lookAhead = min(closestIndex + 10, _roadRoutePoints.length - 1);
     if (lookAhead > closestIndex) {
       final currentPoint = _roadRoutePoints[closestIndex];
       final nextPoint = _roadRoutePoints[lookAhead];
@@ -314,11 +873,19 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
         nextPoint.longitude,
       );
     }
+
+    return minDistance;
   }
+
+  // Snapped position on road (for marker display)
+  // ignore: unused_field
+  LatLng? _snappedLatLng;
 
   /// Update which navigation step we're currently on
   void _updateCurrentNavigationStep(Position position) {
     if (_navigationSteps.isEmpty) return;
+
+    int previousStepIndex = _currentStepIndex;
 
     for (int i = _currentStepIndex; i < _navigationSteps.length; i++) {
       final step = _navigationSteps[i];
@@ -335,6 +902,11 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       } else {
         break;
       }
+    }
+
+    // Update notification when step changes
+    if (_currentStepIndex != previousStepIndex) {
+      _showNavigationNotification();
     }
   }
 
@@ -392,6 +964,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
 
   /// Get which prayer will be active when user arrives at a location
   /// Returns the CURRENT prayer at arrival time (not the next one)
+  /// Between Sunrise and Dhuhr, returns null (no prayer time)
   Future<Map<String, String?>> _getPrayerAtArrivalTime({
     required double latitude,
     required double longitude,
@@ -405,6 +978,21 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
 
     // Get all prayers for that day
     final prayers = prayerTimes.prayers;
+
+    // Get sunrise and dhuhr times for gap detection
+    final sunrise = prayers.firstWhere((p) => p.name == 'Sunrise',
+        orElse: () => prayers.first);
+    final dhuhr = prayers.firstWhere((p) => p.name == 'Dhuhr',
+        orElse: () => prayers.first);
+
+    // Check if arrival time is between Sunrise and Dhuhr (no prayer time)
+    if (arrivalTime.isAfter(sunrise.time) && arrivalTime.isBefore(dhuhr.time)) {
+      // Between Sunrise and Dhuhr - no active prayer
+      return {
+        'name': null,
+        'time': null,
+      };
+    }
 
     // Find which prayer period the arrival time falls into
     // Prayer periods: Fajr → Sunrise, Dhuhr → Asr, Asr → Maghrib, Maghrib → Isha, Isha → Fajr
@@ -451,34 +1039,29 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     }
     _isLoadingRoute = true;
 
+    // Clear old caches to ensure fresh data
+    TravelWeatherService.instance.clearWeatherCache();
+    _metarData.clear();
+    _forceMetarRefresh = true; // Force fresh METAR fetch
+
     setState(() {
       _isLoading = true;
       _error = null;
     });
 
     try {
-      // Try to load from cache first (15 min valid)
-      final cacheLoaded = await _loadCachedRouteData();
-      if (cacheLoaded) {
-        _updateMapMarkers();
-        await _loadNavigationProgress();
-        _isLoadingRoute = false;
-        setState(() => _isLoading = false);
-        return;
-      }
-
       // Get points for the route
       List<MotorwayPoint> points;
       if (_fromId == null) {
         // From current location to destination
-        // Get all points to destination first
+        // Get all points on the motorway
         final allPoints =
             PakistanMotorways.getPointsTo(_selectedMotorwayId, _toId!);
 
-        // Find the nearest toll plaza that's on the way to destination
-        // (not behind us requiring backtracking)
+        // Filter to only include points between user and destination
+        // Direction is determined by comparing user position to destination
         if (_currentPosition != null && allPoints.length > 1) {
-          points = _filterPointsOnRoute(allPoints);
+          points = _filterPointsOnRoute(allPoints, _toId!);
         } else {
           points = allPoints;
         }
@@ -490,6 +1073,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
 
       if (points.isEmpty) {
         setState(() => _error = 'No route found');
+        _isLoadingRoute = false;
+        setState(() => _isLoading = false);
         return;
       }
 
@@ -499,40 +1084,156 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       final endLat = points.last.lat;
       final endLon = points.last.lon;
 
-      // FETCH ACTUAL ROAD ROUTE FROM GOOGLE DIRECTIONS API
-      // NOTE: We do NOT pass toll plazas as waypoints because they are slightly
-      // off the motorway. Passing them causes zig-zag routes (go to toll, go back).
-      // Instead, just route from start to end directly on the motorway.
-      // Toll plazas are used only for markers and weather/ETA calculations.
+      // Use straight line route initially (instant, no network)
+      _roadRoutePoints = [
+        LatLng(startLat, startLon),
+        ...points.map((p) => LatLng(p.lat, p.lon)),
+      ];
+      _navigationSteps = [];
+
+      // Calculate route distance - handle reverse direction properly
+      // Distance is the absolute difference between first and last point's distanceFromStart
+      final firstPointDist = points.first.distanceFromStart;
+      final lastPointDist = points.last.distanceFromStart;
+      final routeDistanceKm = (lastPointDist - firstPointDist).abs();
+      _routeDistanceMeters = (routeDistanceKm * 1000).round();
+
+      // Calculate dynamic distances from user's position (first point = 0 km)
+      final distancesFromUser = <int>[];
+      for (int i = 0; i < points.length; i++) {
+        final distFromRouteStart =
+            (points[i].distanceFromStart - firstPointDist).abs();
+        distancesFromUser.add(distFromRouteStart.round());
+      }
+
+      // Calculate ETAs using distance-based estimation (100 km/h average)
+      final etas = distancesFromUser.map((distKm) {
+        final minutes = (distKm / 100 * 60).round();
+        return Duration(minutes: minutes);
+      }).toList();
+
+      // Estimate total duration from route distance
+      _routeDurationSeconds = etas.isNotEmpty ? etas.last.inSeconds : 0;
+
+      // Build travel points with dynamic distance from user
+      final now = DateTime.now();
+      final travelPoints = <TravelPoint>[];
+      for (int i = 0; i < points.length; i++) {
+        final point = points[i];
+        final eta = i < etas.length ? etas[i] : null;
+        final estimatedArrival = eta != null ? now.add(eta) : null;
+        final distFromUser =
+            i < distancesFromUser.length ? distancesFromUser[i] : 0;
+        travelPoints.add(TravelPoint(
+          point: point,
+          etaFromStart: eta,
+          estimatedArrival: estimatedArrival,
+          weather: null,
+          nextPrayer: null,
+          nextPrayerTime: null,
+          distanceFromUser: distFromUser,
+        ));
+      }
+
+      _routePoints = travelPoints;
+
+      // Show UI immediately
+      _updateMapMarkers();
+      _isLoadingRoute = false;
+      setState(() => _isLoading = false);
+
+      // Fetch Google Directions in background for accurate road polyline
+      _fetchGoogleDirectionsInBackground(
+          startLat, startLon, endLat, endLon, points, etas);
+
+      // Fetch weather and prayer times in background
+      _fetchWeatherAndPrayersInBackground(points, etas);
+
+      // Fetch METAR data in background
+      _fetchMetarForRoute();
+    } catch (e) {
+      setState(() => _error = 'Failed to load route: $e');
+      _isLoadingRoute = false;
+      setState(() => _isLoading = false);
+    }
+  }
+
+  /// Fetch Google Directions API in background for accurate road route
+  Future<void> _fetchGoogleDirectionsInBackground(
+    double startLat,
+    double startLon,
+    double endLat,
+    double endLon,
+    List<MotorwayPoint> points,
+    List<Duration> etas,
+  ) async {
+    try {
       final routeData = await TravelWeatherService.instance.getRoutePolyline(
         startLat: startLat,
         startLon: startLon,
         endLat: endLat,
         endLon: endLon,
-        // Don't pass waypoints - route directly on motorway
         waypoints: null,
       );
 
-      if (routeData != null) {
-        // Convert to Google Maps LatLng
+      if (routeData != null && mounted) {
         _roadRoutePoints = routeData.polylinePoints
             .map((p) => LatLng(p.latitude, p.longitude))
             .toList();
         _routeDistanceMeters = routeData.distanceMeters;
         _routeDurationSeconds = routeData.durationSeconds;
-        _navigationSteps = routeData.steps; // Store turn-by-turn instructions
+        _navigationSteps = routeData.steps;
+
+        // Recalculate ETAs with actual duration - handle reverse direction
+        final totalSeconds = routeData.durationSeconds;
+        final totalDistance = routeData.distanceMeters / 1000.0; // in km
+        final now = DateTime.now();
+
+        // Get first point's distanceFromStart as reference for reverse direction
+        final firstPointDist =
+            points.isNotEmpty ? points.first.distanceFromStart.toDouble() : 0.0;
+
+        final updatedPoints = <TravelPoint>[];
+        for (int i = 0; i < _routePoints.length && i < points.length; i++) {
+          final existing = _routePoints[i];
+          // Calculate distance from the route's first point (not from ISB)
+          final distFromRouteStart =
+              (points[i].distanceFromStart - firstPointDist).abs();
+          final fraction =
+              totalDistance > 0 ? distFromRouteStart / totalDistance : 0.0;
+          final seconds = (totalSeconds * fraction).round();
+          final eta = Duration(seconds: seconds);
+
+          updatedPoints.add(TravelPoint(
+            point: existing.point,
+            etaFromStart: eta,
+            estimatedArrival: now.add(eta),
+            weather: existing.weather,
+            nextPrayer: existing.nextPrayer,
+            nextPrayerTime: existing.nextPrayerTime,
+            distanceFromUser:
+                distFromRouteStart.round(), // Preserve dynamic distance
+          ));
+        }
+        _routePoints = updatedPoints;
+
         debugPrint(
-            '✅ Got ${_roadRoutePoints.length} road polyline points from API');
-      } else {
-        // Fallback to straight lines between points
-        _roadRoutePoints = [
-          LatLng(startLat, startLon),
-          ...points.map((p) => LatLng(p.lat, p.lon)),
-        ];
-        _navigationSteps = [];
-        debugPrint(
-            '⚠️ Using fallback straight lines (${_roadRoutePoints.length} points)');
+            '✅ Google Directions loaded: ${_roadRoutePoints.length} points');
+        _updateMapMarkers();
+        setState(() {});
       }
+    } catch (e) {
+      debugPrint('⚠️ Google Directions failed: $e (using fallback route)');
+    }
+  }
+
+  /// Fetch weather and prayer times in background and update UI when ready
+  Future<void> _fetchWeatherAndPrayersInBackground(
+    List<MotorwayPoint> points,
+    List<Duration> etas,
+  ) async {
+    try {
+      final now = DateTime.now();
 
       // Fetch weather for ALL route points
       final keyPoints = _getKeyPointsForWeather(points);
@@ -545,269 +1246,209 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
         weatherMap[keyPoints[i].id] = weatherList[i];
       }
 
-      // Calculate ETAs from route data or estimate
-      List<Duration> etas = [];
-      if (routeData != null) {
-        // Use actual route duration, distribute across points
-        final totalSeconds = routeData.durationSeconds;
-        final totalDistance = routeData.distanceMeters / 1000; // km
-
-        for (int i = 0; i < points.length; i++) {
-          final pointDistance = points[i].distanceFromStart.toDouble();
-          final fraction =
-              totalDistance > 0 ? pointDistance / totalDistance : 0.0;
-          final seconds = (totalSeconds * fraction).round();
-          etas.add(Duration(seconds: seconds));
-        }
-      } else {
-        // Use distance-based estimation (100 km/h average on motorway)
-        etas = points.map((p) {
-          final minutes = (p.distanceFromStart / 100 * 60).round();
-          return Duration(minutes: minutes);
-        }).toList();
-      }
-
-      // Build travel points with weather AND prayer times for all points
-      final now = DateTime.now();
-      final travelPoints = <TravelPoint>[];
-
-      for (int i = 0; i < points.length; i++) {
-        final point = points[i];
+      // Fetch all prayer times in parallel
+      final prayerFutures = points.asMap().entries.map((entry) async {
+        final i = entry.key;
+        final point = entry.value;
         final eta = i < etas.length ? etas[i] : null;
-        final weather = weatherMap[point.id];
         final estimatedArrival = eta != null ? now.add(eta) : null;
-
-        // Calculate which prayer will be active when you ARRIVE at this point
-        String? activePrayer;
-        String? activePrayerTime;
-
-        if (estimatedArrival != null) {
-          try {
-            final prayerData = await _getPrayerAtArrivalTime(
-              latitude: point.lat,
-              longitude: point.lon,
-              arrivalTime: estimatedArrival,
-            );
-            activePrayer = prayerData['name'];
-            activePrayerTime = prayerData['time'];
-          } catch (_) {
-            // Prayer calculation failed, continue without it
-          }
+        if (estimatedArrival == null) return <String, String?>{};
+        try {
+          return await _getPrayerAtArrivalTime(
+            latitude: point.lat,
+            longitude: point.lon,
+            arrivalTime: estimatedArrival,
+          );
+        } catch (_) {
+          return <String, String?>{};
         }
+      }).toList();
 
-        travelPoints.add(TravelPoint(
-          point: point,
-          etaFromStart: eta,
-          estimatedArrival: estimatedArrival,
-          weather: weather,
-          nextPrayer: activePrayer,
-          nextPrayerTime: activePrayerTime,
-        ));
+      final prayerResults = await Future.wait(prayerFutures);
+
+      // Update route points with weather and prayer data
+      if (mounted && _routePoints.isNotEmpty) {
+        final updatedPoints = <TravelPoint>[];
+        for (int i = 0; i < _routePoints.length && i < points.length; i++) {
+          final existing = _routePoints[i];
+          final weather = weatherMap[existing.point.id];
+          final prayerData =
+              i < prayerResults.length ? prayerResults[i] : <String, String?>{};
+          updatedPoints.add(TravelPoint(
+            point: existing.point,
+            etaFromStart: existing.etaFromStart,
+            estimatedArrival: existing.estimatedArrival,
+            weather: weather ?? existing.weather,
+            nextPrayer: prayerData['name'] ?? existing.nextPrayer,
+            nextPrayerTime: prayerData['time'] ?? existing.nextPrayerTime,
+          ));
+        }
+        _routePoints = updatedPoints;
+        debugPrint(
+            '✅ Weather and prayer data loaded for ${updatedPoints.length} points');
+        if (mounted) setState(() {});
       }
-
-      _routePoints = travelPoints;
-
-      // Fetch METAR data for points near airports
-      await _fetchMetarForRoute();
-
-      // Update map
-      _updateMapMarkers();
-
-      // Cache the route data
-      await _cacheRouteData();
     } catch (e) {
-      setState(() => _error = 'Failed to load route: $e');
-    } finally {
-      _isLoadingRoute = false;
-      setState(() => _isLoading = false);
+      debugPrint('⚠️ Background weather/prayer fetch failed: $e');
     }
   }
 
+  // Flag to force fresh METAR fetch (set to true when route changes)
+  bool _forceMetarRefresh = true;
+
   Future<void> _fetchMetarForRoute() async {
     final prefs = await SharedPreferences.getInstance();
+    final controller = WeatherController();
+
+    // Step 1: Group points by their nearest airport ICAO to avoid duplicate fetches
+    final Map<String, List<Map<String, dynamic>>> airportToPoints = {};
+    final Map<String, Map<String, dynamic>> pointToAirportInfo = {};
 
     for (final tp in _routePoints) {
       final cacheKey = 'metar_${tp.point.id}';
 
-      // Check cache first
-      final cached = prefs.getString(cacheKey);
-      if (cached != null) {
-        final data = jsonDecode(cached);
-        final fetchedAt = DateTime.parse(data['fetched_at']);
-        if (DateTime.now().difference(fetchedAt).inMinutes < 20) {
-          _metarData[tp.point.id] = data['metar'];
-          continue;
+      // Check cache first (unless force refresh is on)
+      if (!_forceMetarRefresh) {
+        final cached = prefs.getString(cacheKey);
+        if (cached != null) {
+          final data = jsonDecode(cached);
+          final fetchedAt = DateTime.parse(data['fetched_at']);
+          if (DateTime.now().difference(fetchedAt).inMinutes < 20) {
+            _metarData[tp.point.id] = data['metar'];
+            continue;
+          }
         }
       }
 
-      // Check if there's a nearby airport
-      final airport = WeatherController().getAirportFromCoordinates(
-        tp.point.lat,
-        tp.point.lon,
-      );
+      // Find nearest airport
+      var airport =
+          controller.getAirportFromCoordinates(tp.point.lat, tp.point.lon);
+      airport ??= controller.getNearestAirport(tp.point.lat, tp.point.lon,
+          maxDistanceKm: 100);
 
       if (airport != null) {
-        try {
-          final metar = await fetchMetar(airport['icao']);
-          _metarData[tp.point.id] = metar;
+        final icao = airport['icao'] as String;
+        final distanceKm = airport['distance'] as double? ?? 0.0;
+        final airportRadius = airport['radius'] as double? ?? 30.0;
+        debugPrint(
+            '🛫 Point ${tp.point.name}: found airport $icao at ${distanceKm.toStringAsFixed(1)}km (radius: ${airportRadius}km)');
 
-          // Cache it
-          if (metar != null) {
-            await prefs.setString(
-              cacheKey,
-              jsonEncode({
-                'fetched_at': DateTime.now().toIso8601String(),
-                'metar': metar,
-              }),
-            );
-          }
-        } catch (e) {
-          debugPrint('METAR fetch error for ${tp.point.name}: $e');
-        }
+        airportToPoints.putIfAbsent(icao, () => []);
+        airportToPoints[icao]!.add({
+          'point': tp,
+          'distance': distanceKm,
+          'radius': airportRadius,
+          'cacheKey': cacheKey,
+        });
+        pointToAirportInfo[tp.point.id] = airport;
+      } else {
+        debugPrint('⚠️ Point ${tp.point.name}: NO airport found within 100km');
       }
     }
 
-    setState(() {});
-  }
-
-  /// Get cache key for current route (per-route caching)
-  String _getRouteCacheKey() {
-    final from = _fromId ?? 'current';
-    return 'travel_route_cache_${_selectedMotorwayId}_${from}_$_toId';
-  }
-
-  /// Cache route data with weather, prayer times for 15 minutes
-  Future<void> _cacheRouteData() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    // Serialize route points with all data
-    final pointsData = _routePoints
-        .map((tp) => {
-              'point_id': tp.point.id,
-              'point_name': tp.point.name,
-              'lat': tp.point.lat,
-              'lon': tp.point.lon,
-              'type': tp.point.type.index,
-              'distance': tp.point.distanceFromStart,
-              'facilities': tp.point.facilities,
-              'eta_minutes': tp.etaFromStart?.inMinutes,
-              'arrival_iso': tp.estimatedArrival?.toIso8601String(),
-              'weather': tp.weather != null
-                  ? {
-                      'temp_c': tp.weather!.tempC,
-                      'condition': tp.weather!.condition,
-                      'icon': tp.weather!.icon,
-                      'humidity': tp.weather!.humidity,
-                      'wind_kph': tp.weather!.windKph,
-                      'rain_chance': tp.weather!.rainChance,
-                    }
-                  : null,
-              'next_prayer': tp.nextPrayer,
-              'next_prayer_time': tp.nextPrayerTime,
-            })
-        .toList();
-
-    final cacheData = {
-      'motorway_id': _selectedMotorwayId,
-      'from_id': _fromId,
-      'to_id': _toId,
-      'cached_at': DateTime.now().toIso8601String(),
-      'route_points': pointsData,
-      'road_route': _roadRoutePoints
-          .map((p) => {'lat': p.latitude, 'lon': p.longitude})
-          .toList(),
-      'distance_meters': _routeDistanceMeters,
-      'duration_seconds': _routeDurationSeconds,
-      'metar_data': _metarData.map((k, v) => MapEntry(k, v)),
-    };
-
-    // Use route-specific cache key
-    final cacheKey = _getRouteCacheKey();
-    await prefs.setString(cacheKey, jsonEncode(cacheData));
-  }
-
-  /// Load cached route data if available and not expired (15 min)
-  Future<bool> _loadCachedRouteData() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    // Use route-specific cache key
-    final cacheKey = _getRouteCacheKey();
-    final cached = prefs.getString(cacheKey);
-
-    if (cached == null) {
-      return false;
+    // Step 2: Fetch METAR for each unique ICAO in parallel
+    final icaoCodes = airportToPoints.keys.toList();
+    if (icaoCodes.isEmpty) {
+      debugPrint(
+          '❌ No airports found for any route points - METAR will not be fetched');
+      setState(() {});
+      return;
     }
 
-    try {
-      final data = jsonDecode(cached) as Map<String, dynamic>;
-      final cachedAt = DateTime.parse(data['cached_at']);
-      final cacheAge = DateTime.now().difference(cachedAt).inMinutes;
+    debugPrint(
+        '📡 Fetching METAR for ${icaoCodes.length} unique airports in parallel...');
 
-      // Check if cache is expired (15 minutes)
-      if (cacheAge > _cacheMinutes) {
-        return false;
+    final metarFutures = icaoCodes.map((icao) async {
+      try {
+        return MapEntry(icao, await fetchMetar(icao));
+      } catch (e) {
+        debugPrint('❌ METAR fetch error for $icao: $e');
+        return MapEntry(icao, null);
       }
+    }).toList();
 
-      // Restore route points
-      final pointsData = data['route_points'] as List<dynamic>;
-      _routePoints = pointsData.map((p) {
-        final point = MotorwayPoint(
-          id: p['point_id'],
-          name: p['point_name'],
-          lat: p['lat'],
-          lon: p['lon'],
-          type: PointType.values[p['type']],
-          distanceFromStart: p['distance'],
-          facilities: p['facilities'],
+    final metarResults = await Future.wait(metarFutures);
+    final metarByIcao =
+        Map.fromEntries(metarResults.where((e) => e.value != null));
+
+    // Step 3: Assign METAR data to all points that share the same airport
+    for (final icao in metarByIcao.keys) {
+      final metar = metarByIcao[icao]!;
+      final pointsList = airportToPoints[icao]!;
+
+      for (final pointData in pointsList) {
+        final tp = pointData['point'] as TravelPoint;
+        final distanceKm = pointData['distance'] as double;
+        final airportRadius = pointData['radius'] as double;
+        final cacheKey = pointData['cacheKey'] as String;
+
+        // Store METAR with distance info
+        final metarWithDistance = Map<String, dynamic>.from(metar);
+        metarWithDistance['_airport_distance_km'] = distanceKm;
+        metarWithDistance['_airport_radius_km'] = airportRadius;
+        metarWithDistance['_airport_icao'] = icao;
+        _metarData[tp.point.id] = metarWithDistance;
+
+        // Cache it
+        prefs.setString(
+          cacheKey,
+          jsonEncode({
+            'fetched_at': DateTime.now().toIso8601String(),
+            'metar': metarWithDistance,
+          }),
         );
-
-        TravelWeather? weather;
-        if (p['weather'] != null) {
-          final w = p['weather'];
-          weather = TravelWeather(
-            tempC: (w['temp_c'] as num).toDouble(),
-            condition: w['condition'],
-            icon: w['icon'],
-            humidity: w['humidity'],
-            windKph: (w['wind_kph'] as num).toDouble(),
-            rainChance: w['rain_chance'] != null
-                ? (w['rain_chance'] as num).toDouble()
-                : null,
-          );
-        }
-
-        return TravelPoint(
-          point: point,
-          etaFromStart: p['eta_minutes'] != null
-              ? Duration(minutes: p['eta_minutes'])
-              : null,
-          estimatedArrival: p['arrival_iso'] != null
-              ? DateTime.parse(p['arrival_iso'])
-              : null,
-          weather: weather,
-          nextPrayer: p['next_prayer'],
-          nextPrayerTime: p['next_prayer_time'],
-        );
-      }).toList();
-
-      // Restore road route
-      final roadData = data['road_route'] as List<dynamic>;
-      _roadRoutePoints =
-          roadData.map((p) => LatLng(p['lat'], p['lon'])).toList();
-      _routeDistanceMeters = data['distance_meters'] ?? 0;
-      _routeDurationSeconds = data['duration_seconds'] ?? 0;
-
-      // Restore METAR data
-      if (data['metar_data'] != null) {
-        final metarMap = data['metar_data'] as Map<String, dynamic>;
-        _metarData = metarMap.map((k, v) =>
-            MapEntry(k, v != null ? Map<String, dynamic>.from(v) : null));
       }
-
-      return true;
-    } catch (e) {
-      return false;
     }
+
+    debugPrint(
+        '📊 METAR data collected for ${_metarData.length} points from ${metarByIcao.length} airports');
+
+    // Reset force refresh flag after successful fetch
+    _forceMetarRefresh = false;
+
+    if (mounted) setState(() {});
+  }
+
+  /// Safely parse a value to double (handles both num and String)
+  double? _toDouble(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v);
+    return null;
+  }
+
+  /// Check if METAR data should be used (within airport radius, default 30km)
+  /// Returns true only if METAR exists and point is within the airport's coverage radius
+  bool _shouldUseMetar(Map<String, dynamic>? metar) {
+    if (metar == null) return false;
+    final distance = _toDouble(metar['_airport_distance_km']);
+    final radius = _toDouble(metar['_airport_radius_km']) ?? 30.0;
+    if (distance == null) return false;
+    return distance <= radius;
+  }
+
+  /// Extract primary METAR code from raw METAR text - matches WeatherController logic
+  String _extractMetarCode(String metarRawText) {
+    metarRawText = metarRawText.toUpperCase();
+
+    if (metarRawText.contains("TSRA")) return "TSRA";
+    if (metarRawText.contains("TS")) return "TS";
+    if (metarRawText.contains("SHRA")) return "SHRA";
+    if (metarRawText.contains("RA")) return "RA";
+    if (metarRawText.contains("SN")) return "SN";
+    if (metarRawText.contains("DZ")) return "DZ";
+    if (metarRawText.contains("FG")) return "FG";
+    if (metarRawText.contains("BR")) return "BR";
+    if (metarRawText.contains("HZ")) return "HZ";
+    if (metarRawText.contains("FU")) return "FU";
+    if (metarRawText.contains("DU")) return "DU";
+    if (metarRawText.contains("SA")) return "SA";
+    if (metarRawText.contains("OVC")) return "OVC";
+    if (metarRawText.contains("BKN")) return "BKN";
+    if (metarRawText.contains("SCT")) return "SCT";
+    if (metarRawText.contains("FEW")) return "FEW";
+
+    return "SKC";
   }
 
   /// Save navigation progress
@@ -818,86 +1459,518 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     await prefs.setString('nav_route_id', '${_fromId ?? "current"}_to_$_toId');
   }
 
-  /// Load navigation progress
-  Future<void> _loadNavigationProgress() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedRouteId = prefs.getString('nav_route_id');
-    final currentRouteId = '${_fromId ?? "current"}_to_$_toId';
+  // Custom marker icons for navigation
+  BitmapDescriptor? _navigationArrowIcon;
+  BitmapDescriptor? _carIcon;
+  BitmapDescriptor? _blueDotIcon;
 
-    if (savedRouteId == currentRouteId) {
-      _currentPointIndex = prefs.getInt('nav_current_point_index') ?? 0;
-      final wasNavigating = prefs.getBool('nav_is_navigating') ?? false;
-      if (wasNavigating && _currentPointIndex < _routePoints.length) {
-        // Resume navigation
-        _startNavigation();
-      }
+  /// Create custom navigation icons programmatically
+  Future<void> _createCustomMarkerIcons() async {
+    // Create navigation arrow icon (like Google Maps blue arrow)
+    _navigationArrowIcon = await _createNavigationArrowIcon();
+
+    // Create car icon
+    _carIcon = await _createCarIcon();
+
+    // Create blue dot for when not navigating
+    _blueDotIcon = await _createBlueDotIcon();
+
+    // Update markers if we already have position
+    if (mounted && _currentPosition != null) {
+      setState(() {
+        _updateMapMarkers();
+      });
     }
+  }
+
+  /// Create a blue dot icon for when not navigating
+  Future<BitmapDescriptor> _createBlueDotIcon() async {
+    final pictureRecorder = PictureRecorder();
+    final canvas = Canvas(pictureRecorder);
+    const size = 60.0;
+
+    // Outer glow
+    final glowPaint = Paint()
+      ..color = const Color(0xFF4285F4).withOpacity(0.3)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(const Offset(size / 2, size / 2), size / 2, glowPaint);
+
+    // Blue dot
+    final dotPaint = Paint()
+      ..color = const Color(0xFF4285F4)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(const Offset(size / 2, size / 2), size / 3, dotPaint);
+
+    // White border
+    final borderPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3;
+    canvas.drawCircle(const Offset(size / 2, size / 2), size / 3, borderPaint);
+
+    final picture = pictureRecorder.endRecording();
+    final image = await picture.toImage(size.toInt(), size.toInt());
+    final byteData = await image.toByteData(format: ImageByteFormat.png);
+
+    if (byteData != null) {
+      return BitmapDescriptor.bytes(byteData.buffer.asUint8List());
+    }
+    return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueCyan);
+  }
+
+  /// Create a navigation arrow icon programmatically - LARGE like Google Maps
+  Future<BitmapDescriptor> _createNavigationArrowIcon() async {
+    try {
+      final pictureRecorder = PictureRecorder();
+      final canvas = Canvas(pictureRecorder);
+      const double size = 96.0; // Good size for visibility
+
+      // Draw outer glow circle
+      final glowPaint = Paint()
+        ..color = const Color(0xFF4285F4).withOpacity(0.2)
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(const Offset(size / 2, size / 2), size / 2, glowPaint);
+
+      // Draw main blue circle
+      final bgPaint = Paint()
+        ..color = const Color(0xFF4285F4) // Google Blue
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(
+          const Offset(size / 2, size / 2), size / 2 - 6, bgPaint);
+
+      // Draw white border
+      final borderPaint = Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3;
+      canvas.drawCircle(
+          const Offset(size / 2, size / 2), size / 2 - 7, borderPaint);
+
+      // Draw arrow pointing up (like Google Maps navigation arrow)
+      final arrowPaint = Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.fill;
+
+      final arrowPath = Path()
+        ..moveTo(size / 2, 16) // Top point
+        ..lineTo(size / 2 + 22, size - 22) // Bottom right
+        ..lineTo(size / 2, size - 32) // Center notch
+        ..lineTo(size / 2 - 22, size - 22) // Bottom left
+        ..close();
+      canvas.drawPath(arrowPath, arrowPaint);
+
+      final picture = pictureRecorder.endRecording();
+      final image = await picture.toImage(size.toInt(), size.toInt());
+      final byteData = await image.toByteData(format: ImageByteFormat.png);
+
+      if (byteData != null) {
+        debugPrint('✅ Navigation arrow icon created successfully');
+        return BitmapDescriptor.bytes(byteData.buffer.asUint8List());
+      }
+    } catch (e) {
+      debugPrint('❌ Error creating navigation arrow icon: $e');
+    }
+    return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
+  }
+
+  /// Create a car icon programmatically - LARGE
+  Future<BitmapDescriptor> _createCarIcon() async {
+    try {
+      final pictureRecorder = PictureRecorder();
+      final canvas = Canvas(pictureRecorder);
+      const double size = 96.0;
+
+      // Draw blue circle background
+      final bgPaint = Paint()
+        ..color = const Color(0xFF1565C0) // Dark Blue
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(
+          const Offset(size / 2, size / 2), size / 2 - 4, bgPaint);
+
+      // Draw white border
+      final borderPaint = Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3;
+      canvas.drawCircle(
+          const Offset(size / 2, size / 2), size / 2 - 5, borderPaint);
+
+      // Draw simplified car shape pointing up
+      final carPaint = Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.fill;
+
+      // Car body
+      final carPath = Path()
+        ..addRRect(RRect.fromRectAndRadius(
+          Rect.fromCenter(
+              center: const Offset(size / 2, size / 2 + 4),
+              width: 28,
+              height: 40),
+          const Radius.circular(6),
+        ));
+      canvas.drawPath(carPath, carPaint);
+
+      // Car windshield (darker)
+      final windowPaint = Paint()
+        ..color = const Color(0xFF1565C0)
+        ..style = PaintingStyle.fill;
+      final windowPath = Path()
+        ..addRRect(RRect.fromRectAndRadius(
+          Rect.fromCenter(
+              center: const Offset(size / 2, size / 2 - 4),
+              width: 20,
+              height: 12),
+          const Radius.circular(3),
+        ));
+      canvas.drawPath(windowPath, windowPaint);
+
+      // Front indicator (direction)
+      final frontPaint = Paint()
+        ..color = const Color(0xFFFFEB3B) // Yellow
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(const Offset(size / 2, 20), 6, frontPaint);
+
+      final picture = pictureRecorder.endRecording();
+      final image = await picture.toImage(size.toInt(), size.toInt());
+      final byteData = await image.toByteData(format: ImageByteFormat.png);
+
+      if (byteData != null) {
+        debugPrint('✅ Car icon created successfully');
+        return BitmapDescriptor.bytes(byteData.buffer.asUint8List());
+      }
+    } catch (e) {
+      debugPrint('❌ Error creating car icon: $e');
+    }
+    return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
+  }
+
+  /// Create weather card marker with icon, temperature, and visibility
+  Future<BitmapDescriptor> _createWeatherCardMarker({
+    required int temp,
+    required String condition,
+    String? visibility,
+    bool isNext = false,
+    bool isPassed = false,
+  }) async {
+    final pictureRecorder = PictureRecorder();
+    final canvas = Canvas(pictureRecorder);
+    const width = 80.0;
+    const height = 50.0;
+
+    // Card background
+    final bgPaint = Paint()
+      ..color = isPassed
+          ? const Color(0xFF4A4A4C) // Grey for passed
+          : isNext
+              ? const Color(0xFF00C7BE) // Teal for next
+              : const Color(0xFF2C2C2E) // Dark card
+      ..style = PaintingStyle.fill;
+
+    final rrect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(0, 0, width, height),
+      const Radius.circular(10),
+    );
+    canvas.drawRRect(rrect, bgPaint);
+
+    // Border
+    final borderPaint = Paint()
+      ..color = isNext ? const Color(0xFF00C7BE) : const Color(0xFF48484A)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    canvas.drawRRect(rrect, borderPaint);
+
+    // Weather icon placeholder (circle with emoji-like representation)
+    final iconPaint = Paint()
+      ..color = _getWeatherColor(condition)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(const Offset(18, height / 2), 12, iconPaint);
+
+    // Draw a simple sun/cloud/rain symbol
+    final iconSymbolPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    if (condition.toLowerCase().contains('sun') ||
+        condition.toLowerCase().contains('clear')) {
+      // Sun rays
+      for (int i = 0; i < 8; i++) {
+        final angle = i * pi / 4;
+        canvas.drawLine(
+          Offset(18 + cos(angle) * 6, height / 2 + sin(angle) * 6),
+          Offset(18 + cos(angle) * 10, height / 2 + sin(angle) * 10),
+          iconSymbolPaint..strokeWidth = 2,
+        );
+      }
+      canvas.drawCircle(const Offset(18, height / 2), 5, iconSymbolPaint);
+    } else if (condition.toLowerCase().contains('rain')) {
+      // Rain drops
+      canvas.drawCircle(const Offset(18, height / 2 - 3), 6, iconSymbolPaint);
+      for (int i = 0; i < 3; i++) {
+        canvas.drawLine(
+          Offset(14.0 + i * 4, height / 2 + 4),
+          Offset(12.0 + i * 4, height / 2 + 9),
+          iconSymbolPaint..strokeWidth = 2,
+        );
+      }
+    } else {
+      // Cloud
+      canvas.drawCircle(const Offset(15, height / 2), 5, iconSymbolPaint);
+      canvas.drawCircle(const Offset(21, height / 2), 6, iconSymbolPaint);
+      canvas.drawCircle(const Offset(18, height / 2 - 3), 4, iconSymbolPaint);
+    }
+
+    // Temperature text
+    final tempParagraph = _createTextParagraph(
+      '$temp°',
+      18,
+      FontWeight.bold,
+      Colors.white,
+      30,
+    );
+    canvas.drawParagraph(tempParagraph, const Offset(35, 6));
+
+    // Visibility text (if available)
+    if (visibility != null) {
+      final visParagraph = _createTextParagraph(
+        visibility,
+        10,
+        FontWeight.w500,
+        const Color(0xFF8E8E93),
+        40,
+      );
+      canvas.drawParagraph(visParagraph, const Offset(35, 30));
+    }
+
+    // Pointer at bottom
+    final pointerPaint = Paint()
+      ..color = isPassed
+          ? const Color(0xFF4A4A4C)
+          : isNext
+              ? const Color(0xFF00C7BE)
+              : const Color(0xFF2C2C2E)
+      ..style = PaintingStyle.fill;
+    final pointerPath = Path()
+      ..moveTo(width / 2 - 8, height)
+      ..lineTo(width / 2, height + 10)
+      ..lineTo(width / 2 + 8, height)
+      ..close();
+    canvas.drawPath(pointerPath, pointerPaint);
+
+    final picture = pictureRecorder.endRecording();
+    final image = await picture.toImage(width.toInt(), (height + 12).toInt());
+    final byteData = await image.toByteData(format: ImageByteFormat.png);
+
+    if (byteData != null) {
+      return BitmapDescriptor.bytes(byteData.buffer.asUint8List());
+    }
+    return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
+  }
+
+  Paragraph _createTextParagraph(
+    String text,
+    double fontSize,
+    FontWeight fontWeight,
+    Color color,
+    double width,
+  ) {
+    final builder = ParagraphBuilder(
+      ParagraphStyle(
+        textAlign: TextAlign.left,
+        fontSize: fontSize,
+      ),
+    );
+    builder.pushStyle(
+      TextStyle(
+        color: color,
+        fontWeight: fontWeight,
+        fontSize: fontSize,
+      ).getTextStyle(),
+    );
+    builder.addText(text);
+    final paragraph = builder.build();
+    paragraph.layout(ParagraphConstraints(width: width));
+    return paragraph;
+  }
+
+  /// Get color for weather condition
+  Color _getWeatherColor(String condition) {
+    final lower = condition.toLowerCase();
+    if (lower.contains('sun') || lower.contains('clear')) {
+      return const Color(0xFFFFB800); // Sunny yellow
+    } else if (lower.contains('rain') || lower.contains('drizzle')) {
+      return const Color(0xFF007AFF); // Rain blue
+    } else if (lower.contains('cloud') || lower.contains('overcast')) {
+      return const Color(0xFF8E8E93); // Cloudy grey
+    } else if (lower.contains('fog') || lower.contains('mist')) {
+      return const Color(0xFFAFB1B3); // Fog grey
+    } else if (lower.contains('thunder') || lower.contains('storm')) {
+      return const Color(0xFF5856D6); // Storm purple
+    } else if (lower.contains('snow')) {
+      return const Color(0xFF87CEEB); // Snow light blue
+    }
+    return const Color(0xFFFF9500); // Default orange
+  }
+
+  /// Cache for weather card markers
+  final Map<String, BitmapDescriptor> _weatherCardMarkerCache = {};
+
+  /// Get or create weather card marker (with caching)
+  Future<BitmapDescriptor> _getWeatherCardMarker({
+    required int temp,
+    required String condition,
+    String? visibility,
+    bool isNext = false,
+    bool isPassed = false,
+  }) async {
+    final key = '${temp}_${condition}_${visibility ?? ''}_${isNext}_$isPassed';
+    if (_weatherCardMarkerCache.containsKey(key)) {
+      return _weatherCardMarkerCache[key]!;
+    }
+    final marker = await _createWeatherCardMarker(
+      temp: temp,
+      condition: condition,
+      visibility: visibility,
+      isNext: isNext,
+      isPassed: isPassed,
+    );
+    _weatherCardMarkerCache[key] = marker;
+    return marker;
+  }
+
+  /// Update weather card markers asynchronously
+  Future<void> _updateWeatherCardMarkers() async {
+    for (int i = 0; i < _routePoints.length; i++) {
+      final tp = _routePoints[i];
+      final isPassed = _isNavigating && i < _currentPointIndex;
+      final isNext = _isNavigating && i == _currentPointIndex;
+
+      // Skip passed points during navigation (except destination)
+      if (isPassed && tp.point.type != PointType.destination) {
+        continue;
+      }
+
+      // Get weather data
+      final weather = tp.weather;
+      final apiTemp = weather?.tempC.round() ?? 0;
+      final apiCondition = weather?.condition ?? 'Unknown';
+
+      // Get METAR data if available - only use if within airport radius (30km)
+      final metar = _metarData[tp.point.id];
+      final useMetar = _shouldUseMetar(metar);
+      int temp = apiTemp;
+      String condition = apiCondition;
+      String? visibility;
+      bool hasMetar = false;
+
+      if (useMetar && metar != null) {
+        hasMetar = true;
+
+        // Use METAR temperature if available
+        final metarTemp = _toDouble(metar['temp_c']);
+        if (metarTemp != null) {
+          temp = metarTemp.round();
+        }
+
+        // Extract visibility from visibility_km (already in km)
+        final visKm = _toDouble(metar['visibility_km']);
+        if (visKm != null) {
+          visibility = '${visKm.toStringAsFixed(0)}km';
+        }
+
+        // Extract condition using same logic as main app
+        if (metar['raw_text'] != null) {
+          final code = _extractMetarCode(metar['raw_text'].toString());
+          condition = mapMetarCodeToDescription(code);
+        }
+      }
+
+      // Create weather card marker
+      final markerIcon = await _getWeatherCardMarker(
+        temp: temp,
+        condition: condition,
+        visibility: visibility,
+        isNext: isNext,
+        isPassed: isPassed,
+      );
+
+      _markers.add(
+        Marker(
+          markerId: MarkerId(tp.point.id),
+          position: LatLng(tp.point.lat, tp.point.lon),
+          icon: markerIcon,
+          anchor: const Offset(0.5, 1.0), // Anchor at bottom center (pointer)
+          alpha: isPassed ? 0.6 : 1.0,
+          infoWindow: InfoWindow(
+            title: tp.point.name,
+            snippet:
+                '${temp}°C - $condition${visibility != null ? ' • Vis: $visibility' : ''}${hasMetar ? ' (METAR)' : ''}',
+          ),
+          onTap: () => _showPointDetails(tp),
+        ),
+      );
+    }
+    // Trigger UI update after async marker creation
+    if (mounted) setState(() {});
   }
 
   void _updateMapMarkers() {
     _markers.clear();
     _polylines.clear();
 
-    // Add current location marker with navigation arrow
+    // Add current location marker - uses smooth interpolated position
     if (_currentPosition != null) {
-      // Use road bearing for marker rotation (more aligned with road)
-      final markerBearing = _roadBearing != 0 ? _roadBearing : _currentHeading;
+      // Use ticker-interpolated position for ultra-smooth display
+      final markerLat = _displayLat != 0
+          ? _displayLat
+          : (_smoothedLat != 0 ? _smoothedLat : _currentPosition!.latitude);
+      final markerLon = _displayLon != 0
+          ? _displayLon
+          : (_smoothedLon != 0 ? _smoothedLon : _currentPosition!.longitude);
+      final displayPosition = LatLng(markerLat, markerLon);
 
-      _markers.add(
-        Marker(
-          markerId: const MarkerId('current_location'),
-          position: LatLng(
-            _currentPosition!.latitude,
-            _currentPosition!.longitude,
-          ),
-          // Use cyan/blue for navigation marker like Google Maps
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueCyan),
-          infoWindow: const InfoWindow(title: '📍 You'),
-          rotation: markerBearing, // Rotate based on road direction
-          anchor: const Offset(0.5, 0.5), // Center the marker
-          flat: true, // Make marker flat on map so rotation works properly
-          zIndex: 100, // Show on top of other markers
-        ),
-      );
-    }
+      // Choose icon based on mode
+      BitmapDescriptor markerIcon;
 
-    // Add route point markers with navigation state
-    for (int i = 0; i < _routePoints.length; i++) {
-      final tp = _routePoints[i];
-      final isPassed = _isNavigating && i < _currentPointIndex;
-      final isNext = _isNavigating && i == _currentPointIndex;
-
-      // Determine marker color based on state
-      double hue;
-      if (isPassed) {
-        hue = BitmapDescriptor.hueViolet; // Passed points in purple
-      } else if (isNext) {
-        hue = BitmapDescriptor.hueCyan; // Next point in cyan
-      } else if (tp.point.type == PointType.destination) {
-        hue = BitmapDescriptor.hueGreen;
-      } else if (tp.point.type == PointType.serviceArea) {
-        hue = BitmapDescriptor.hueOrange;
+      if (_isNavigating) {
+        // Always use navigation icon when navigating (regardless of speed)
+        if (_useCarIcon && _carIcon != null) {
+          markerIcon = _carIcon!;
+        } else if (_navigationArrowIcon != null) {
+          markerIcon = _navigationArrowIcon!;
+        } else {
+          markerIcon =
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
+        }
       } else {
-        hue = BitmapDescriptor.hueRed;
+        // Not navigating - use blue dot
+        markerIcon = _blueDotIcon ??
+            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueCyan);
       }
 
       _markers.add(
         Marker(
-          markerId: MarkerId(tp.point.id),
-          position: LatLng(tp.point.lat, tp.point.lon),
-          icon: BitmapDescriptor.defaultMarkerWithHue(hue),
-          alpha: isPassed ? 0.5 : 1.0, // Fade passed points
+          markerId: const MarkerId('current_location'),
+          position: displayPosition,
+          icon: markerIcon,
           infoWindow: InfoWindow(
-            title: tp.point.name,
-            snippet: tp.weather != null
-                ? '${tp.weather!.tempC.round()}°C - ${tp.weather!.condition}'
-                : isPassed
-                    ? 'Passed'
-                    : null,
+            title: _isNavigating ? '🚗 Navigating' : '📍 You',
+            snippet: _isNavigating ? '${_currentSpeed.round()} km/h' : null,
           ),
+          // Arrow rotates with smooth interpolated heading
+          rotation: _isNavigating
+              ? (_displayBearing != 0 ? _displayBearing : _smoothedBearing)
+              : 0,
+          anchor: const Offset(0.5, 0.5),
+          flat:
+              _isNavigating, // Flat when navigating - arrow points in direction of travel
+          zIndex: 100,
         ),
       );
     }
+
+    // Add route point markers with WEATHER CARD style
+    // HIDE PASSED POINTS during navigation for cleaner view
+    _updateWeatherCardMarkers();
 
     // USE REAL ROAD POLYLINE FROM GOOGLE DIRECTIONS API
     if (_roadRoutePoints.isNotEmpty) {
@@ -985,80 +2058,96 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     setState(() {});
   }
 
-  /// Filter points to only include toll plazas that are ahead on the route
-  /// This prevents backtracking (e.g., going to ISB toll plaza when you're already past it)
-  /// Uses the motorway's linear order (distanceFromStart) to determine direction
-  List<MotorwayPoint> _filterPointsOnRoute(List<MotorwayPoint> allPoints) {
+  /// Filter points to only include toll plazas between user and destination
+  /// Direction is determined by comparing user's distance to destination vs first point
+  List<MotorwayPoint> _filterPointsOnRoute(
+      List<MotorwayPoint> allPoints, String destinationId) {
     if (_currentPosition == null || allPoints.length < 2) return allPoints;
 
     final userLat = _currentPosition!.latitude;
     final userLon = _currentPosition!.longitude;
-    final destination = allPoints.last;
-    final routeStart = allPoints.first;
 
-    // Find the nearest point on the motorway to user's current position
-    double minDistance = double.infinity;
-    int nearestIndex = 0;
+    // Find the actual destination point by ID
+    final destIndex = allPoints.indexWhere((p) => p.id == destinationId);
+    if (destIndex == -1) return allPoints;
+    final destination = allPoints[destIndex];
 
+    // Find which point the user is closest to
+    int userNearestIndex = 0;
+    double minDist = double.infinity;
     for (int i = 0; i < allPoints.length; i++) {
-      final point = allPoints[i];
       final dist = Geolocator.distanceBetween(
-        userLat,
-        userLon,
-        point.lat,
-        point.lon,
-      );
-      if (dist < minDistance) {
-        minDistance = dist;
-        nearestIndex = i;
+          userLat, userLon, allPoints[i].lat, allPoints[i].lon);
+      if (dist < minDist) {
+        minDist = dist;
+        userNearestIndex = i;
       }
     }
 
-    // Determine travel direction by comparing distanceFromStart values
-    // If destination's distanceFromStart > start's distanceFromStart, we're going forward
-    final goingForward =
-        destination.distanceFromStart > routeStart.distanceFromStart;
+    // Determine travel direction based on user position vs destination
+    // If destination index < user nearest index, we're going backward (towards start)
+    // If destination index > user nearest index, we're going forward (towards end)
+    final goingForward = destIndex > userNearestIndex;
 
-    // User's approximate position on the motorway (interpolated distanceFromStart)
-    // Use the nearest point's distanceFromStart as reference
-    final nearestPoint = allPoints[nearestIndex];
-    final userDistanceFromStart = nearestPoint.distanceFromStart;
+    debugPrint(
+        '🗺️ User nearest: ${allPoints[userNearestIndex].name} (idx $userNearestIndex), dest: ${destination.name} (idx $destIndex), goingForward=$goingForward');
 
-    // Filter points: only include those ahead of user in travel direction
+    // Build the list of points between user and destination
     final pointsAhead = <MotorwayPoint>[];
 
-    for (final point in allPoints) {
-      final isDestination = point.id == destination.id;
-      final isAhead = goingForward
-          ? point.distanceFromStart >= userDistanceFromStart
-          : point.distanceFromStart <= userDistanceFromStart;
+    if (goingForward) {
+      // Going forward (e.g., ISB to Lahore) - indices increasing
+      // Find the first point user hasn't passed yet
+      int startIndex = userNearestIndex;
+      for (int i = userNearestIndex; i < destIndex; i++) {
+        final currentPoint = allPoints[i];
+        final nextPoint = allPoints[i + 1];
+        final distToCurrent = Geolocator.distanceBetween(
+            userLat, userLon, currentPoint.lat, currentPoint.lon);
+        final distToNext = Geolocator.distanceBetween(
+            userLat, userLon, nextPoint.lat, nextPoint.lon);
+        if (distToNext < distToCurrent) {
+          startIndex = i + 1;
+        } else {
+          break;
+        }
+      }
 
-      // Also check if point is very close to user (within 5km direct distance)
-      // This handles cases where user might be slightly off the motorway
-      final distToPoint = Geolocator.distanceBetween(
-        userLat,
-        userLon,
-        point.lat,
-        point.lon,
-      );
-      final isNearby = distToPoint < 5000;
+      // Include points from startIndex to destination (inclusive)
+      for (int i = startIndex; i <= destIndex; i++) {
+        pointsAhead.add(allPoints[i]);
+      }
+    } else {
+      // Going backward (e.g., Lahore to ISB) - indices decreasing
+      // Find the first point user hasn't passed yet
+      int startIndex = userNearestIndex;
+      for (int i = userNearestIndex; i > destIndex; i--) {
+        final currentPoint = allPoints[i];
+        final nextPoint = allPoints[i - 1];
+        final distToCurrent = Geolocator.distanceBetween(
+            userLat, userLon, currentPoint.lat, currentPoint.lon);
+        final distToNext = Geolocator.distanceBetween(
+            userLat, userLon, nextPoint.lat, nextPoint.lon);
+        if (distToNext < distToCurrent) {
+          startIndex = i - 1;
+        } else {
+          break;
+        }
+      }
 
-      if (isDestination || isAhead || isNearby) {
-        pointsAhead.add(point);
+      // Include points from startIndex down to destination (inclusive), in travel order
+      for (int i = startIndex; i >= destIndex; i--) {
+        pointsAhead.add(allPoints[i]);
       }
     }
 
-    // If we filtered out too many, just use original
-    if (pointsAhead.isEmpty) return allPoints;
-
-    // Ensure correct order based on travel direction
-    if (!goingForward) {
-      pointsAhead
-          .sort((a, b) => b.distanceFromStart.compareTo(a.distanceFromStart));
-    } else {
-      pointsAhead
-          .sort((a, b) => a.distanceFromStart.compareTo(b.distanceFromStart));
+    // If we filtered out everything, at least include destination
+    if (pointsAhead.isEmpty) {
+      pointsAhead.add(destination);
     }
+
+    debugPrint(
+        '🗺️ Filtered route: ${pointsAhead.length} points ahead (first: ${pointsAhead.first.name}, last: ${pointsAhead.last.name})');
 
     return pointsAhead;
   }
@@ -1078,48 +2167,595 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [_darkBlue, _primaryBlue, _lightBlue],
-          ),
-        ),
-        child: SafeArea(
-          child: FadeTransition(
-            opacity: _fadeAnim,
-            child: Column(
-              children: [
-                _buildAppBar(),
-                // Hide search section during navigation for better map visibility
-                if (!_isNavigating) _buildSearchSection(),
-                // Only show toggle and content after route is confirmed
-                if (_routeConfirmed) ...[
-                  _buildViewToggle(),
+      backgroundColor: _bgDark,
+      body: SafeArea(
+        child: FadeTransition(
+          opacity: _fadeAnim,
+          child: Stack(
+            children: [
+              // Main content column
+              Column(
+                children: [
+                  // Apple-style header with From/To
+                  _buildAppleStyleHeader(),
+                  // Main content
                   Expanded(
                     child: _isLoading
                         ? _buildLoadingView()
                         : _error != null
                             ? _buildErrorView()
-                            : _currentView == 0
-                                ? _buildTimelineView()
-                                : _buildMapView(),
+                            : _routeConfirmed
+                                ? (_currentView == 0
+                                    ? _buildAppleMapView()
+                                    : _buildAppleTimelineView())
+                                : _buildAppleRouteSelectionView(),
                   ),
-                ] else ...[
-                  // Show route selection UI before confirming
-                  Expanded(child: _buildRouteSelectionView()),
+                  // Bottom action bar (only after route confirmed)
+                  if (_routeConfirmed && !_isNavigating) _buildAppleBottomBar(),
                 ],
-              ],
-            ),
+              ),
+              // Search overlay for From location
+              if (_showFromSearch)
+                Positioned(
+                  top: 60,
+                  left: 16,
+                  right: 16,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: _buildSearchOverlay(isFrom: true),
+                  ),
+                ),
+              // Search overlay for To location
+              if (_showToSearch)
+                Positioned(
+                  top: 100,
+                  left: 16,
+                  right: 16,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: _buildSearchOverlay(isFrom: false),
+                  ),
+                ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  /// Initial view showing route selection before loading data
-  Widget _buildRouteSelectionView() {
+  /// Search overlay with list of toll plazas
+  Widget _buildSearchOverlay({required bool isFrom}) {
+    final controller = isFrom ? _fromSearchController : _toSearchController;
+    final filteredPoints = _getFilteredPoints(controller.text);
+
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 350),
+      decoration: BoxDecoration(
+        color: _cardDark,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.4),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Header with close button
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: _cardDark,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(16)),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  isFrom ? Icons.trip_origin : Icons.location_on,
+                  color: isFrom ? _accentBlue : _orangeAccent,
+                  size: 20,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: controller,
+                    autofocus: true,
+                    style: const TextStyle(color: Colors.white, fontSize: 16),
+                    decoration: InputDecoration(
+                      hintText: isFrom
+                          ? 'Search starting point...'
+                          : 'Search destination...',
+                      hintStyle:
+                          TextStyle(color: Colors.white.withOpacity(0.4)),
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => setState(() {
+                    if (isFrom) {
+                      _showFromSearch = false;
+                    } else {
+                      _showToSearch = false;
+                    }
+                    controller.clear();
+                  }),
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.close,
+                        color: Colors.white54, size: 18),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: Colors.white12),
+          // Current location option (only for From)
+          if (isFrom)
+            ListTile(
+              dense: true,
+              leading:
+                  const Icon(Icons.my_location, color: _accentBlue, size: 22),
+              title: const Text(
+                'Current Location',
+                style:
+                    TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+              ),
+              subtitle: Text(
+                'Use GPS',
+                style: TextStyle(
+                    color: Colors.white.withOpacity(0.5), fontSize: 12),
+              ),
+              onTap: () {
+                setState(() {
+                  _fromId = null;
+                  _showFromSearch = false;
+                  controller.clear();
+                });
+                _loadRoute();
+              },
+            ),
+          // List of toll plazas
+          Expanded(
+            child: ListView.builder(
+              shrinkWrap: true,
+              padding: EdgeInsets.zero,
+              itemCount: filteredPoints.length,
+              itemBuilder: (context, index) {
+                final point = filteredPoints[index];
+                return ListTile(
+                  dense: true,
+                  leading: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: _getPointColor(point.type).withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      _getPointIcon(point.type),
+                      color: _getPointColor(point.type),
+                      size: 18,
+                    ),
+                  ),
+                  title: Text(
+                    point.name,
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w500),
+                  ),
+                  subtitle: Text(
+                    '${point.distanceFromStart.toStringAsFixed(0)} km from Islamabad',
+                    style: TextStyle(
+                        color: Colors.white.withOpacity(0.5), fontSize: 12),
+                  ),
+                  trailing: Icon(
+                    Icons.arrow_forward_ios,
+                    color: Colors.white.withOpacity(0.3),
+                    size: 14,
+                  ),
+                  onTap: () {
+                    setState(() {
+                      if (isFrom) {
+                        _fromId = point.id;
+                        _showFromSearch = false;
+                      } else {
+                        _toId = point.id;
+                        _showToSearch = false;
+                      }
+                      controller.clear();
+                    });
+                    _loadRoute();
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Apple-style header with From/To fields
+  Widget _buildAppleStyleHeader() {
+    final currentMotorway = PakistanMotorways.motorways
+        .firstWhere((m) => m.id == _selectedMotorwayId);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      decoration: BoxDecoration(
+        color: _bgDark,
+        border: Border(
+          bottom: BorderSide(color: Colors.white.withOpacity(0.1)),
+        ),
+      ),
+      child: Column(
+        children: [
+          // Top row: Back button, Motorway selector, Menu
+          Row(
+            children: [
+              // Back button
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: _cardDark,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.arrow_back,
+                      color: Colors.white, size: 20),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Motorway selector chip
+              Expanded(
+                child: GestureDetector(
+                  onTap: _showMotorwaySelectorSheet,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: _cardDark,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: _orangeAccent,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            currentMotorway.id.toUpperCase(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            currentMotorway.name,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Icon(Icons.keyboard_arrow_down,
+                            color: Colors.white.withOpacity(0.6), size: 20),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Menu button
+              GestureDetector(
+                onTap: _showOptionsMenu,
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: _cardDark,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.more_vert,
+                      color: Colors.white, size: 20),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // From field
+          _buildLocationRow(
+            label: 'A',
+            value: _fromId == null
+                ? 'Current Location'
+                : _currentMotorwayPoints
+                    .firstWhere((p) => p.id == _fromId,
+                        orElse: () => _currentMotorwayPoints.first)
+                    .name,
+            isFrom: true,
+            onTap: () => setState(() => _showFromSearch = true),
+          ),
+          const SizedBox(height: 4),
+          // Divider with +Add Stops
+          Row(
+            children: [
+              const SizedBox(width: 32),
+              Expanded(
+                child: Container(
+                  height: 1,
+                  color: Colors.white.withOpacity(0.2),
+                ),
+              ),
+              const SizedBox(width: 12),
+              GestureDetector(
+                onTap: () {
+                  // Future: Add stops functionality
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Add stops coming soon')),
+                  );
+                },
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _cardDark,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Text(
+                    '+ Add Stops',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          // To field
+          _buildLocationRow(
+            label: 'B',
+            value: _toId == null
+                ? 'Choose Destination'
+                : _currentMotorwayPoints
+                    .firstWhere((p) => p.id == _toId,
+                        orElse: () => _currentMotorwayPoints.last)
+                    .name,
+            isFrom: false,
+            onTap: () => setState(() => _showToSearch = true),
+          ),
+          const SizedBox(height: 12),
+          // Departure time row (simplified - removed non-functional elements)
+          Row(
+            children: [
+              // Departure time - tappable with time picker
+              GestureDetector(
+                onTap: _showDepartureTimePicker,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: _cardDark,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.schedule,
+                          color: Colors.white.withOpacity(0.6), size: 16),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Departure: ',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.6),
+                          fontSize: 14,
+                        ),
+                      ),
+                      Text(
+                        _getDepartureTimeText(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(Icons.keyboard_arrow_down,
+                          color: Colors.white.withOpacity(0.6), size: 18),
+                    ],
+                  ),
+                ),
+              ),
+              const Spacer(),
+              // Reset to Now button (only show if custom time is set)
+              if (_departureTime != null)
+                GestureDetector(
+                  onTap: () {
+                    setState(() => _departureTime = null);
+                    if (_routeConfirmed) _loadRoute();
+                  },
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                    ),
+                    child: const Text(
+                      'Reset to Now',
+                      style: TextStyle(
+                        color: Colors.blue,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLocationRow({
+    required String label,
+    required String value,
+    required bool isFrom,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Row(
+        children: [
+          // Label circle
+          Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: isFrom ? Colors.grey.shade600 : Colors.white,
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              label,
+              style: TextStyle(
+                color: isFrom ? Colors.white : Colors.black,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                color: _toId == null && !isFrom ? Colors.white38 : Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Apple-style bottom action bar
+  Widget _buildAppleBottomBar() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      decoration: BoxDecoration(
+        color: _bgDark,
+        border: Border(
+          top: BorderSide(color: Colors.white.withOpacity(0.1)),
+        ),
+      ),
+      child: Row(
+        children: [
+          // Timeline button
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _currentView = 1),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: _currentView == 1 ? _cardDark : Colors.teal.shade800,
+                  borderRadius: BorderRadius.circular(28),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.timeline, color: Colors.white, size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      'Timeline',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Go Now button (orange)
+          Expanded(
+            child: GestureDetector(
+              onTap: _startNavigation,
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: _orangeAccent,
+                  borderRadius: BorderRadius.circular(28),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.navigation, color: Colors.white, size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      'Go Now',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          // More menu
+          GestureDetector(
+            onTap: _showOptionsMenu,
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: _cardDark,
+                shape: BoxShape.circle,
+              ),
+              child:
+                  const Icon(Icons.more_horiz, color: Colors.white, size: 22),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Apple-style route selection view (before confirming route)
+  Widget _buildAppleRouteSelectionView() {
     final hasDestination = _toId != null;
     final destinationName = hasDestination
         ? _currentMotorwayPoints
@@ -1136,9 +2772,11 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                 _selectedMotorwayId, _fromId!, _toId!))
         : <MotorwayPoint>[];
 
+    // Calculate total distance - use absolute difference for reverse direction
     final totalDistance = previewPoints.isNotEmpty
-        ? previewPoints.last.distanceFromStart -
-            previewPoints.first.distanceFromStart
+        ? (previewPoints.last.distanceFromStart -
+                previewPoints.first.distanceFromStart)
+            .abs()
         : 0;
     final estimatedTime =
         (totalDistance / 100 * 60).round(); // Rough estimate at 100km/h
@@ -1322,6 +2960,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                           child: Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
                                   Icons.route,
@@ -1416,6 +3055,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     );
   }
 
+  // ignore: unused_element
+  // ignore: unused_element
   Widget _buildAppBar() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -1443,20 +3084,21 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                _isNavigating ? 'Navigating' : 'M2 Motorway',
+                _isNavigating ? 'Navigating' : 'Motorway Weather',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              Text(
-                _isNavigating ? 'Following your route' : 'Islamabad ↔ Lahore',
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.8),
-                  fontSize: 13,
+              if (_isNavigating)
+                Text(
+                  'Following your route',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.8),
+                    fontSize: 13,
+                  ),
                 ),
-              ),
             ],
           ),
           const Spacer(),
@@ -1481,7 +3123,9 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       ),
     );
   }
-
+// ignore: unused_element
+  
+  // ignore: unused_element
   Widget _buildSearchSection() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -1786,8 +3430,10 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       case PointType.destination:
         return Icons.flag;
     }
+  // ignore: unused_element
   }
 
+  // ignore: unused_element
   Widget _buildViewToggle() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -1996,9 +3642,11 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
           ),
         ],
       ),
+  // ignore: unused_element
     );
   }
 
+  // ignore: unused_element
   Widget _buildTimelineView() {
     // Filter out passed toll plazas during navigation
     final visiblePoints = _isNavigating
@@ -2168,7 +3816,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   }
 
   Widget _buildTimelineCard(TravelPoint tp, bool isLast) {
-    final metar = _metarData[tp.point.id];
+    // Only use METAR if point is within range
+    final metar = _getMetarIfInRange(tp.point.id);
     final hasMetar = metar != null;
     final isServiceArea = tp.point.type == PointType.serviceArea;
     final isDestination = tp.point.type == PointType.destination;
@@ -2312,7 +3961,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                                           size: 12, color: Colors.white54),
                                       const SizedBox(width: 4),
                                       Text(
-                                        '${tp.point.distanceFromStart} km',
+                                        '${tp.distanceFromUser} km',
                                         style: TextStyle(
                                           color: Colors.white.withOpacity(0.7),
                                           fontSize: 12,
@@ -2410,8 +4059,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                             metar: metar, weather: tp.weather),
 
                         // Prayer times row - shows which namaz will be active at arrival
-                        if (tp.nextPrayer != null &&
-                            tp.nextPrayerTime != null) ...[
+                        if (tp.nextPrayer != null) ...[
                           const SizedBox(height: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(
@@ -2671,8 +4319,468 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     return '${minutes}m';
   }
 
+  /// Show motorway selector bottom sheet
+  void _showMotorwaySelectorSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: _cardDark,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Handle bar
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Select Motorway',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const Divider(color: Colors.white12, height: 1),
+            // Motorway list
+            ...PakistanMotorways.motorways.map((motorway) => ListTile(
+                  leading: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: motorway.id == _selectedMotorwayId
+                          ? _orangeAccent
+                          : motorway.isCombined
+                              ? Colors.teal.withOpacity(0.2)
+                              : Colors.white.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: motorway.isCombined
+                          ? Border.all(color: Colors.teal, width: 1)
+                          : null,
+                    ),
+                    child: Text(
+                      motorway.isCombined ? 'M1+M2' : motorway.id.toUpperCase(),
+                      style: TextStyle(
+                        color: motorway.id == _selectedMotorwayId
+                            ? Colors.white
+                            : motorway.isCombined
+                                ? Colors.teal
+                                : Colors.white70,
+                        fontWeight: FontWeight.bold,
+                        fontSize: motorway.isCombined ? 12 : 14,
+                      ),
+                    ),
+                  ),
+                  title: Row(
+                    children: [
+                      Text(
+                        motorway.name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      if (motorway.isCombined) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.teal,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'FULL ROUTE',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  subtitle: Text(
+                    '${motorway.subtitle} • ${motorway.distanceKm} km',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.6),
+                      fontSize: 12,
+                    ),
+                  ),
+                  trailing: motorway.id == _selectedMotorwayId
+                      ? const Icon(Icons.check_circle, color: _orangeAccent)
+                      : null,
+                  onTap: () {
+                    Navigator.pop(context);
+                    if (motorway.id != _selectedMotorwayId) {
+                      setState(() {
+                        _selectedMotorwayId = motorway.id;
+                        _fromId = null;
+                        _toId = null;
+                        _routePoints = [];
+                        _roadRoutePoints = [];
+                        _routeConfirmed = false;
+                      });
+                    }
+                  },
+                )),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Show options menu
+  void _showOptionsMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: _cardDark,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Handle bar
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 8),
+            // Menu items
+            ListTile(
+              leading: const Icon(Icons.share, color: Colors.white),
+              title: const Text('Share Route',
+                  style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                _shareRoute();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.refresh, color: Colors.white),
+              title: const Text('Refresh Weather',
+                  style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                if (_routeConfirmed) {
+                  _loadRoute();
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.swap_vert, color: Colors.white),
+              title: const Text('Swap Direction',
+                  style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                _swapDirection();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.info_outline, color: Colors.white),
+              title: const Text('Route Info',
+                  style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                _showRouteInfo();
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.directions_car,
+                  color: _useCarIcon ? _orangeAccent : Colors.white),
+              title: Text(
+                _useCarIcon ? 'Switch to Arrow Icon' : 'Switch to Car Icon',
+                style: const TextStyle(color: Colors.white),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                setState(() {
+                  _useCarIcon = !_useCarIcon;
+                });
+                _updateMapMarkers();
+              },
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Share route - copies to clipboard
+  void _shareRoute() async {
+    if (_routePoints.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No route to share')),
+      );
+      return;
+    }
+
+    final fromName = _fromId == null
+        ? 'Current Location'
+        : _currentMotorwayPoints.firstWhere((p) => p.id == _fromId).name;
+    final toName = _currentMotorwayPoints.firstWhere((p) => p.id == _toId).name;
+    final motorway = PakistanMotorways.motorways
+        .firstWhere((m) => m.id == _selectedMotorwayId);
+
+    final totalDist = _routeDistanceMeters > 0
+        ? (_routeDistanceMeters / 1000).toStringAsFixed(0)
+        : (_routePoints.isNotEmpty
+            ? '${_routePoints.last.distanceFromUser}'
+            : '0');
+
+    final message = '''
+🚗 Motorway Weather Route
+
+📍 From: $fromName
+📍 To: $toName
+🛣️ Motorway: ${motorway.name}
+📏 Distance: $totalDist km
+
+Weather along route:
+${_routePoints.take(5).map((tp) => '• ${tp.point.name}: ${tp.weather?.tempC.toStringAsFixed(0) ?? '--'}°C, ${tp.weather?.condition ?? 'N/A'}').join('\n')}
+
+Shared via Weather Alert Pakistan
+''';
+
+    // Copy to clipboard
+    await Clipboard.setData(ClipboardData(text: message));
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.green),
+              SizedBox(width: 8),
+              Text('Route copied to clipboard!'),
+            ],
+          ),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  /// Get departure time display text
+  String _getDepartureTimeText() {
+    if (_departureTime == null) return 'Now';
+    final now = DateTime.now();
+    final diff = _departureTime!.difference(now);
+
+    if (diff.inMinutes < 1) return 'Now';
+    if (diff.inMinutes < 60) return 'In ${diff.inMinutes} min';
+
+    final hour = _departureTime!.hour;
+    final minute = _departureTime!.minute;
+    final period = hour >= 12 ? 'PM' : 'AM';
+    final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
+    return '${displayHour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')} $period';
+  }
+
+  /// Show departure time picker
+  Future<void> _showDepartureTimePicker() async {
+    final now = DateTime.now();
+    final initialTime = _departureTime ?? now;
+
+    final pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(initialTime),
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.dark().copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: Colors.blue,
+              onPrimary: Colors.white,
+              surface: Color(0xFF1C1C1E),
+              onSurface: Colors.white,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (pickedTime != null) {
+      // Create datetime with picked time
+      DateTime newDeparture = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        pickedTime.hour,
+        pickedTime.minute,
+      );
+
+      // If picked time is in the past, assume tomorrow
+      if (newDeparture.isBefore(now)) {
+        newDeparture = newDeparture.add(const Duration(days: 1));
+      }
+
+      setState(() => _departureTime = newDeparture);
+
+      // Reload route with new departure time
+      if (_routeConfirmed) {
+        _loadRoute();
+      }
+    }
+  }
+
+  /// Swap from/to direction
+  void _swapDirection() {
+    if (_toId == null) return;
+
+    setState(() {
+      final temp = _fromId;
+      _fromId = _toId;
+      _toId = temp;
+    });
+
+    if (_routeConfirmed) {
+      _loadRoute();
+    }
+  }
+
+  /// Show route info
+  void _showRouteInfo() {
+    if (_routePoints.isEmpty) return;
+
+    final motorway = PakistanMotorways.motorways
+        .firstWhere((m) => m.id == _selectedMotorwayId);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: _cardDark,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Handle bar
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Text(
+              motorway.name,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              motorway.subtitle,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.6),
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 16),
+            _buildInfoRow(Icons.straighten, 'Total Distance',
+                '${_routeDistanceMeters > 0 ? (_routeDistanceMeters / 1000).toStringAsFixed(0) : motorway.distanceKm} km'),
+            _buildInfoRow(
+                Icons.schedule,
+                'Estimated Time',
+                _formatDuration(Duration(
+                    seconds: _routeDurationSeconds > 0
+                        ? _routeDurationSeconds
+                        : (motorway.distanceKm * 0.6).toInt() * 60))),
+            _buildInfoRow(Icons.location_on, 'Toll Plazas',
+                '${_routePoints.where((p) => p.point.type == PointType.tollPlaza).length}'),
+            _buildInfoRow(Icons.swap_horiz, 'Interchanges',
+                '${_routePoints.where((p) => p.point.type == PointType.interchange).length}'),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(icon, color: _orangeAccent, size: 20),
+          const SizedBox(width: 12),
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.7),
+              fontSize: 14,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Check if a point is within METAR range based on stored distance/radius
+  bool _isPointInMetarRange(String pointId) {
+    final metar = _metarData[pointId];
+    if (metar == null) return false;
+    final distance = metar['_airport_distance_km'] as double?;
+    final radius = metar['_airport_radius_km'] as double?;
+    if (distance == null || radius == null) return false;
+    return distance <= radius;
+  }
+
+  /// Get METAR data only if point is within range
+  Map<String, dynamic>? _getMetarIfInRange(String pointId) {
+    if (_isPointInMetarRange(pointId)) {
+      return _metarData[pointId];
+    }
+    return null;
+  }
+
   void _showPointDetails(TravelPoint tp) {
-    final metar = _metarData[tp.point.id];
+    // Only use METAR data if point is within METAR range
+    final metar = _getMetarIfInRange(tp.point.id);
 
     showModalBottomSheet(
       context: context,
@@ -2726,7 +4834,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                         ),
                       ),
                       Text(
-                        '${tp.point.distanceFromStart} km from Islamabad',
+                        '${tp.distanceFromUser} km away',
                         style: TextStyle(
                           color: Colors.white.withOpacity(0.7),
                         ),
@@ -2851,6 +4959,1710 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     );
   }
 
+  /// Apple Weather style map view with weather markers
+  Widget _buildAppleMapView() {
+    if (_routePoints.isEmpty) {
+      return Center(
+        child: Text(
+          'Select a route to view on map',
+          style: TextStyle(color: Colors.white.withOpacity(0.6)),
+        ),
+      );
+    }
+
+    // Calculate center and bounds
+    double centerLat = 0, centerLon = 0;
+    for (final tp in _routePoints) {
+      centerLat += tp.point.lat;
+      centerLon += tp.point.lon;
+    }
+    centerLat /= _routePoints.length;
+    centerLon /= _routePoints.length;
+
+    return Stack(
+      children: [
+        // Map
+        ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          child: GoogleMap(
+            initialCameraPosition: CameraPosition(
+              target: LatLng(centerLat, centerLon),
+              zoom: 7,
+            ),
+            markers: _buildAppleStyleMarkers(),
+            polylines: {
+              Polyline(
+                polylineId: const PolylineId('route'),
+                points: _roadRoutePoints.isNotEmpty
+                    ? _roadRoutePoints
+                    : _routePoints
+                        .map((tp) => LatLng(tp.point.lat, tp.point.lon))
+                        .toList(),
+                color: _orangeAccent,
+                width: 5,
+              ),
+            },
+            onMapCreated: (controller) {
+              _mapController = controller;
+              // Set dark map style
+              controller.setMapStyle(_darkMapStyle);
+              // Fit bounds to show entire route
+              if (_routePoints.isNotEmpty) {
+                final bounds = LatLngBounds(
+                  southwest: LatLng(
+                    _routePoints
+                        .map((p) => p.point.lat)
+                        .reduce((a, b) => a < b ? a : b),
+                    _routePoints
+                        .map((p) => p.point.lon)
+                        .reduce((a, b) => a < b ? a : b),
+                  ),
+                  northeast: LatLng(
+                    _routePoints
+                        .map((p) => p.point.lat)
+                        .reduce((a, b) => a > b ? a : b),
+                    _routePoints
+                        .map((p) => p.point.lon)
+                        .reduce((a, b) => a > b ? a : b),
+                  ),
+                );
+                controller
+                    .animateCamera(CameraUpdate.newLatLngBounds(bounds, 50));
+              }
+            },
+            mapType: MapType.normal,
+            zoomControlsEnabled: false,
+            myLocationEnabled: !_isNavigating,
+            myLocationButtonEnabled: false,
+            compassEnabled: false,
+          ),
+        ),
+
+        // Top right - Distance and time badge
+        Positioned(
+          top: 16,
+          right: 16,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.7),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  _routeDistanceMeters >= 1000
+                      ? '${(_routeDistanceMeters / 1000).toStringAsFixed(0)} km'
+                      : '$_routeDistanceMeters m',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  _formatDuration(Duration(seconds: _routeDurationSeconds)),
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.8),
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // Left side - Layer toggle button
+        Positioned(
+          top: 16,
+          left: 16,
+          child: GestureDetector(
+            onTap: () => setState(() => _showLayerPicker = !_showLayerPicker),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: _cardDark,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.3),
+                    blurRadius: 8,
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(_getLayerIcon(_selectedMapLayer),
+                      color: _getLayerColor(_selectedMapLayer), size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    _getLayerLabel(_selectedMapLayer),
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    _showLayerPicker
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    color: Colors.white54,
+                    size: 18,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+
+        // Layer picker dropdown
+        if (_showLayerPicker)
+          Positioned(
+            top: 60,
+            left: 16,
+            child: Container(
+              decoration: BoxDecoration(
+                color: _cardDark,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.4),
+                    blurRadius: 12,
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildLayerOption(
+                      'temp', Icons.thermostat, 'Temperature', Colors.orange),
+                  _buildLayerOption(
+                      'humidity', Icons.water_drop, 'Humidity', Colors.blue),
+                  _buildLayerOption('visibility', Icons.visibility,
+                      'Visibility', Colors.teal),
+                  _buildLayerOption('wind', Icons.air, 'Wind', Colors.cyan),
+                  _buildLayerOption(
+                      'uv', Icons.wb_sunny, 'UV Index', Colors.amber),
+                ],
+              ),
+            ),
+          ),
+
+        // Speedometer widget (when navigating) - Bottom Left above green button
+        if (_isNavigating)
+          Positioned(
+            bottom: 100, // Just above the green slider button
+            left: 16,
+            child: _buildSpeedometerWidget(),
+          ),
+
+        // Next toll plaza weather card (when navigating)
+        if (_isNavigating)
+          Positioned(
+            top: 100,
+            right: 16,
+            left: 16,
+            child: _buildNextTollPlazaCard(),
+          ),
+
+        // Start/Stop Journey button
+        if (!_showTimelineSlider)
+          Positioned(
+            bottom: 80,
+            right: 16,
+            child: GestureDetector(
+              onTap: _isNavigating ? _stopNavigation : _startNavigation,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                decoration: BoxDecoration(
+                  color: _isNavigating
+                      ? Colors.red.shade600
+                      : Colors.green.shade600,
+                  borderRadius: BorderRadius.circular(28),
+                  boxShadow: [
+                    BoxShadow(
+                      color: (_isNavigating ? Colors.red : Colors.green)
+                          .withOpacity(0.4),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      _isNavigating ? Icons.stop : Icons.navigation,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _isNavigating ? 'Stop' : 'Start Journey',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+        // Bottom left - Timeline slider button (GREEN)
+        Positioned(
+          bottom: _showTimelineSlider ? 200 : 16,
+          left: 16,
+          child: GestureDetector(
+            onTap: () {
+              setState(() {
+                _showTimelineSlider = !_showTimelineSlider;
+                if (_showTimelineSlider) {
+                  _sliderValue = 0.0;
+                  _sliderPointIndex = 0;
+                } else {
+                  _stopSliderPlayback();
+                }
+              });
+            },
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: _showTimelineSlider
+                    ? Colors.green.shade700
+                    : Colors.green.shade600,
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.green.withOpacity(0.4),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.timeline, color: Colors.white, size: 24),
+                  if (_showTimelineSlider) ...[
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Close',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+
+        // Bottom right - Timeline list view button
+        if (!_showTimelineSlider)
+          Positioned(
+            bottom: 16,
+            right: 16,
+            child: GestureDetector(
+              onTap: () => setState(() => _currentView = 1),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: _cardDark,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.list, color: Colors.white, size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      'Timeline',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+        // Timeline slider overlay
+        if (_showTimelineSlider) _buildTimelineSliderOverlay(),
+      ],
+    );
+  }
+
+  /// Build the timeline slider overlay at bottom of map
+  Widget _buildTimelineSliderOverlay() {
+    if (_routePoints.isEmpty) return const SizedBox.shrink();
+
+    // Get current point based on slider
+    final currentPoint = _routePoints[_sliderPointIndex];
+    final weather = currentPoint.weather;
+    // Only use METAR if point is within range
+    final metar = _getMetarIfInRange(currentPoint.point.id);
+    final useMetar = _shouldUseMetar(metar);
+
+    // API fallback values
+    final apiTemp = weather?.tempC.round() ?? 0;
+    final apiCondition = weather?.condition ?? 'N/A';
+    final apiHumidity = weather?.humidity.round() ?? 0;
+    final apiWindKph = weather?.windKph.round() ?? 0;
+    final chanceOfRain = weather?.rainChance?.round() ?? 0;
+
+    // Prefer METAR values when within airport radius (30km)
+    int temp = apiTemp;
+    String condition = apiCondition;
+    int humidity = apiHumidity;
+    int windKph = apiWindKph;
+    String? metarVisibility;
+    bool hasMetar = false;
+
+    if (useMetar && metar != null) {
+      hasMetar = true;
+
+      // Use METAR temperature if available
+      final metarTemp = _toDouble(metar['temp_c']);
+      if (metarTemp != null) {
+        temp = metarTemp.round();
+      }
+
+      // Use METAR humidity if available
+      final metarHumidity = _toDouble(metar['humidity']);
+      if (metarHumidity != null) {
+        humidity = metarHumidity.round();
+      }
+
+      // Use METAR wind if available
+      final metarWind = _toDouble(metar['wind_kph']);
+      if (metarWind != null) {
+        windKph = metarWind.round();
+      }
+
+      // Extract visibility from visibility_km (already in km)
+      final visKm = _toDouble(metar['visibility_km']);
+      if (visKm != null) {
+        metarVisibility = '${visKm.toStringAsFixed(1)} km';
+      }
+
+      // Extract condition using same logic as main app
+      if (metar['raw_text'] != null) {
+        final code = _extractMetarCode(metar['raw_text'].toString());
+        condition = mapMetarCodeToDescription(code);
+      }
+    }
+
+    final arrivalTime = currentPoint.estimatedArrival;
+    final timeStr = arrivalTime != null
+        ? '${arrivalTime.hour.toString().padLeft(2, '0')}:${arrivalTime.minute.toString().padLeft(2, '0')}'
+        : '--:--';
+
+    return Stack(
+      children: [
+        // Close button - Top right of slider overlay
+        Positioned(
+          top: 10,
+          right: 16,
+          child: GestureDetector(
+            onTap: () {
+              setState(() {
+                _showTimelineSlider = false;
+                _stopSliderPlayback();
+              });
+            },
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: _cardDark,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.3),
+                    blurRadius: 8,
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.close, color: Colors.white, size: 20),
+            ),
+          ),
+        ),
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.transparent,
+                  Colors.black.withOpacity(0.7),
+                  Colors.black.withOpacity(0.95),
+                ],
+                stops: const [0.0, 0.2, 1.0],
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 30),
+                // Weather info card
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: _cardDark,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    children: [
+                      // Location and time
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  currentPoint.point.name,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Icon(Icons.access_time,
+                                        color: Colors.white.withOpacity(0.6),
+                                        size: 14),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Arrival: $timeStr',
+                                      style: TextStyle(
+                                        color: Colors.white.withOpacity(0.7),
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Icon(Icons.straighten,
+                                        color: Colors.white.withOpacity(0.6),
+                                        size: 14),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '${currentPoint.distanceFromUser} km',
+                                      style: TextStyle(
+                                        color: Colors.white.withOpacity(0.7),
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          // Temperature
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '$temp°',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 42,
+                                  fontWeight: FontWeight.w300,
+                                ),
+                              ),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    condition.length > 18
+                                        ? '${condition.substring(0, 18)}...'
+                                        : condition,
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.7),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  if (hasMetar) ...[
+                                    const SizedBox(width: 4),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 4, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: Colors.blue.withOpacity(0.3),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: const Text(
+                                        'METAR',
+                                        style: TextStyle(
+                                          color: Colors.blue,
+                                          fontSize: 8,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              // METAR visibility
+                              if (metarVisibility != null) ...[
+                                const SizedBox(height: 2),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.visibility,
+                                        color: Colors.teal.withOpacity(0.7),
+                                        size: 12),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Vis: $metarVisibility',
+                                      style: TextStyle(
+                                          color: Colors.teal.withOpacity(0.8),
+                                          fontSize: 11),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      // Weather details row
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          _buildWeatherDetail(
+                              Icons.water_drop, '$chanceOfRain%', 'Rain'),
+                          Container(
+                              width: 1, height: 30, color: Colors.white24),
+                          _buildWeatherDetail(
+                              Icons.opacity, '$humidity%', 'Humidity'),
+                          Container(
+                              width: 1, height: 30, color: Colors.white24),
+                          _buildWeatherDetail(
+                              Icons.air, '$windKph km/h', 'Wind'),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Slider
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    children: [
+                      // Progress indicator (location dots)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: List.generate(
+                          min(_routePoints.length, 10),
+                          (index) {
+                            final actualIndex =
+                                (index * (_routePoints.length - 1) / 9).round();
+                            final isActive = actualIndex <= _sliderPointIndex;
+                            final isCurrent = actualIndex == _sliderPointIndex;
+                            return Container(
+                              width: isCurrent ? 12 : 8,
+                              height: isCurrent ? 12 : 8,
+                              decoration: BoxDecoration(
+                                color: isActive ? Colors.green : Colors.white24,
+                                shape: BoxShape.circle,
+                                border: isCurrent
+                                    ? Border.all(color: Colors.white, width: 2)
+                                    : null,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      // Slider
+                      SliderTheme(
+                        data: SliderTheme.of(context).copyWith(
+                          activeTrackColor: Colors.green,
+                          inactiveTrackColor: Colors.white24,
+                          thumbColor: Colors.white,
+                          thumbShape: const RoundSliderThumbShape(
+                              enabledThumbRadius: 10),
+                          trackHeight: 6,
+                          overlayColor: Colors.green.withOpacity(0.2),
+                        ),
+                        child: Slider(
+                          value: _sliderValue,
+                          min: 0,
+                          max: 1,
+                          onChanged: (value) {
+                            setState(() {
+                              _sliderValue = value;
+                              _sliderPointIndex =
+                                  (value * (_routePoints.length - 1)).round();
+                            });
+                            // Move map camera to current point
+                            final point = _routePoints[_sliderPointIndex];
+                            _mapController?.animateCamera(
+                              CameraUpdate.newLatLngZoom(
+                                LatLng(point.point.lat, point.point.lon),
+                                12,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      // Start and end labels
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _routePoints.first.point.name,
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.5),
+                                  fontSize: 11,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            // Play/Pause button
+                            GestureDetector(
+                              onTap: _toggleSliderPlayback,
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: _isSliderPlaying
+                                      ? Colors.red
+                                      : Colors.green,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: (_isSliderPlaying
+                                              ? Colors.red
+                                              : Colors.green)
+                                          .withOpacity(0.4),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: Icon(
+                                  _isSliderPlaying
+                                      ? Icons.pause
+                                      : Icons.play_arrow,
+                                  color: Colors.white,
+                                  size: 24,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _routePoints.last.point.name,
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.5),
+                                  fontSize: 11,
+                                ),
+                                textAlign: TextAlign.end,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Toggle slider auto-playback
+  void _toggleSliderPlayback() {
+    if (_isSliderPlaying) {
+      _stopSliderPlayback();
+    } else {
+      _startSliderPlayback();
+    }
+  }
+
+  /// Start auto-playing through route points
+  void _startSliderPlayback() {
+    if (_routePoints.isEmpty) return;
+
+    // Reset to start if at end
+    if (_sliderPointIndex >= _routePoints.length - 1) {
+      setState(() {
+        _sliderValue = 0.0;
+        _sliderPointIndex = 0;
+      });
+    }
+
+    setState(() => _isSliderPlaying = true);
+
+    // Advance every 1.5 seconds
+    _sliderPlayTimer =
+        Timer.periodic(const Duration(milliseconds: 1500), (timer) {
+      if (!mounted || !_isSliderPlaying) {
+        timer.cancel();
+        return;
+      }
+
+      setState(() {
+        _sliderPointIndex++;
+        if (_sliderPointIndex >= _routePoints.length) {
+          _sliderPointIndex = _routePoints.length - 1;
+          _stopSliderPlayback();
+          return;
+        }
+        _sliderValue = _sliderPointIndex / (_routePoints.length - 1);
+      });
+
+      // Move map camera
+      final point = _routePoints[_sliderPointIndex];
+      _mapController?.animateCamera(
+        CameraUpdate.newLatLngZoom(
+          LatLng(point.point.lat, point.point.lon),
+          12,
+        ),
+      );
+    });
+  }
+
+  /// Stop auto-playback
+  void _stopSliderPlayback() {
+    _sliderPlayTimer?.cancel();
+    _sliderPlayTimer = null;
+    if (mounted) {
+      setState(() => _isSliderPlaying = false);
+    }
+  }
+
+  Widget _buildWeatherDetail(IconData icon, String value, String label) {
+    return Column(
+      children: [
+        Icon(icon, color: Colors.white.withOpacity(0.7), size: 20),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.5),
+            fontSize: 11,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Build layer option for dropdown
+  Widget _buildLayerOption(
+      String id, IconData icon, String label, Color color) {
+    final isSelected = _selectedMapLayer == id;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedMapLayer = id;
+          _showLayerPicker = false;
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? color.withOpacity(0.2) : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: isSelected ? color : Colors.white70, size: 20),
+            const SizedBox(width: 12),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? color : Colors.white,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+            if (isSelected) ...[
+              const SizedBox(width: 8),
+              Icon(Icons.check, color: color, size: 18),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _getLayerIcon(String layer) {
+    switch (layer) {
+      case 'temp':
+        return Icons.thermostat;
+      case 'humidity':
+        return Icons.water_drop;
+      case 'visibility':
+        return Icons.visibility;
+      case 'wind':
+        return Icons.air;
+      case 'uv':
+        return Icons.wb_sunny;
+      default:
+        return Icons.thermostat;
+    }
+  }
+
+  Color _getLayerColor(String layer) {
+    switch (layer) {
+      case 'temp':
+        return Colors.orange;
+      case 'humidity':
+        return Colors.blue;
+      case 'visibility':
+        return Colors.teal;
+      case 'wind':
+        return Colors.cyan;
+      case 'uv':
+        return Colors.amber;
+      default:
+        return Colors.orange;
+    }
+  }
+
+  String _getLayerLabel(String layer) {
+    switch (layer) {
+      case 'temp':
+        return 'Temp';
+      case 'humidity':
+        return 'Humidity';
+      case 'visibility':
+        return 'Visibility';
+      case 'wind':
+        return 'Wind';
+      case 'uv':
+        return 'UV';
+      default:
+        return 'Temp';
+    }
+  }
+
+  /// Speedometer widget - circular style
+  Widget _buildSpeedometerWidget() {
+    final speed = _currentSpeed.round();
+    final isOverSpeed = speed > 120; // Motorway limit typically 120 km/h
+
+    return Container(
+      width: 80,
+      height: 80,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: _cardDark,
+        border: Border.all(
+          color: isOverSpeed ? Colors.red : _orangeAccent,
+          width: 4,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: (isOverSpeed ? Colors.red : _orangeAccent).withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            '$speed',
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+              color: isOverSpeed ? Colors.red : Colors.white,
+            ),
+          ),
+          Text(
+            'km/h',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+              color: isOverSpeed ? Colors.red.shade300 : Colors.white54,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Next toll plaza weather card
+  Widget _buildNextTollPlazaCard() {
+    if (_routePoints.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.black87,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Text('Loading route...',
+            style: TextStyle(color: Colors.white)),
+      );
+    }
+
+    // Find the next toll plaza (interchanges are also toll plazas in Pakistan)
+    TravelPoint? nextTollPlaza;
+    for (int i = _currentPointIndex; i < _routePoints.length; i++) {
+      final pointType = _routePoints[i].point.type;
+      // Toll plazas and interchanges both have toll collection
+      if (pointType == PointType.tollPlaza ||
+          pointType == PointType.interchange) {
+        nextTollPlaza = _routePoints[i];
+        break;
+      }
+    }
+
+    // If no toll plaza ahead, show destination message
+    if (nextTollPlaza == null) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.black87,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Text('No toll plaza ahead',
+            style: TextStyle(color: Colors.white)),
+      );
+    }
+
+    final nextPoint = nextTollPlaza;
+    final weather = nextPoint.weather;
+    // Only use METAR if point is within range
+    final metar = _getMetarIfInRange(nextPoint.point.id);
+
+    // Prayer time info
+    final prayerName = nextPoint.nextPrayer;
+    final prayerTime = nextPoint.nextPrayerTime;
+
+    // Calculate distance to next point
+    double distanceToNext = 0;
+    if (_currentPosition != null) {
+      distanceToNext = Geolocator.distanceBetween(
+            _currentPosition!.latitude,
+            _currentPosition!.longitude,
+            nextPoint.point.lat,
+            nextPoint.point.lon,
+          ) /
+          1000; // Convert to km
+    }
+
+    // API fallback values
+    final apiTemp = weather?.tempC.round() ?? 0;
+    final apiCondition = weather?.condition ?? 'N/A';
+    final apiHumidity = weather?.humidity ?? 0;
+    final apiWindKph = weather?.windKph.round() ?? 0;
+
+    // Prefer METAR values when within airport radius (30km)
+    final useMetar = _shouldUseMetar(metar);
+    int temp = apiTemp;
+    String displayCondition = apiCondition;
+    int humidity = apiHumidity;
+    int windKph = apiWindKph;
+    String? visibility;
+    bool hasMetar = false;
+
+    if (useMetar && metar != null) {
+      hasMetar = true;
+
+      // Use METAR temperature if available
+      final metarTemp = _toDouble(metar['temp_c']);
+      if (metarTemp != null) {
+        temp = metarTemp.round();
+      }
+
+      // Use METAR humidity if available
+      final metarHumidity = _toDouble(metar['humidity']);
+      if (metarHumidity != null) {
+        humidity = metarHumidity.round();
+      }
+
+      // Use METAR wind if available
+      final metarWind = _toDouble(metar['wind_kph']);
+      if (metarWind != null) {
+        windKph = metarWind.round();
+      }
+
+      // Extract visibility from visibility_km (already in km)
+      final visKm = _toDouble(metar['visibility_km']);
+      if (visKm != null) {
+        visibility = visKm.toStringAsFixed(1);
+      }
+
+      // Extract condition using same logic as main app
+      if (metar['raw_text'] != null) {
+        final code = _extractMetarCode(metar['raw_text'].toString());
+        displayCondition = mapMetarCodeToDescription(code);
+      }
+    }
+
+    final feelsLike = temp; // Use METAR temp or fallback
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _cardDark.withOpacity(0.95),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _orangeAccent.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Header row
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _orangeAccent,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Text(
+                  'NEXT',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  nextPoint.point.name,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Text(
+                '${distanceToNext.toStringAsFixed(1)} km',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.7),
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Weather row
+          Row(
+            children: [
+              // Temperature and condition
+              Icon(
+                _getWeatherIconFromCondition(displayCondition),
+                color: Colors.white,
+                size: 32,
+              ),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$temp°C',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        displayCondition.length > 25
+                            ? '${displayCondition.substring(0, 25)}...'
+                            : displayCondition,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.7),
+                          fontSize: 11,
+                        ),
+                      ),
+                      if (hasMetar) ...[
+                        const SizedBox(width: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 4, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'METAR',
+                            style: TextStyle(
+                              color: Colors.blue,
+                              fontSize: 8,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+              const Spacer(),
+              // Weather details
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.thermostat,
+                          color: Colors.orange.withOpacity(0.7), size: 14),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Feels $feelsLike°',
+                        style: TextStyle(
+                            color: Colors.white.withOpacity(0.8), fontSize: 11),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.water_drop,
+                          color: Colors.blue.withOpacity(0.7), size: 14),
+                      const SizedBox(width: 4),
+                      Text(
+                        '$humidity%',
+                        style: TextStyle(
+                            color: Colors.white.withOpacity(0.8), fontSize: 11),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(Icons.air,
+                          color: Colors.cyan.withOpacity(0.7), size: 14),
+                      const SizedBox(width: 4),
+                      Text(
+                        '$windKph km/h',
+                        style: TextStyle(
+                            color: Colors.white.withOpacity(0.8), fontSize: 11),
+                      ),
+                    ],
+                  ),
+                  if (visibility != null) ...[
+                    const SizedBox(height: 2),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.visibility,
+                            color: Colors.teal.withOpacity(0.7), size: 14),
+                        const SizedBox(width: 4),
+                        Text(
+                          '$visibility km',
+                          style: TextStyle(
+                              color: Colors.white.withOpacity(0.8),
+                              fontSize: 11),
+                        ),
+                        const SizedBox(width: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 4, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'METAR',
+                            style: TextStyle(
+                                color: Colors.green,
+                                fontSize: 8,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+          // Prayer time row
+          if (prayerName != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: _orangeAccent.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _orangeAccent.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.mosque, color: _orangeAccent, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    prayerName,
+                    style: TextStyle(
+                      color: _orangeAccent,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (prayerTime != null) ...[
+                    const SizedBox(width: 6),
+                    Text(
+                      prayerTime,
+                      style: TextStyle(
+                        color: _orangeAccent.withOpacity(0.8),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                  const Spacer(),
+                  Text(
+                    'at arrival',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.5),
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Set<Marker> _buildAppleStyleMarkers() {
+    final markers = <Marker>{};
+
+    // Add current location marker when navigating
+    if (_isNavigating && _currentPosition != null) {
+      // Use smooth interpolated position for display
+      final markerLat = _displayLat != 0
+          ? _displayLat
+          : (_smoothedLat != 0 ? _smoothedLat : _currentPosition!.latitude);
+      final markerLon = _displayLon != 0
+          ? _displayLon
+          : (_smoothedLon != 0 ? _smoothedLon : _currentPosition!.longitude);
+      final displayPosition = LatLng(markerLat, markerLon);
+
+      // Choose icon - car or arrow
+      BitmapDescriptor markerIcon;
+      if (_useCarIcon && _carIcon != null) {
+        markerIcon = _carIcon!;
+      } else if (_navigationArrowIcon != null) {
+        markerIcon = _navigationArrowIcon!;
+      } else {
+        markerIcon =
+            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
+      }
+
+      markers.add(
+        Marker(
+          markerId: const MarkerId('current_location'),
+          position: displayPosition,
+          icon: markerIcon,
+          infoWindow: InfoWindow(
+            title: '🚗 Navigating',
+            snippet: '${_currentSpeed.round()} km/h',
+          ),
+          rotation: _displayBearing != 0 ? _displayBearing : _smoothedBearing,
+          anchor: const Offset(0.5, 0.5),
+          flat: true,
+          zIndex: 100,
+        ),
+      );
+    }
+
+    for (int i = 0; i < _routePoints.length; i++) {
+      final tp = _routePoints[i];
+      final weather = tp.weather;
+      if (weather == null) continue;
+
+      final temp = weather.tempC.round();
+      // Only use METAR if point is within range
+      final metar = _getMetarIfInRange(tp.point.id);
+      final visibility = metar?['visibility']?['meters'] != null
+          ? '${(metar!['visibility']['meters'] / 1000).toStringAsFixed(0)}km'
+          : null;
+
+      markers.add(
+        Marker(
+          markerId: MarkerId('point_$i'),
+          position: LatLng(tp.point.lat, tp.point.lon),
+          icon:
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+          infoWindow: InfoWindow(
+            title: '${tp.point.name} - $temp°',
+            snippet:
+                '${weather.condition}${visibility != null ? ' • Vis: $visibility' : ''}',
+          ),
+          onTap: () => _showPointDetails(tp),
+        ),
+      );
+    }
+
+    return markers;
+  }
+
+  /// Apple Weather style timeline view
+  Widget _buildAppleTimelineView() {
+    if (_routePoints.isEmpty) {
+      return Center(
+        child: Text(
+          'No route data available',
+          style: TextStyle(color: Colors.white.withOpacity(0.6)),
+        ),
+      );
+    }
+
+    return Container(
+      color: _bgDark,
+      child: Column(
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                const Spacer(),
+                Text(
+                  'Tap section for more details',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.5),
+                    fontSize: 13,
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.ios_share, color: Colors.white),
+                  onPressed: _shareRoute,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => setState(() => _currentView = 0),
+                ),
+              ],
+            ),
+          ),
+          // Starting city
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              _routePoints.first.point.name,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          // Timeline list
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: _routePoints.length,
+              itemBuilder: (context, index) {
+                final tp = _routePoints[index];
+                return _buildAppleTimelineItem(tp, index);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAppleTimelineItem(TravelPoint tp, int index) {
+    final weather = tp.weather;
+    // Only use METAR if point is within range
+    final metar = _getMetarIfInRange(tp.point.id);
+    final useMetar = _shouldUseMetar(metar);
+    final apiTemp = weather?.tempC.round() ?? 0;
+    final apiCondition = weather?.condition ?? '';
+    final chanceOfRain = weather?.rainChance?.round() ?? 0;
+    final prayerName = tp.nextPrayer;
+    final prayerTime = tp.nextPrayerTime;
+
+    // Get METAR data if within airport radius (30km)
+    int temp = apiTemp;
+    String condition = apiCondition;
+    String? metarVisibility;
+    bool hasMetar = false;
+
+    if (useMetar && metar != null) {
+      hasMetar = true;
+
+      // Use METAR temperature if available
+      final metarTemp = _toDouble(metar['temp_c']);
+      if (metarTemp != null) {
+        temp = metarTemp.round();
+      }
+
+      // Extract visibility from visibility_km (already in km)
+      final visKm = _toDouble(metar['visibility_km']);
+      if (visKm != null) {
+        metarVisibility = '${visKm.toStringAsFixed(1)} km';
+      }
+
+      // Extract condition using same logic as main app
+      if (metar['raw_text'] != null) {
+        final code = _extractMetarCode(metar['raw_text'].toString());
+        condition = mapMetarCodeToDescription(code);
+      }
+    }
+
+    final time = tp.estimatedArrival != null
+        ? '${tp.estimatedArrival!.hour}:${tp.estimatedArrival!.minute.toString().padLeft(2, '0')} ${tp.estimatedArrival!.hour < 12 ? 'AM' : 'PM'}'
+        : '--:--';
+
+    final distanceKm = tp.distanceFromUser;
+
+    return GestureDetector(
+      onTap: () => _showPointDetails(tp),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Row(
+          children: [
+            // Weather icon
+            SizedBox(
+              width: 60,
+              child: Column(
+                children: [
+                  Icon(
+                    _getWeatherIconFromCondition(condition),
+                    color: Colors.white,
+                    size: 36,
+                  ),
+                  if (chanceOfRain > 0)
+                    Text(
+                      '$chanceOfRain%',
+                      style: const TextStyle(
+                        color: Colors.lightBlueAccent,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            // Time and location
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    tp.point.name,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Text(
+                        time,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.7),
+                          fontSize: 12,
+                        ),
+                      ),
+                      Text(
+                        ' • ${distanceKm.toStringAsFixed(0)} km',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.5),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (prayerName != null) ...[
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Icon(Icons.mosque, color: _orangeAccent, size: 12),
+                        const SizedBox(width: 4),
+                        Text(
+                          '$prayerName${prayerTime != null ? ' $prayerTime' : ''}',
+                          style: TextStyle(
+                            color: _orangeAccent,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            // Timeline dot
+            Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                color: tp.isPassed ? Colors.white24 : Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2),
+              ),
+            ),
+            const SizedBox(width: 16),
+            // Temperature
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '$temp°',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w300,
+                  ),
+                ),
+                if (condition.isNotEmpty)
+                  Text(
+                    condition.length > 20
+                        ? '${condition.substring(0, 20)}...'
+                        : condition,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.6),
+                      fontSize: 11,
+                    ),
+                  ),
+                // METAR visibility and badge
+                if (hasMetar) ...[
+                  const SizedBox(height: 2),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (metarVisibility != null) ...[
+                        Icon(Icons.visibility,
+                            color: Colors.teal.withOpacity(0.7), size: 10),
+                        const SizedBox(width: 2),
+                        Text(
+                          metarVisibility,
+                          style: TextStyle(
+                              color: Colors.teal.withOpacity(0.8),
+                              fontSize: 10),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 4, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withOpacity(0.3),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'METAR',
+                          style: TextStyle(
+                            color: Colors.blue,
+                            fontSize: 7,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _getWeatherIconFromCondition(String condition) {
+    final lower = condition.toLowerCase();
+    if (lower.contains('sunny') || lower.contains('clear'))
+      return Icons.wb_sunny;
+    if (lower.contains('cloud') || lower.contains('overcast'))
+      return Icons.cloud;
+    if (lower.contains('rain') || lower.contains('drizzle')) return Icons.grain;
+    if (lower.contains('snow') || lower.contains('sleet')) return Icons.ac_unit;
+    if (lower.contains('thunder') || lower.contains('storm'))
+      return Icons.flash_on;
+    if (lower.contains('fog') || lower.contains('mist')) return Icons.blur_on;
+  // ignore: unused_element
+    if (lower.contains('wind')) return Icons.air;
+    return Icons.cloud;
+  }
+
+  // ignore: unused_element
+  int _getIconCodeFromCondition(String condition) {
+    final lower = condition.toLowerCase();
+    if (lower.contains('sunny') || lower.contains('clear')) return 1000;
+    if (lower.contains('partly')) return 1003;
+    if (lower.contains('cloud') || lower.contains('overcast')) return 1006;
+    if (lower.contains('rain')) return 1063;
+    if (lower.contains('snow')) return 1210;
+    if (lower.contains('thunder')) return 1273;
+    return 1000;
+  }
+
+  // Dark map style JSON
+  static const String _darkMapStyle = '''
+[
+  {"elementType": "geometry", "stylers": [{"color": "#242f3e"}]},
+  {"elementType": "labels.text.fill", "stylers": [{"color": "#746855"}]},
+  {"elementType": "labels.text.stroke", "stylers": [{"color": "#242f3e"}]},
+  {"featureType": "administrative.locality", "elementType": "labels.text.fill", "stylers": [{"color": "#d59563"}]},
+  {"featureType": "road", "elementType": "geometry", "stylers": [{"color": "#38414e"}]},
+  {"featureType": "road", "elementType": "geometry.stroke", "stylers": [{"color": "#212a37"}]},
+  {"featureType": "road.highway", "elementType": "geometry", "stylers": [{"color": "#746855"}]},
+  // ignore: unused_element
+  {"featureType": "water", "elementType": "geometry", "stylers": [{"color": "#17263c"}]},
+  {"featureType": "water", "elementType": "labels.text.fill", "stylers": [{"color": "#515c6d"}]}
+]
+''';
+
+  // ignore: unused_element
   Widget _buildMapView() {
     if (_routePoints.isEmpty) {
       return const Center(
@@ -2914,34 +6726,69 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
             scrollGesturesEnabled: true,
             rotateGesturesEnabled: true,
             tiltGesturesEnabled: true,
-            myLocationEnabled: true,
+            // Disable built-in my location when navigating (we draw our own custom marker)
+            myLocationEnabled: !_isNavigating,
             myLocationButtonEnabled: false,
+            compassEnabled: true, // Enable compass
             onCameraMove: (_) {
-              // User is manually moving the map, stop following
-              if (_isNavigating && _isFollowingUser) {
+              // Only stop following if user is manually moving (not programmatic)
+              if (_isNavigating &&
+                  _isFollowingUser &&
+                  !_isProgrammaticCameraMove) {
                 setState(() => _isFollowingUser = false);
               }
             },
           ),
         ),
 
+        // Off-route warning banner
+        if (_isNavigating && _isOffRoute)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: Colors.orange.shade700,
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.warning_amber, color: Colors.white, size: 20),
+                  SizedBox(width: 8),
+                  Text(
+                    'Off route - Recalculating...',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
         // Weather Card Overlay - Top Left (always visible)
         Positioned(
-          top: 16,
+          top: _isOffRoute ? 50 : 16,
           left: 16,
-          right: 16,
+          right: 80, // Leave room for compass button on right
           child: _buildMapWeatherCard(),
         ),
 
-        // Turn-by-turn Navigation Instructions - Below weather card (shown only during navigation)
-        if (_isNavigating &&
-            _navigationSteps.isNotEmpty &&
-            _currentStepIndex < _navigationSteps.length)
+        // Layer Picker Button - Below weather card
+        Positioned(
+          top: _isOffRoute ? 140 : 100,
+          left: 16,
+          child: _buildLayerPickerButton(),
+        ),
+
+        // Next Toll Plaza Card - During Navigation
+        if (_isNavigating)
           Positioned(
-            top: 130, // Below weather card
+            top: _isOffRoute ? 200 : 150,
             left: 16,
             right: 16,
-            child: _buildNavigationInstructionCard(),
+            child: _buildNextTollPlazaCard(),
           ),
 
         // Route Info Card - Bottom (always visible)
@@ -2952,9 +6799,35 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
           child: _buildRouteInfoCard(),
         ),
 
+        // START/STOP Navigation Button - Bottom Center
+        Positioned(
+          bottom: _isNavigating ? 130 : 100,
+          left: 0,
+          right: 0,
+          child: Center(
+            child: _buildStartStopButton(),
+          ),
+        ),
+
+        // Off-route warning indicator
+        if (_isNavigating && _isOffRoute)
+          Positioned(
+            top: 130,
+            left: 16,
+            right: 16,
+            child: _buildOffRouteWarning(),
+          ),
+
+        // Compass Button - Top Right (rotates to show north)
+        Positioned(
+          top: 16,
+          right: 16,
+          child: _buildCompassButton(),
+        ),
+
         // Location/Recenter Button - Bottom Right
         Positioned(
-          bottom: 100,
+          bottom: 200, // Moved up to avoid overlap with route info card
           right: 16,
           child: _buildMapButton(
             // Show different icon based on state:
@@ -2964,41 +6837,15 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
             icon: !_isNavigating
                 ? Icons.my_location
                 : (_isFollowingUser ? Icons.navigation : Icons.gps_fixed),
-            onTap: () {
-              if (_currentPosition != null) {
-                if (_isNavigating) {
-                  // Re-enable following and move to current location with road bearing
-                  setState(() => _isFollowingUser = true);
-                  final bearing =
-                      _roadBearing != 0 ? _roadBearing : _currentHeading;
-                  _mapController?.animateCamera(
-                    CameraUpdate.newCameraPosition(
-                      CameraPosition(
-                        target: LatLng(_currentPosition!.latitude,
-                            _currentPosition!.longitude),
-                        zoom: 18, // Closer zoom like Google Maps
-                        bearing: bearing, // Use road bearing
-                        tilt: 60, // More tilt for 3D effect
-                      ),
-                    ),
-                  );
-                } else {
-                  // Not navigating, just move to current location
-                  _mapController?.animateCamera(
-                    CameraUpdate.newLatLng(
-                      LatLng(_currentPosition!.latitude,
-                          _currentPosition!.longitude),
-                    ),
-                  );
-                }
-              }
-            },
+            onTap: () => _recenterOnUser(false),
+            onDoubleTap: () =>
+                _recenterOnUser(true), // Double-tap to recenter with heading
           ),
         ),
 
         // Zoom Controls - Bottom Right
         Positioned(
-          bottom: 160,
+          bottom: 260, // Moved up
           right: 16,
           child: Column(
             children: [
@@ -3020,7 +6867,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
         // Navigation Icon Toggle - Bottom Right (only during navigation)
         if (_isNavigating)
           Positioned(
-            bottom: 260,
+            bottom: 360, // Moved up
             right: 16,
             child: _buildMapButton(
               icon: _useCarIcon ? Icons.directions_car : Icons.navigation,
@@ -3036,10 +6883,169 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     );
   }
 
+  /// Build compass button that rotates to show north
+  Widget _buildCompassButton() {
+    // Calculate compass rotation - rotate opposite to current bearing
+    final compassRotation =
+        -(_roadBearing != 0 ? _roadBearing : _currentHeading);
+
+    return GestureDetector(
+      onTap: () {
+        // Reset map rotation to north
+        if (_mapController != null && _currentPosition != null && mounted) {
+          try {
+            _mapController!.animateCamera(
+              CameraUpdate.newCameraPosition(
+                CameraPosition(
+                  target: LatLng(
+                      _currentPosition!.latitude, _currentPosition!.longitude),
+                  zoom: _isNavigating ? 18 : 14,
+                  bearing: 0, // North up
+                  tilt: _isNavigating ? 45 : 0,
+                ),
+              ),
+            );
+          } catch (e) {
+            debugPrint('⚠️ Compass camera error: $e');
+          }
+        }
+      },
+      child: Container(
+        width: 50,
+        height: 50,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.2),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Transform.rotate(
+          angle: compassRotation * (3.14159265359 / 180),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // North indicator (red)
+              Positioned(
+                top: 6,
+                child: Container(
+                  width: 8,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    borderRadius:
+                        const BorderRadius.vertical(top: Radius.circular(4)),
+                  ),
+                ),
+              ),
+              // South indicator (white/grey)
+              Positioned(
+                bottom: 6,
+                child: Container(
+                  width: 8,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade400,
+                    borderRadius:
+                        const BorderRadius.vertical(bottom: Radius.circular(4)),
+                  ),
+                ),
+              ),
+              // Center dot
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: _primaryBlue,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              // N label
+              Positioned(
+                top: 2,
+                child: Text(
+                  'N',
+                  style: TextStyle(
+                    fontSize: 8,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.red.shade700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Build off-route warning card
+  Widget _buildOffRouteWarning() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade700,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.orange.withOpacity(0.4),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded,
+              color: Colors.white, size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Text(
+                  'Off Route',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                Text(
+                  'Recalculating...',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMapButton(
-      {required IconData icon, required VoidCallback onTap}) {
+      {required IconData icon,
+      required VoidCallback onTap,
+      VoidCallback? onDoubleTap}) {
     return GestureDetector(
       onTap: onTap,
+      onDoubleTap: onDoubleTap,
       child: Container(
         width: 44,
         height: 44,
@@ -3055,6 +7061,148 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
           ],
         ),
         child: Icon(icon, color: _primaryBlue, size: 24),
+      ),
+    );
+  }
+
+  /// Layer picker button with dropdown for selecting weather layer
+  Widget _buildLayerPickerButton() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Main button
+        GestureDetector(
+          onTap: () {
+            setState(() {
+              _showLayerPicker = !_showLayerPicker;
+            });
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: _cardDark,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(_getLayerIcon(_selectedMapLayer),
+                    color: _getLayerColor(_selectedMapLayer), size: 18),
+                const SizedBox(width: 6),
+                Text(
+                  _getLayerLabel(_selectedMapLayer),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  _showLayerPicker
+                      ? Icons.keyboard_arrow_up
+                      : Icons.keyboard_arrow_down,
+                  color: Colors.white70,
+                  size: 18,
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // Dropdown options
+        if (_showLayerPicker)
+          Container(
+            margin: const EdgeInsets.only(top: 4),
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            decoration: BoxDecoration(
+              color: _cardDark,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildLayerOption('temp', _getLayerIcon('temp'),
+                    _getLayerLabel('temp'), _getLayerColor('temp')),
+                _buildLayerOption('humidity', _getLayerIcon('humidity'),
+                    _getLayerLabel('humidity'), _getLayerColor('humidity')),
+                _buildLayerOption('visibility', _getLayerIcon('visibility'),
+                    _getLayerLabel('visibility'), _getLayerColor('visibility')),
+                _buildLayerOption('wind', _getLayerIcon('wind'),
+                    _getLayerLabel('wind'), _getLayerColor('wind')),
+                _buildLayerOption('uv', _getLayerIcon('uv'),
+                    _getLayerLabel('uv'), _getLayerColor('uv')),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Start/Stop Navigation button
+  Widget _buildStartStopButton() {
+    return GestureDetector(
+      onTap: () {
+        if (_isNavigating) {
+          _stopNavigation();
+        } else {
+          _startNavigation();
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: _isNavigating
+                ? [Colors.red.shade600, Colors.red.shade700]
+                : [_orangeAccent, Colors.orange.shade600],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(30),
+          boxShadow: [
+            BoxShadow(
+              color:
+                  (_isNavigating ? Colors.red : _orangeAccent).withOpacity(0.4),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _isNavigating ? Icons.stop_rounded : Icons.play_arrow_rounded,
+              color: Colors.white,
+              size: 24,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _isNavigating ? 'Stop Journey' : 'Start Journey',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -3218,6 +7366,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   }
 
   /// Build navigation instruction card with turn-by-turn directions
+  // ignore: unused_element
   Widget _buildNavigationInstructionCard() {
     if (_currentStepIndex >= _navigationSteps.length) {
       return const SizedBox.shrink();
@@ -3407,12 +7556,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
             .name;
 
     // Calculate total distance and ETA
-    final totalDistance = _routePoints.isNotEmpty
-        ? _routePoints.last.point.distanceFromStart -
-            (_routePoints.isNotEmpty
-                ? _routePoints.first.point.distanceFromStart
-                : 0)
-        : 0;
+    final totalDistance =
+        _routePoints.isNotEmpty ? _routePoints.last.distanceFromUser : 0;
     final totalEta =
         _routePoints.isNotEmpty && _routePoints.last.etaFromStart != null
             ? _formatDuration(_routePoints.last.etaFromStart!)
@@ -3515,9 +7660,44 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                   Container(width: 1, height: 30, color: Colors.white24),
                   _buildRouteInfoStat(Icons.access_time, totalEta, 'ETA'),
                   Container(width: 1, height: 30, color: Colors.white24),
-                  _buildRouteInfoStat(
-                      Icons.location_on, '${_routePoints.length}', 'Stops'),
+                  _buildRouteInfoStat(Icons.location_on,
+                      '${_routePoints.length - _currentPointIndex}', 'Left'),
                 ],
+              ),
+              const SizedBox(height: 12),
+              // Navigation Start/Stop Button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    if (_isNavigating) {
+                      _stopNavigation();
+                    } else {
+                      _startNavigation();
+                    }
+                  },
+                  icon: Icon(
+                    _isNavigating ? Icons.stop : Icons.navigation,
+                    size: 20,
+                  ),
+                  label: Text(
+                    _isNavigating ? 'Stop Navigation' : 'Start Navigation',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _isNavigating
+                        ? Colors.red.shade400
+                        : Colors.green.shade400,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
               ),
             ],
           ),

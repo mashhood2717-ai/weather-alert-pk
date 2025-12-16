@@ -1,0 +1,25 @@
+name = "travel-weather-api"
+main = "travel-weather-worker.js"
+compatibility_date = "2024-01-01"
+
+# Environment variables - set these with: wrangler secret put WEATHER_API_KEY
+# wrangler secret put CHECKWX_API_KEY
+
+[vars]
+ENVIRONMENT = "production"
+
+# KV Namespace for caching Pakistan METAR and Weather data
+[[kv_namespaces]]
+binding = "METAR_CACHE"
+id = "1416c83092a848ef8e2bf84592b6d91a"
+
+# Cron triggers:
+# - Every 15 minutes: Refresh METAR for all Pakistan airports
+# - Every 30 minutes: Refresh Weather for all toll plazas
+[triggers]
+crons = ["*/15 * * * *", "*/30 * * * *"]
+
+# Routes (update with your domain if needed)
+# routes = [
+#   { pattern = "travel-weather.yourdomain.com/*", zone_name = "yourdomain.com" }
+# ]

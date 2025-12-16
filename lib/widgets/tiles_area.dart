@@ -86,24 +86,38 @@ class TilesArea extends StatelessWidget {
     final c = controller.current.value;
     if (c == null) return [];
 
+    // Safe parsing for values that might be String or num
+    double? parseDouble(dynamic v) {
+      if (v == null || v == '--') return null;
+      if (v is num) return v.toDouble();
+      return double.tryParse(v.toString());
+    }
+    
+    int? parseInt(dynamic v) {
+      if (v == null || v == '--') return null;
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+      return int.tryParse(v.toString());
+    }
+
     if (controller.metarApplied && controller.metar != null) {
       final m = controller.metar!;
-      final windDeg = m["wind_degrees"];
+      final windDeg = parseInt(m["wind_degrees"]);
       final metarWindDir = windDeg != null
-          ? _mapWindDegreesToCardinal((windDeg as num).toInt())
+          ? _mapWindDegreesToCardinal(windDeg)
           : "--";
 
-      final dewC = m["dewpoint_c"];
-      final windKph = m["wind_kph"];
+      final dewC = parseDouble(m["dewpoint_c"]);
+      final windKph = parseDouble(m["wind_kph"]);
 
       final dewDisplay = dewC != null
           ? settings
-              .convertTemperature((dewC as num).toDouble())
+              .convertTemperature(dewC)
               .toStringAsFixed(1)
           : "--";
       final windDisplay = windKph != null
           ? settings
-              .convertWindSpeedHybrid((windKph as num).toDouble())
+              .convertWindSpeedHybrid(windKph)
               .toStringAsFixed(0)
           : "--";
 
