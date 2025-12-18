@@ -368,7 +368,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _suggestions = [];
     _search.clear();
     FocusScope.of(context).unfocus();
-    
+
     setState(() {
       loading = true;
     });
@@ -920,8 +920,9 @@ Is GPS: ${controller.isFromCurrentLocation}
     try {
       await controller.loadByCity(q);
       _fadeController.forward();
-      if (controller.metarApplied && controller.rawWeatherJson == null)
+      if (controller.metarApplied && controller.rawWeatherJson == null) {
         tabs.animateTo(3);
+      }
     } catch (e) {
       _showError('Search Error: ${e.toString()}');
     }

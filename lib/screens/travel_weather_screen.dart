@@ -78,12 +78,12 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   Map<String, dynamic>? _currentLocationMetar;
 
   // METAR data for route points
-  Map<String, Map<String, dynamic>?> _metarData = {};
+  final Map<String, Map<String, dynamic>?> _metarData = {};
 
   // Map controller
   GoogleMapController? _mapController;
-  Set<Marker> _markers = {};
-  Set<Polyline> _polylines = {};
+  final Set<Marker> _markers = {};
+  final Set<Polyline> _polylines = {};
 
   // Real road route from Google Directions API
   List<LatLng> _roadRoutePoints = [];
@@ -91,16 +91,19 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   int _routeDurationSeconds = 0;
   List<NavigationStep> _navigationSteps = []; // Turn-by-turn instructions
   int _currentStepIndex = 0; // Current navigation step
-  bool _distancesCalculatedWithGPS = false; // Track if distances were calculated with valid GPS
-  double _firstPointDistFromStart = 0; // Reference value for distance calculations
+  double _firstPointDistFromStart =
+      0; // Reference value for distance calculations
 
   // Real-time navigation tracking
   StreamSubscription<Position>? _positionStream;
   int _currentPointIndex = 0; // Track which point user has passed
   int _confirmedPointIndex = 0; // Committed index (prevents flip-flop)
-  int _highestAchievedIndex = 0; // NEVER go below this - prevents screen-off regression
+  int _highestAchievedIndex =
+      0; // NEVER go below this - prevents screen-off regression
   DateTime? _lastPointChangeTime; // Debounce for point changes
-  static const int _pointChangeDebounceMs = 3000; // 3 second debounce
+  // ignore: unused_field
+  static const int _pointChangeDebounceMs =
+      3000; // 3 second debounce (reserved for future use)
   bool _useCarIcon = false; // false = arrow (like Google Maps), true = car icon
   double _currentHeading =
       0; // Direction user is facing (from GPS or calculated)
@@ -110,14 +113,15 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   bool _isProgrammaticCameraMove =
       false; // Flag to distinguish programmatic vs user camera moves
   int _closestPolylineIndex = 0; // Index of closest point on polyline
-  
+
   // Destination arrival tracking
   bool _hasArrived = false; // True when user reaches destination
   bool _arrivedDialogShown = false; // Prevent showing dialog multiple times
-  
+
   // Current prayer tracking (for countdown display)
   String? _currentPrayerName;
-  DateTime? _currentPrayerEndsAt; // When current prayer ends (next prayer starts)
+  DateTime?
+      _currentPrayerEndsAt; // When current prayer ends (next prayer starts)
   Timer? _prayerCountdownTimer;
 
   // Off-route detection and auto-rerouting
@@ -154,7 +158,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   static const Color _accentBlueDark = Color(0xFF64B5F6);
   static const Color _bgDarkColor = Color(0xFF1C1C1E);
   static const Color _cardDarkColor = Color(0xFF2C2C2E);
-  
+
   // Light theme colors - Daytime blue sky (white text still works on blue)
   static const Color _primaryBlueLight = Color(0xFF1976D2);
   static const Color _lightBlueLight = Color(0xFF42A5F5);
@@ -162,9 +166,9 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   static const Color _accentBlueLight = Color(0xFF64B5F6);
   static const Color _bgLightColor = Color(0xFF2196F3); // Bright blue sky
   static const Color _cardLightColor = Color(0xFF1565C0); // Darker blue cards
-  
+
   static const Color _orangeAccent = Color(0xFFFF9500);
-  
+
   // Dynamic theme getters - both themes use white text (works on dark/blue backgrounds)
   Color get _primaryBlue => _isDarkMode ? _primaryBlueDark : _primaryBlueLight;
   Color get _lightBlue => _isDarkMode ? _lightBlueDark : _lightBlueLight;
@@ -172,10 +176,13 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   Color get _accentBlue => _isDarkMode ? _accentBlueDark : _accentBlueLight;
   Color get _bgDark => _isDarkMode ? _bgDarkColor : _bgLightColor;
   Color get _cardDark => _isDarkMode ? _cardDarkColor : _cardLightColor;
-  Color get _textColor => Colors.white; // White text works on both dark and blue
+  Color get _textColor =>
+      Colors.white; // White text works on both dark and blue
   Color get _textSecondary => Colors.white70;
-  Color get _borderColor => Colors.white.withOpacity(_isDarkMode ? 0.1 : 0.2);
-  Color get _iconColor => Colors.white;
+  Color get _borderColor =>
+      Colors.white.withValues(alpha: _isDarkMode ? 0.1 : 0.2);
+  // ignore: unused_element
+  Color get _iconColor => Colors.white; // Reserved for future use
 
   @override
   void initState() {
@@ -291,7 +298,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Could not get GPS location. Distances may be inaccurate.'),
+              content: Text(
+                  'Could not get GPS location. Distances may be inaccurate.'),
               duration: Duration(seconds: 2),
             ),
           );
@@ -324,7 +332,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     _currentPointIndex = 0;
     _confirmedPointIndex = 0; // Reset confirmed index
     _highestAchievedIndex = 0; // Reset highest achieved - new journey
-    _lastPointChangeTime = DateTime.now(); // Set to NOW - enables grace period on start
+    _lastPointChangeTime =
+        DateTime.now(); // Set to NOW - enables grace period on start
     _currentStepIndex = 0;
 
     // Initialize smoothed values to current position/heading immediately
@@ -383,7 +392,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
 
     // Show navigation notification (like Google Maps)
     _showNavigationNotification();
-    
+
     // Start prayer countdown timer
     _startPrayerCountdown();
 
@@ -408,7 +417,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     // Stop smooth map animation
     _mapTicker?.dispose();
     _mapTicker = null;
-    
+
     // Stop prayer countdown
     _stopPrayerCountdown();
 
@@ -473,6 +482,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   double _smoothedBearing = 0;
   // ignore: unused_field
   DateTime? _lastLocationUpdate;
+  // ignore: unused_field
   DateTime? _lastDistanceUpdate;
 
   /// Recenter on user location
@@ -1116,25 +1126,25 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   /// Updates every second to show remaining time
   Future<void> _startPrayerCountdown() async {
     _prayerCountdownTimer?.cancel();
-    
+
     await _updateCurrentPrayer();
-    
+
     // Update every second for smooth countdown
     _prayerCountdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {}); // Trigger rebuild for countdown update
     });
   }
-  
+
   /// Stop prayer countdown timer
   void _stopPrayerCountdown() {
     _prayerCountdownTimer?.cancel();
     _prayerCountdownTimer = null;
   }
-  
+
   /// Update current prayer based on location
   Future<void> _updateCurrentPrayer() async {
     if (_currentPosition == null) return;
-    
+
     try {
       final now = DateTime.now();
       final prayerTimes = await PrayerService.calculatePrayerTimes(
@@ -1142,20 +1152,26 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
         longitude: _currentPosition!.longitude,
         date: now,
       );
-      
+
       final prayers = prayerTimes.prayers;
-      
+
       // Get key prayer times
-      final fajr = prayers.firstWhere((p) => p.name == 'Fajr', orElse: () => prayers.first);
-      final sunrise = prayers.firstWhere((p) => p.name == 'Sunrise', orElse: () => prayers.first);
-      final dhuhr = prayers.firstWhere((p) => p.name == 'Dhuhr', orElse: () => prayers.first);
-      final asr = prayers.firstWhere((p) => p.name == 'Asr', orElse: () => prayers.first);
-      final maghrib = prayers.firstWhere((p) => p.name == 'Maghrib', orElse: () => prayers.first);
-      final isha = prayers.firstWhere((p) => p.name == 'Isha', orElse: () => prayers.first);
-      
+      final fajr = prayers.firstWhere((p) => p.name == 'Fajr',
+          orElse: () => prayers.first);
+      final sunrise = prayers.firstWhere((p) => p.name == 'Sunrise',
+          orElse: () => prayers.first);
+      final dhuhr = prayers.firstWhere((p) => p.name == 'Dhuhr',
+          orElse: () => prayers.first);
+      final asr = prayers.firstWhere((p) => p.name == 'Asr',
+          orElse: () => prayers.first);
+      final maghrib = prayers.firstWhere((p) => p.name == 'Maghrib',
+          orElse: () => prayers.first);
+      final isha = prayers.firstWhere((p) => p.name == 'Isha',
+          orElse: () => prayers.first);
+
       String? currentPrayer;
       DateTime? endsAt;
-      
+
       // Determine current prayer period based on time
       if (now.isBefore(fajr.time)) {
         // Before Fajr - still Isha from yesterday, ends at Fajr
@@ -1202,9 +1218,9 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
           endsAt = fajr.time.add(const Duration(days: 1));
         }
       }
-      
+
       debugPrint('🕌 Current prayer: $currentPrayer, ends at: $endsAt');
-      
+
       if (mounted) {
         setState(() {
           _currentPrayerName = currentPrayer;
@@ -1215,22 +1231,22 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       debugPrint('Error updating current prayer: $e');
     }
   }
-  
+
   /// Get formatted countdown string for prayer
   String _getPrayerCountdown() {
     if (_currentPrayerEndsAt == null || _currentPrayerName == null) {
       return '';
     }
-    
+
     final now = DateTime.now();
     final remaining = _currentPrayerEndsAt!.difference(now);
-    
+
     if (remaining.isNegative) {
       // Prayer time has passed, schedule refresh (don't call directly to avoid loop)
       Future.microtask(() => _updateCurrentPrayer());
       return '';
     }
-    
+
     if (remaining.inHours > 0) {
       return '${remaining.inHours}h ${remaining.inMinutes % 60}m left';
     } else if (remaining.inMinutes > 0) {
@@ -1270,7 +1286,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
           if (_currentPosition != null) break;
         }
       }
-      
+
       // Get points for the route
       List<MotorwayPoint> points;
       if (_fromId == null) {
@@ -1318,7 +1334,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       final lastPointDist = points.last.distanceFromStart;
       final routeDistanceKm = (lastPointDist - firstPointDist).abs();
       _routeDistanceMeters = (routeDistanceKm * 1000).round();
-      
+
       // STORE the reference point for ETA calculations
       _firstPointDistFromStart = firstPointDist.toDouble();
 
@@ -1339,7 +1355,10 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       final distancesFromUser = <int>[];
       for (int i = 0; i < points.length; i++) {
         // Road distance from first plaza to this plaza
-        final roadDistFromFirst = (points[i].distanceFromStart - _firstPointDistFromStart).abs().round();
+        final roadDistFromFirst =
+            (points[i].distanceFromStart - _firstPointDistFromStart)
+                .abs()
+                .round();
         // Total distance = GPS to first + road from first to this
         final totalDistFromUser = distanceToFirstPlaza + roadDistFromFirst;
         distancesFromUser.add(totalDistFromUser);
@@ -1446,7 +1465,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
             weather: existing.weather,
             nextPrayer: existing.nextPrayer,
             nextPrayerTime: existing.nextPrayerTime,
-            distanceFromUser: existing.distanceFromUser, // PRESERVE existing distance
+            distanceFromUser:
+                existing.distanceFromUser, // PRESERVE existing distance
           ));
         }
         _routePoints = updatedPoints;
@@ -1515,7 +1535,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
             weather: weather ?? existing.weather,
             nextPrayer: prayerData['name'] ?? existing.nextPrayer,
             nextPrayerTime: prayerData['time'] ?? existing.nextPrayerTime,
-            distanceFromUser: existing.distanceFromUser, // PRESERVE existing distance
+            distanceFromUser:
+                existing.distanceFromUser, // PRESERVE existing distance
           ));
         }
         _routePoints = updatedPoints;
@@ -1692,13 +1713,14 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     if (_routePoints.isEmpty) return;
 
     final now = DateTime.now();
-    
+
     // ANTI-REGRESSION: Ensure we never go below the highest achieved index
     // This prevents screen-off GPS glitches from jumping back to previous plazas
     if (_confirmedPointIndex < _highestAchievedIndex) {
       _confirmedPointIndex = _highestAchievedIndex;
       _currentPointIndex = _highestAchievedIndex;
-      debugPrint('🛡️ ANTI-REGRESSION: Restored to highest achieved index $_highestAchievedIndex');
+      debugPrint(
+          '🛡️ ANTI-REGRESSION: Restored to highest achieved index $_highestAchievedIndex');
     }
 
     // Check if we should advance to the next point
@@ -1713,16 +1735,9 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       );
 
       // Check distance to next point (if exists)
-      double distToNext = double.infinity;
       MotorwayPoint? nextPoint;
       if (_confirmedPointIndex + 1 < _routePoints.length) {
         nextPoint = _routePoints[_confirmedPointIndex + 1].point;
-        distToNext = Geolocator.distanceBetween(
-          position.latitude,
-          position.longitude,
-          nextPoint.lat,
-          nextPoint.lon,
-        );
       }
 
       // CHECK FOR DESTINATION ARRIVAL
@@ -1738,61 +1753,72 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
 
       // BEARING-BASED LOGIC: Switch immediately when you've PASSED the toll plaza
       // The toll plaza is "behind you" when the bearing from you to it points backward
-      
+
       bool shouldAdvance = false;
-      
+
       if (nextPoint != null) {
         // Calculate bearing from USER to CURRENT point
         double bearingToCurrentPoint = Geolocator.bearingBetween(
-          position.latitude, position.longitude,
-          currentPoint.lat, currentPoint.lon,
+          position.latitude,
+          position.longitude,
+          currentPoint.lat,
+          currentPoint.lon,
         );
-        
+
         // Calculate bearing from USER to NEXT point (travel direction)
         double bearingToNextPoint = Geolocator.bearingBetween(
-          position.latitude, position.longitude,
-          nextPoint.lat, nextPoint.lon,
+          position.latitude,
+          position.longitude,
+          nextPoint.lat,
+          nextPoint.lon,
         );
-        
+
         // Normalize bearings to 0-360
         if (bearingToCurrentPoint < 0) bearingToCurrentPoint += 360;
         if (bearingToNextPoint < 0) bearingToNextPoint += 360;
-        
+
         // Calculate the difference - if current point is roughly OPPOSITE to travel direction, we've passed it
         double bearingDiff = (bearingToCurrentPoint - bearingToNextPoint).abs();
         if (bearingDiff > 180) bearingDiff = 360 - bearingDiff;
-        
+
         // If bearing difference > 90°, current point is behind us (we've passed it)
         // Current point is to our back, next point is ahead
         final currentPointIsBehind = bearingDiff > 90;
-        
+
         if (currentPointIsBehind) {
           shouldAdvance = true;
-          debugPrint('📍 PASSED ${currentPoint.name}: It\'s behind us (bearing diff: ${bearingDiff.toStringAsFixed(0)}°) → Next: ${nextPoint.name}');
+          debugPrint(
+              '📍 PASSED ${currentPoint.name}: It\'s behind us (bearing diff: ${bearingDiff.toStringAsFixed(0)}°) → Next: ${nextPoint.name}');
         }
       }
-      
+
       // STARTUP GRACE PERIOD: If we just started and are near a point, wait for clear pass
       final isFirstChange = _lastPointChangeTime == null;
       if (isFirstChange && distToCurrent < 300) {
         // On startup near a point, require stronger confirmation (> 120° behind)
         if (nextPoint != null) {
           double bearingToCurrentPoint = Geolocator.bearingBetween(
-            position.latitude, position.longitude,
-            currentPoint.lat, currentPoint.lon,
+            position.latitude,
+            position.longitude,
+            currentPoint.lat,
+            currentPoint.lon,
           );
           double bearingToNextPoint = Geolocator.bearingBetween(
-            position.latitude, position.longitude,
-            nextPoint.lat, nextPoint.lon,
+            position.latitude,
+            position.longitude,
+            nextPoint.lat,
+            nextPoint.lon,
           );
           if (bearingToCurrentPoint < 0) bearingToCurrentPoint += 360;
           if (bearingToNextPoint < 0) bearingToNextPoint += 360;
-          double bearingDiff = (bearingToCurrentPoint - bearingToNextPoint).abs();
+          double bearingDiff =
+              (bearingToCurrentPoint - bearingToNextPoint).abs();
           if (bearingDiff > 180) bearingDiff = 360 - bearingDiff;
-          
+
           if (bearingDiff <= 120) {
             shouldAdvance = false;
-            debugPrint('⏳ Startup near ${currentPoint.name}: waiting for clear pass (${bearingDiff.toStringAsFixed(0)}°)');
+            debugPrint(
+                '⏳ Startup near ${currentPoint.name}: waiting for clear pass (${bearingDiff.toStringAsFixed(0)}°)');
           }
         }
       }
@@ -1803,13 +1829,13 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
 
       if (shouldAdvance && canChangePoint) {
         final newIndex = _confirmedPointIndex + 1;
-        
+
         // MONOTONIC PROGRESSION: Never go backward
         // This prevents screen-off GPS glitches from regressing to previous plazas
         if (newIndex > _highestAchievedIndex) {
           _highestAchievedIndex = newIndex;
         }
-        
+
         _confirmedPointIndex = newIndex;
         _currentPointIndex = newIndex;
         _lastPointChangeTime = now;
@@ -1827,41 +1853,46 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       }
     }
   }
-  
+
   /// Update ETAs for all remaining points based on current position
   /// NOTE: Does NOT update distanceFromUser - that's handled by _updateDynamicDistances
   void _updateDynamicETAs(Position position) {
     if (_routePoints.isEmpty || _routeDurationSeconds == 0) return;
-    
+
     final now = DateTime.now();
-    final avgSpeedMps = _routeDistanceMeters / _routeDurationSeconds; // Average speed from original route
-    
+    final avgSpeedMps = _routeDistanceMeters /
+        _routeDurationSeconds; // Average speed from original route
+
     // Use current speed if available, otherwise use route average
-    final speedToUse = _currentSpeed > 0 
-        ? _currentSpeed * 1000 / 3600  // Convert km/h to m/s
+    final speedToUse = _currentSpeed > 0
+        ? _currentSpeed * 1000 / 3600 // Convert km/h to m/s
         : avgSpeedMps;
-    
+
     // Calculate GPS distance to first point for cumulative ETA
     final firstPoint = _routePoints.first;
     final distToFirstMeters = Geolocator.distanceBetween(
-      position.latitude, position.longitude,
-      firstPoint.point.lat, firstPoint.point.lon,
+      position.latitude,
+      position.longitude,
+      firstPoint.point.lat,
+      firstPoint.point.lon,
     );
     final firstPointDistFromStart = firstPoint.point.distanceFromStart;
-    
+
     final updatedPoints = <TravelPoint>[];
-    
+
     for (int i = 0; i < _routePoints.length; i++) {
       final tp = _routePoints[i];
-      
+
       // Calculate cumulative distance for ETA (GPS to first + road from first to this)
-      final roadDistFromFirstMeters = (tp.point.distanceFromStart - firstPointDistFromStart).abs() * 1000;
+      final roadDistFromFirstMeters =
+          (tp.point.distanceFromStart - firstPointDistFromStart).abs() * 1000;
       final totalDistanceMeters = distToFirstMeters + roadDistFromFirstMeters;
-      
+
       // Calculate ETA based on cumulative distance and speed
-      final etaSeconds = speedToUse > 0 ? (totalDistanceMeters / speedToUse).round() : 0;
+      final etaSeconds =
+          speedToUse > 0 ? (totalDistanceMeters / speedToUse).round() : 0;
       final eta = Duration(seconds: etaSeconds);
-      
+
       updatedPoints.add(TravelPoint(
         point: tp.point,
         etaFromStart: eta,
@@ -1872,7 +1903,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
         distanceFromUser: tp.distanceFromUser, // PRESERVE existing distance
       ));
     }
-    
+
     _routePoints = updatedPoints;
   }
 
@@ -1904,7 +1935,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                 color: Colors.green.withOpacity(0.2),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.check_circle, color: Colors.green, size: 64),
+              child:
+                  const Icon(Icons.check_circle, color: Colors.green, size: 64),
             ),
             const SizedBox(height: 20),
             const Text(
@@ -1944,7 +1976,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
               style: ElevatedButton.styleFrom(
                 backgroundColor: _orangeAccent,
                 padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
               ),
               onPressed: () {
                 Navigator.of(context).pop();
@@ -1959,7 +1992,10 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
               },
               child: const Text(
                 'Done',
-                style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600),
               ),
             ),
           ),
@@ -1971,6 +2007,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   /// Update route points with dynamic distances from current position
   /// Uses cumulative: GPS to FIRST plaza + road distance between plazas
   /// Same calculation as _loadRoute for consistency
+  // ignore: unused_element
   void _updateDynamicDistances(Position position) {
     if (_routePoints.isEmpty) return;
 
@@ -1986,13 +2023,14 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
 
     for (int i = 0; i < _routePoints.length; i++) {
       final tp = _routePoints[i];
-      
+
       // Road distance from first plaza to this plaza (using stored reference)
-      final roadDistFromFirst = (tp.point.distanceFromStart - _firstPointDistFromStart).abs().round();
-      
+      final roadDistFromFirst =
+          (tp.point.distanceFromStart - _firstPointDistFromStart).abs().round();
+
       // Total = GPS to first + road from first to this
       final totalDist = distToFirstPlazaKm + roadDistFromFirst;
-      
+
       _routePoints[i] = tp.copyWith(
         distanceFromUser: totalDist,
       );
@@ -2853,8 +2891,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
           if (isFrom)
             ListTile(
               dense: true,
-              leading:
-                  Icon(Icons.my_location, color: _accentBlue, size: 22),
+              leading: Icon(Icons.my_location, color: _accentBlue, size: 22),
               title: const Text(
                 'Current Location',
                 style:
@@ -3912,8 +3949,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                 if (isFrom)
                   ListTile(
                     dense: true,
-                    leading: Icon(Icons.my_location,
-                        color: _accentBlue, size: 20),
+                    leading:
+                        Icon(Icons.my_location, color: _accentBlue, size: 20),
                     title: const Text(
                       'Current Location',
                       style: TextStyle(color: Colors.white),
@@ -3987,8 +4024,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: _isDarkMode 
-            ? Colors.white.withOpacity(0.15) 
+        color: _isDarkMode
+            ? Colors.white.withOpacity(0.15)
             : _darkBlue.withOpacity(0.3),
         borderRadius: BorderRadius.circular(14),
       ),
@@ -4041,8 +4078,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
-          color: isActive 
-              ? (_isDarkMode ? Colors.white : Colors.white) 
+          color: isActive
+              ? (_isDarkMode ? Colors.white : Colors.white)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
           boxShadow: isActive
@@ -4060,18 +4097,22 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
           children: [
             Icon(
               icon,
-              color: isActive 
-                  ? (_isDarkMode ? _primaryBlue : _darkBlue) 
-                  : (_isDarkMode ? Colors.white.withOpacity(0.8) : Colors.white),
+              color: isActive
+                  ? (_isDarkMode ? _primaryBlue : _darkBlue)
+                  : (_isDarkMode
+                      ? Colors.white.withOpacity(0.8)
+                      : Colors.white),
               size: 18,
             ),
             const SizedBox(width: 6),
             Text(
               label,
               style: TextStyle(
-                color: isActive 
-                    ? (_isDarkMode ? _primaryBlue : _darkBlue) 
-                    : (_isDarkMode ? Colors.white.withOpacity(0.9) : Colors.white),
+                color: isActive
+                    ? (_isDarkMode ? _primaryBlue : _darkBlue)
+                    : (_isDarkMode
+                        ? Colors.white.withOpacity(0.9)
+                        : Colors.white),
                 fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
                 fontSize: 14,
               ),
@@ -5044,8 +5085,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
             // Menu items
             ListTile(
               leading: Icon(Icons.share, color: menuTextColor),
-              title: Text('Share Route',
-                  style: TextStyle(color: menuTextColor)),
+              title:
+                  Text('Share Route', style: TextStyle(color: menuTextColor)),
               onTap: () {
                 Navigator.pop(context);
                 _shareRoute();
@@ -5073,8 +5114,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
             ),
             ListTile(
               leading: Icon(Icons.info_outline, color: menuTextColor),
-              title: Text('Route Info',
-                  style: TextStyle(color: menuTextColor)),
+              title: Text('Route Info', style: TextStyle(color: menuTextColor)),
               onTap: () {
                 Navigator.pop(context);
                 _showRouteInfo();
@@ -5111,7 +5151,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                   _userThemeOverride = _isDarkMode; // User manually set theme
                 });
                 // Update map style when theme changes
-                _mapController?.setMapStyle(_isDarkMode ? _darkMapStyle : _lightMapStyle);
+                _mapController
+                    ?.setMapStyle(_isDarkMode ? _darkMapStyle : _lightMapStyle);
               },
             ),
             const SizedBox(height: 20),
@@ -5596,7 +5637,8 @@ Shared via Weather Alert Pakistan
             onMapCreated: (controller) {
               _mapController = controller;
               // Set map style based on theme
-              controller.setMapStyle(_isDarkMode ? _darkMapStyle : _lightMapStyle);
+              controller
+                  .setMapStyle(_isDarkMode ? _darkMapStyle : _lightMapStyle);
               // Fit bounds to show entire route
               if (_routePoints.isNotEmpty) {
                 final bounds = LatLngBounds(
@@ -5767,13 +5809,15 @@ Shared via Weather Alert Pakistan
             child: GestureDetector(
               onTap: () => _recenterOnUser(true),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
                   color: _isFollowingUser ? Colors.green : _orangeAccent,
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: (_isFollowingUser ? Colors.green : _orangeAccent).withOpacity(0.4),
+                      color: (_isFollowingUser ? Colors.green : _orangeAccent)
+                          .withOpacity(0.4),
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
@@ -5783,8 +5827,8 @@ Shared via Weather Alert Pakistan
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      _isFollowingUser ? Icons.gps_fixed : Icons.my_location, 
-                      color: Colors.white, 
+                      _isFollowingUser ? Icons.gps_fixed : Icons.my_location,
+                      color: Colors.white,
                       size: 20,
                     ),
                     const SizedBox(width: 8),
@@ -6647,8 +6691,10 @@ Shared via Weather Alert Pakistan
     // Only use METAR if point is within range
     final metar = _getMetarIfInRange(nextPoint.point.id);
 
-    // Prayer time info
+    // Prayer time info (reserved for future use)
+    // ignore: unused_local_variable
     final prayerName = nextPoint.nextPrayer;
+    // ignore: unused_local_variable
     final prayerTime = nextPoint.nextPrayerTime;
 
     // Calculate distance to next point
@@ -6770,8 +6816,11 @@ Shared via Weather Alert Pakistan
             children: [
               // Temperature and condition
               Icon(
-                _getWeatherIconFromCondition(displayCondition, isDay: weather?.isDay ?? true),
-                color: (weather?.isDay ?? true) ? Colors.amber : Colors.blueGrey.shade200,
+                _getWeatherIconFromCondition(displayCondition,
+                    isDay: weather?.isDay ?? true),
+                color: (weather?.isDay ?? true)
+                    ? Colors.amber
+                    : Colors.blueGrey.shade200,
                 size: 32,
               ),
               const SizedBox(width: 10),
@@ -7129,7 +7178,8 @@ Shared via Weather Alert Pakistan
     );
   }
 
-  Widget _buildAppleTimelineItem(TravelPoint tp, int index, [bool isNext = false]) {
+  Widget _buildAppleTimelineItem(TravelPoint tp, int index,
+      [bool isNext = false]) {
     final weather = tp.weather;
     // Only use METAR if point is within range
     final metar = _getMetarIfInRange(tp.point.id);
@@ -7144,28 +7194,31 @@ Shared via Weather Alert Pakistan
     // - GPS distance to NEXT plaza (real-time as you approach)
     // - Plus road distance from next plaza to subsequent plazas
     double dynamicDistanceKm = tp.distanceFromUser.toDouble();
-    
+
     if (_isNavigating && _currentPosition != null && _routePoints.isNotEmpty) {
       // Get the next plaza we're tracking (current index)
-      final nextPlazaIndex = _confirmedPointIndex < _routePoints.length 
-          ? _confirmedPointIndex 
+      final nextPlazaIndex = _confirmedPointIndex < _routePoints.length
+          ? _confirmedPointIndex
           : _routePoints.length - 1;
       final nextPlaza = _routePoints[nextPlazaIndex];
-      
+
       // GPS distance from current position to NEXT plaza (real-time)
       final gpsToNextPlaza = Geolocator.distanceBetween(
-        _currentPosition!.latitude,
-        _currentPosition!.longitude,
-        nextPlaza.point.lat,
-        nextPlaza.point.lon,
-      ) / 1000; // meters to km
-      
+            _currentPosition!.latitude,
+            _currentPosition!.longitude,
+            nextPlaza.point.lat,
+            nextPlaza.point.lon,
+          ) /
+          1000; // meters to km
+
       if (index == nextPlazaIndex) {
         // This IS the next plaza - show real-time GPS distance
         dynamicDistanceKm = gpsToNextPlaza;
       } else if (index > nextPlazaIndex) {
         // This is BEYOND the next plaza - GPS to next + road distance between plazas
-        final roadDistBetween = (tp.point.distanceFromStart - nextPlaza.point.distanceFromStart).abs();
+        final roadDistBetween =
+            (tp.point.distanceFromStart - nextPlaza.point.distanceFromStart)
+                .abs();
         dynamicDistanceKm = gpsToNextPlaza + roadDistBetween;
       }
       // For passed plazas (index < nextPlazaIndex), keep original distance (they're behind us)
@@ -7239,8 +7292,13 @@ Shared via Weather Alert Pakistan
               child: Column(
                 children: [
                   Icon(
-                    _getWeatherIconFromCondition(condition, isDay: _isDayAtTime(tp.estimatedArrival)),
-                    color: isNext ? _orangeAccent : (_isDayAtTime(tp.estimatedArrival) ? Colors.white : Colors.blueGrey.shade200),
+                    _getWeatherIconFromCondition(condition,
+                        isDay: _isDayAtTime(tp.estimatedArrival)),
+                    color: isNext
+                        ? _orangeAccent
+                        : (_isDayAtTime(tp.estimatedArrival)
+                            ? Colors.white
+                            : Colors.blueGrey.shade200),
                     size: 36,
                   ),
                   if (chanceOfRain > 0)
@@ -7309,7 +7367,8 @@ Shared via Weather Alert Pakistan
                               ? _orangeAccent.withOpacity(0.8)
                               : Colors.white.withOpacity(0.5),
                           fontSize: 12,
-                          fontWeight: isNext ? FontWeight.w600 : FontWeight.normal,
+                          fontWeight:
+                              isNext ? FontWeight.w600 : FontWeight.normal,
                         ),
                       ),
                     ],
@@ -7432,17 +7491,17 @@ Shared via Weather Alert Pakistan
 
   IconData _getWeatherIconFromCondition(String condition, {bool isDay = true}) {
     final lower = condition.toLowerCase();
-    
+
     // Clear/sunny conditions - use moon at night
     if (lower.contains('sunny') || lower.contains('clear')) {
       return isDay ? Icons.wb_sunny : Icons.nightlight_round;
     }
-    
+
     // Partly cloudy - use night variant
     if (lower.contains('partly')) {
       return isDay ? Icons.wb_cloudy : Icons.nights_stay;
     }
-    
+
     if (lower.contains('cloud') || lower.contains('overcast'))
       return Icons.cloud;
     if (lower.contains('rain') || lower.contains('drizzle')) return Icons.grain;
@@ -7451,7 +7510,7 @@ Shared via Weather Alert Pakistan
       return Icons.flash_on;
     if (lower.contains('fog') || lower.contains('mist')) return Icons.blur_on;
     if (lower.contains('wind')) return Icons.air;
-    
+
     // Default - use moon at night for generic cloud
     return isDay ? Icons.cloud : Icons.nights_stay;
   }
@@ -7638,13 +7697,15 @@ Shared via Weather Alert Pakistan
             child: GestureDetector(
               onTap: () => _recenterOnUser(true),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
                   color: _isFollowingUser ? Colors.green : _orangeAccent,
                   borderRadius: BorderRadius.circular(25),
                   boxShadow: [
                     BoxShadow(
-                      color: (_isFollowingUser ? Colors.green : _orangeAccent).withOpacity(0.4),
+                      color: (_isFollowingUser ? Colors.green : _orangeAccent)
+                          .withOpacity(0.4),
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
@@ -7654,8 +7715,8 @@ Shared via Weather Alert Pakistan
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      _isFollowingUser ? Icons.gps_fixed : Icons.my_location, 
-                      color: Colors.white, 
+                      _isFollowingUser ? Icons.gps_fixed : Icons.my_location,
+                      color: Colors.white,
                       size: 20,
                     ),
                     const SizedBox(width: 8),

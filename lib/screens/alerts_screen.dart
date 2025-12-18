@@ -26,7 +26,7 @@ class _AlertsScreenState extends State<AlertsScreen>
   bool _loading = true;
 
   // Track expanded alerts
-  Set<String> _expandedAlerts = {};
+  final Set<String> _expandedAlerts = {};
 
   // Alert thresholds (user configurable)
   double _tempHighThreshold = 45.0;
@@ -683,13 +683,11 @@ class _AlertsScreenState extends State<AlertsScreen>
           Icons.info_outline, 'Match', data['match_reason'], fg));
     }
     if (data['zone_name'] != null) {
-      metaItems.add(
-          _buildMetaItem(Icons.place, 'Zone', data['zone_name'], fg));
+      metaItems.add(_buildMetaItem(Icons.place, 'Zone', data['zone_name'], fg));
     }
     if (data['mode'] != null) {
       final modeLabel = data['mode'] == 'polygon' ? 'Custom Area' : 'Radius';
-      metaItems.add(
-          _buildMetaItem(Icons.radar, 'Coverage', modeLabel, fg));
+      metaItems.add(_buildMetaItem(Icons.radar, 'Coverage', modeLabel, fg));
     }
 
     if (metaItems.isEmpty) return const SizedBox.shrink();
@@ -851,7 +849,9 @@ class _AlertsScreenState extends State<AlertsScreen>
                           Switch(
                             value: isSubscribed,
                             onChanged: (_) => _toggleCitySubscription(city),
-                            activeColor: Colors.green,
+                            activeTrackColor:
+                                Colors.green.withValues(alpha: 0.5),
+                            activeThumbColor: Colors.green,
                           ),
                         ],
                       ),

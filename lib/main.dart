@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'firebase_options.dart';
@@ -44,7 +43,7 @@ Future<void> _initializeBackgroundServices() async {
 
   // Initialize manual alert service (listens for admin portal alerts)
   ManualAlertService().initialize().catchError((e) {
-    print('ManualAlertService init error: $e');
+    debugPrint('ManualAlertService init error: $e');
   });
 }
 

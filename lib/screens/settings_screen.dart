@@ -236,7 +236,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Switch(
               value: _settings.travelingMode,
               onChanged: (value) => _settings.setTravelingMode(value),
-              activeColor: Colors.green,
+              activeTrackColor: Colors.green.withValues(alpha: 0.5),
+              activeThumbColor: Colors.green,
             ),
           ],
         ),

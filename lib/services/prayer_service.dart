@@ -431,7 +431,7 @@ class PrayerService {
         prayerModes: notificationPrefs,
         minutesBefore: 5,
       );
-      
+
       debugPrint('✅ Prayer notifications scheduled with native AlarmManager');
     } catch (e) {
       debugPrint('Error scheduling prayer notifications: $e');

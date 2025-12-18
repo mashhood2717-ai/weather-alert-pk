@@ -112,7 +112,8 @@ class TravelWeather {
         rainChance: json['rainChance'] != null
             ? (json['rainChance'] as num).toDouble()
             : null,
-        isDay: json['isDay'] == true || json['isDay'] == 1 || json['is_day'] == 1,
+        isDay:
+            json['isDay'] == true || json['isDay'] == 1 || json['is_day'] == 1,
       );
 }
 

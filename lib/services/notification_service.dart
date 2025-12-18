@@ -723,8 +723,9 @@ class NotificationService {
   }
 
   // ==================== Native Prayer Alarms (More Reliable) ====================
-  
-  static const _prayerAlarmChannel = MethodChannel('com.mashhood.weatheralert/prayer_alarm');
+
+  static const _prayerAlarmChannel =
+      MethodChannel('com.mashhood.weatheralert/prayer_alarm');
 
   /// Schedule a prayer alarm using native Android AlarmManager
   /// This is more reliable than flutter_local_notifications on some devices
@@ -749,7 +750,8 @@ class NotificationService {
         'notificationId': notificationId,
         'useAzan': useAzan,
       });
-      print('Native prayer alarm scheduled: $prayerName at $prayerTime (ID: $notificationId)');
+      print(
+          'Native prayer alarm scheduled: $prayerName at $prayerTime (ID: $notificationId)');
     } catch (e) {
       print('Error scheduling native prayer alarm: $e');
       // Fallback to flutter_local_notifications
@@ -757,7 +759,9 @@ class NotificationService {
         id: notificationId,
         prayerName: prayerName,
         scheduledTime: prayerTime,
-        mode: useAzan ? PrayerNotificationMode.azan : PrayerNotificationMode.vibrationOnly,
+        mode: useAzan
+            ? PrayerNotificationMode.azan
+            : PrayerNotificationMode.vibrationOnly,
       );
     }
   }
@@ -786,7 +790,7 @@ class NotificationService {
     await cancelAllPrayerNotifications();
     await cancelAllNativePrayerAlarms();
 
-    int nativeId = 2000;  // Native alarms use 2000-2019
+    int nativeId = 2000; // Native alarms use 2000-2019
     int scheduledCount = 0;
 
     for (final entry in prayerTimes.entries) {
@@ -818,7 +822,8 @@ class NotificationService {
       minutesBefore: minutesBefore,
     );
 
-    print('✅ Scheduled $scheduledCount prayer alarms (native + flutter backup)');
+    print(
+        '✅ Scheduled $scheduledCount prayer alarms (native + flutter backup)');
   }
 
   /// Show an immediate prayer notification (for testing)
