@@ -14,9 +14,11 @@ class MainActivity : FlutterActivity() {
         private const val CHANNEL = "com.mashhood.weatheralert/persistent_notification"
         private const val WIDGET_CHANNEL = "com.mashhood.weatheralert/widget"
         private const val SETTINGS_CHANNEL = "com.mashhood.weatheralert/settings"
+        private const val PRAYER_CHANNEL = "com.mashhood.weatheralert/prayer_alarm"
         private var methodChannel: MethodChannel? = null
         private var widgetChannel: MethodChannel? = null
         private var settingsChannel: MethodChannel? = null
+        private var prayerChannel: MethodChannel? = null
 
         fun sendRefreshEvent() {
             methodChannel?.invokeMethod("onRefreshPressed", null)
@@ -29,6 +31,34 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // Prayer alarm channel for native AlarmManager scheduling
+        prayerChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PRAYER_CHANNEL)
+        prayerChannel?.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "schedulePrayerAlarm" -> {
+                    val prayerName = call.argument<String>("prayerName") ?: "Prayer"
+                    val triggerTimeMillis = call.argument<Long>("triggerTimeMillis") ?: 0L
+                    val notificationId = call.argument<Int>("notificationId") ?: 2000
+                    val useAzan = call.argument<Boolean>("useAzan") ?: true
+
+                    PrayerAlarmScheduler.schedulePrayerAlarm(
+                        this, prayerName, triggerTimeMillis, notificationId, useAzan
+                    )
+                    result.success(true)
+                }
+                "cancelPrayerAlarm" -> {
+                    val notificationId = call.argument<Int>("notificationId") ?: 2000
+                    PrayerAlarmScheduler.cancelPrayerAlarm(this, notificationId)
+                    result.success(true)
+                }
+                "cancelAllPrayerAlarms" -> {
+                    PrayerAlarmScheduler.cancelAllPrayerAlarms(this)
+                    result.success(true)
+                }
+                else -> result.notImplemented()
+            }
+        }
 
         // Settings channel for opening system settings
         settingsChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SETTINGS_CHANNEL)

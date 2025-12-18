@@ -363,14 +363,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _onSuggestionSelected(PlaceSuggestion suggestion) async {
+    // IMMEDIATELY hide dropdown and clear suggestions before any async work
+    _showSuggestions = false;
+    _suggestions = [];
+    _search.clear();
+    FocusScope.of(context).unfocus();
+    
     setState(() {
-      _showSuggestions = false;
-      _suggestions = [];
       loading = true;
     });
     _fadeController.reset();
-    _search.clear();
-    FocusScope.of(context).unfocus();
 
     try {
       // Get place details to get coordinates
@@ -1860,14 +1862,14 @@ Is GPS: ${controller.isFromCurrentLocation}
               final metarTempC = controller.metar!["temp_c"];
               final metarWindKph = controller.metar!["wind_kph"];
               final metarDewC = controller.metar!["dewpoint_c"];
-              
+
               // Safe parsing for values that might be String or num
               double? parseDouble(dynamic v) {
                 if (v == null || v == '--') return null;
                 if (v is num) return v.toDouble();
                 return double.tryParse(v.toString());
               }
-              
+
               final tempDisplay = parseDouble(metarTempC) != null
                   ? _settings
                       .convertTemperature(parseDouble(metarTempC)!)

@@ -153,6 +153,7 @@ class TravelWeatherService {
           icon: '',
           humidity: 0,
           windKph: 0,
+          isDay: true,
         );
       }
       return TravelWeather(
@@ -162,6 +163,7 @@ class TravelWeatherService {
         humidity: (data['humidity'] as num?)?.toInt() ?? 0,
         windKph: (data['wind_kph'] as num?)?.toDouble() ?? 0,
         rainChance: null, // WeatherAPI doesn't include in current
+        isDay: data['is_day'] == 1 || data['is_day'] == true,
       );
     }).toList();
   }
@@ -560,21 +562,26 @@ class TravelWeatherService {
 
     // Batch fetch from Cloudflare Worker
     try {
-      final requestPoints = pointsToFetch.entries.map((e) => {
-        'id': e.value.id,  // Use actual point ID (m2_17, etc.) for worker cache lookup
-        'idx': e.key.toString(),  // Also send index for response mapping
-        'lat': e.value.lat,
-        'lon': e.value.lon,
-        'name': e.value.name,
-      }).toList();
+      final requestPoints = pointsToFetch.entries
+          .map((e) => {
+                'id': e.value
+                    .id, // Use actual point ID (m2_17, etc.) for worker cache lookup
+                'idx': e.key.toString(), // Also send index for response mapping
+                'lat': e.value.lat,
+                'lon': e.value.lon,
+                'name': e.value.name,
+              })
+          .toList();
 
       debugPrint('🚀 Fetching ${requestPoints.length} points from worker...');
-      
-      final response = await http.post(
-        Uri.parse('$travelWeatherWorkerUrl/travel-weather'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'points': requestPoints}),
-      ).timeout(const Duration(seconds: 15));
+
+      final response = await http
+          .post(
+            Uri.parse('$travelWeatherWorkerUrl/travel-weather'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'points': requestPoints}),
+          )
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -600,24 +607,26 @@ class TravelWeatherService {
               humidity: (w['humidity'] as num?)?.toInt() ?? 0,
               windKph: (w['wind_kph'] as num?)?.toDouble() ?? 0,
               rainChance: null, // Worker doesn't provide this yet
+              isDay: w['is_day'] == 1 || w['is_day'] == true,
             );
             results[idx] = weather;
-            
+
             // Cache the result
             final point = pointsToFetch[idx]!;
             final cacheKey =
                 '${point.lat.toStringAsFixed(2)}_${point.lon.toStringAsFixed(2)}';
             _weatherCache[cacheKey] = _CachedWeather(weather);
-            
+
             // Log with source indicator
             if (source == 'metar') {
-              debugPrint('✅ METAR: ${point.name} = ${weather.tempC}°C (${w['airport_name']})');
+              debugPrint(
+                  '✅ METAR: ${point.name} = ${weather.tempC}°C (${w['airport_name']})');
             } else {
               debugPrint('✅ WeatherAPI: ${point.name} = ${weather.tempC}°C');
             }
           }
         }
-        
+
         debugPrint('✅ Worker batch complete: ${weatherData.length} points');
       } else {
         debugPrint('❌ Worker error: ${response.statusCode}');
@@ -632,13 +641,16 @@ class TravelWeatherService {
 
     // Fill any missing with default
     for (int i = 0; i < points.length; i++) {
-      results.putIfAbsent(i, () => TravelWeather(
-        tempC: 0,
-        condition: 'Unknown',
-        icon: '',
-        humidity: 0,
-        windKph: 0,
-      ));
+      results.putIfAbsent(
+          i,
+          () => TravelWeather(
+                tempC: 0,
+                condition: 'Unknown',
+                icon: '',
+                humidity: 0,
+                windKph: 0,
+                isDay: true,
+              ));
     }
 
     return List.generate(points.length, (i) => results[i]!);
@@ -650,7 +662,7 @@ class TravelWeatherService {
     Map<int, TravelWeather> results,
   ) async {
     debugPrint('⚠️ Falling back to individual WeatherAPI fetches...');
-    
+
     final entries = pointsToFetch.entries.toList();
     for (int i = 0; i < entries.length; i += 5) {
       final batch = entries.skip(i).take(5).toList();
@@ -658,7 +670,7 @@ class TravelWeatherService {
       final futures = batch.map((entry) async {
         try {
           final weather = await _fetchWeatherFromWeatherAPI(
-            entry.value.lat, 
+            entry.value.lat,
             entry.value.lon,
           );
           final cacheKey =
@@ -676,6 +688,7 @@ class TravelWeatherService {
               icon: '',
               humidity: 0,
               windKph: 0,
+              isDay: true,
             ),
           );
         }
@@ -693,20 +706,21 @@ class TravelWeatherService {
   }
 
   /// Fetch weather from WeatherAPI.com directly (fallback)
-  Future<TravelWeather> _fetchWeatherFromWeatherAPI(double lat, double lon) async {
+  Future<TravelWeather> _fetchWeatherFromWeatherAPI(
+      double lat, double lon) async {
     final url = Uri.parse(
       'https://api.weatherapi.com/v1/current.json?key=$weatherApiKey&q=$lat,$lon&aqi=no',
     );
-    
+
     final response = await http.get(url).timeout(const Duration(seconds: 10));
-    
+
     if (response.statusCode != 200) {
       throw Exception('WeatherAPI error: ${response.statusCode}');
     }
-    
+
     final data = jsonDecode(response.body);
     final current = data['current'];
-    
+
     return TravelWeather(
       tempC: (current['temp_c'] as num?)?.toDouble() ?? 0,
       condition: current['condition']?['text']?.toString() ?? 'Unknown',
@@ -714,6 +728,7 @@ class TravelWeatherService {
       humidity: (current['humidity'] as num?)?.toInt() ?? 0,
       windKph: (current['wind_kph'] as num?)?.toDouble() ?? 0,
       rainChance: null,
+      isDay: current['is_day'] == 1 || current['is_day'] == true,
     );
   }
 

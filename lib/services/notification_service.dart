@@ -722,6 +722,105 @@ class NotificationService {
     print('Scheduled $scheduledCount prayer notifications for tomorrow');
   }
 
+  // ==================== Native Prayer Alarms (More Reliable) ====================
+  
+  static const _prayerAlarmChannel = MethodChannel('com.mashhood.weatheralert/prayer_alarm');
+
+  /// Schedule a prayer alarm using native Android AlarmManager
+  /// This is more reliable than flutter_local_notifications on some devices
+  Future<void> scheduleNativePrayerAlarm({
+    required String prayerName,
+    required DateTime prayerTime,
+    required int notificationId,
+    bool useAzan = true,
+  }) async {
+    if (!Platform.isAndroid) return;
+
+    // Don't schedule if in the past
+    if (prayerTime.isBefore(DateTime.now())) {
+      print('Skipping past prayer alarm: $prayerName at $prayerTime');
+      return;
+    }
+
+    try {
+      await _prayerAlarmChannel.invokeMethod('schedulePrayerAlarm', {
+        'prayerName': prayerName,
+        'triggerTimeMillis': prayerTime.millisecondsSinceEpoch,
+        'notificationId': notificationId,
+        'useAzan': useAzan,
+      });
+      print('Native prayer alarm scheduled: $prayerName at $prayerTime (ID: $notificationId)');
+    } catch (e) {
+      print('Error scheduling native prayer alarm: $e');
+      // Fallback to flutter_local_notifications
+      await schedulePrayerNotification(
+        id: notificationId,
+        prayerName: prayerName,
+        scheduledTime: prayerTime,
+        mode: useAzan ? PrayerNotificationMode.azan : PrayerNotificationMode.vibrationOnly,
+      );
+    }
+  }
+
+  /// Cancel all native prayer alarms
+  Future<void> cancelAllNativePrayerAlarms() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _prayerAlarmChannel.invokeMethod('cancelAllPrayerAlarms');
+      print('All native prayer alarms cancelled');
+    } catch (e) {
+      print('Error cancelling native prayer alarms: $e');
+    }
+  }
+
+  /// Schedule all prayer notifications using BOTH methods for maximum reliability
+  /// Uses both flutter_local_notifications AND native AlarmManager
+  Future<void> scheduleAllPrayerNotificationsReliable({
+    required Map<String, DateTime> prayerTimes,
+    required Map<String, PrayerNotificationMode> prayerModes,
+    int minutesBefore = 5,
+  }) async {
+    print('🕌 Scheduling prayer notifications with dual-method approach...');
+
+    // Cancel all existing alarms first
+    await cancelAllPrayerNotifications();
+    await cancelAllNativePrayerAlarms();
+
+    int nativeId = 2000;  // Native alarms use 2000-2019
+    int scheduledCount = 0;
+
+    for (final entry in prayerTimes.entries) {
+      final prayerName = entry.key.replaceAll('_tomorrow', '');
+      final prayerTime = entry.value;
+      final mode = prayerModes[prayerName] ?? PrayerNotificationMode.azan;
+
+      if (mode == PrayerNotificationMode.off) {
+        print('Skipping $prayerName - notifications off');
+        nativeId++;
+        continue;
+      }
+
+      // Schedule using NATIVE AlarmManager (more reliable)
+      await scheduleNativePrayerAlarm(
+        prayerName: prayerName,
+        prayerTime: prayerTime,
+        notificationId: nativeId,
+        useAzan: mode == PrayerNotificationMode.azan,
+      );
+      scheduledCount++;
+      nativeId++;
+    }
+
+    // Also schedule using flutter_local_notifications as backup
+    await scheduleAllPrayerNotifications(
+      prayerTimes: prayerTimes,
+      prayerModes: prayerModes,
+      minutesBefore: minutesBefore,
+    );
+
+    print('✅ Scheduled $scheduledCount prayer alarms (native + flutter backup)');
+  }
+
   /// Show an immediate prayer notification (for testing)
   Future<void> showImmediatePrayerNotification(String prayerName) async {
     final vibrationPattern =

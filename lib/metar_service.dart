@@ -30,12 +30,15 @@ String _nowIso() => DateTime.now().toUtc().toIso8601String();
 
 /// Check if location is in METAR range and return METAR data from worker
 /// Returns null if not in range or error
-Future<Map<String, dynamic>?> fetchMetarFromWorker(double lat, double lon) async {
+Future<Map<String, dynamic>?> fetchMetarFromWorker(
+    double lat, double lon) async {
   try {
     debugPrint('🛫 Checking METAR coverage for ($lat, $lon) from worker...');
-    final response = await http.get(
-      Uri.parse('$_workerUrl/nearest-airport?lat=$lat&lon=$lon'),
-    ).timeout(const Duration(seconds: 10));
+    final response = await http
+        .get(
+          Uri.parse('$_workerUrl/nearest-airport?lat=$lat&lon=$lon'),
+        )
+        .timeout(const Duration(seconds: 10));
 
     if (response.statusCode != 200) {
       debugPrint('❌ Worker error: ${response.statusCode}');
@@ -43,7 +46,7 @@ Future<Map<String, dynamic>?> fetchMetarFromWorker(double lat, double lon) async
     }
 
     final data = jsonDecode(response.body);
-    
+
     if (data['in_metar_range'] != true) {
       debugPrint('📍 Location outside METAR range: ${data['message']}');
       return null;
@@ -55,7 +58,8 @@ Future<Map<String, dynamic>?> fetchMetarFromWorker(double lat, double lon) async
       return null;
     }
 
-    debugPrint('✅ METAR from worker: ${metar['airport_name']} (${metar['icao']})');
+    debugPrint(
+        '✅ METAR from worker: ${metar['airport_name']} (${metar['icao']})');
 
     // Convert worker format to clean format expected by the app
     final clean = {
@@ -69,7 +73,8 @@ Future<Map<String, dynamic>?> fetchMetarFromWorker(double lat, double lon) async
       'wind_kph': metar['wind_kph']?.toString() ?? '--',
       'wind_degrees': metar['wind_degrees'] ?? '--',
       'condition_code': _extractConditionCode(metar['conditions']),
-      'condition_text': _extractConditionText(metar['conditions'], metar['clouds']),
+      'condition_text':
+          _extractConditionText(metar['conditions'], metar['clouds']),
       'raw_text': metar['raw_text'] ?? '--',
       'observed': metar['observed'] ?? _nowIso(),
       'flight_category': metar['flight_category'] ?? '--',

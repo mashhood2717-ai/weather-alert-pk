@@ -37,7 +37,8 @@ class TravelPoint {
   final String? nextPrayer;
   final String? nextPrayerTime;
   final bool isPassed;
-  final int distanceFromUser; // Dynamic distance in km from user's start position
+  final int
+      distanceFromUser; // Dynamic distance in km from user's start position
 
   TravelPoint({
     required this.point,
@@ -80,6 +81,7 @@ class TravelWeather {
   final int humidity;
   final double windKph;
   final double? rainChance;
+  final bool isDay; // true if daytime, false if night
 
   TravelWeather({
     required this.tempC,
@@ -88,6 +90,7 @@ class TravelWeather {
     required this.humidity,
     required this.windKph,
     this.rainChance,
+    this.isDay = true,
   });
 
   Map<String, dynamic> toJson() => {
@@ -97,6 +100,7 @@ class TravelWeather {
         'humidity': humidity,
         'windKph': windKph,
         'rainChance': rainChance,
+        'isDay': isDay,
       };
 
   factory TravelWeather.fromJson(Map<String, dynamic> json) => TravelWeather(
@@ -108,6 +112,7 @@ class TravelWeather {
         rainChance: json['rainChance'] != null
             ? (json['rainChance'] as num).toDouble()
             : null,
+        isDay: json['isDay'] == true || json['isDay'] == 1 || json['is_day'] == 1,
       );
 }
 
@@ -479,13 +484,13 @@ class PakistanMotorways {
   static List<MotorwayPoint> getCombinedM1M2Points() {
     // M2: Lahore to Islamabad (reversed since M2 is ISB to LHR)
     final m2Points = M2Motorway.points.reversed.toList();
-    
+
     // M1: Islamabad to Peshawar
     final m1Points = M1Motorway.points.toList();
-    
+
     // Combine: M2 reversed + M1 (skip first M1 point as it's near M2 end)
     final combined = <MotorwayPoint>[];
-    
+
     // Add all M2 points (Lahore to Islamabad direction)
     int cumulativeDistance = 0;
     for (int i = 0; i < m2Points.length; i++) {
@@ -502,7 +507,7 @@ class PakistanMotorways {
       ));
       cumulativeDistance = distFromLahore;
     }
-    
+
     // Add M1 points (skip first one which is Islamabad - already covered)
     for (int i = 1; i < m1Points.length; i++) {
       final p = m1Points[i];
@@ -516,7 +521,7 @@ class PakistanMotorways {
         facilities: p.facilities,
       ));
     }
-    
+
     return combined;
   }
 
@@ -547,15 +552,16 @@ class PakistanMotorways {
         return M2Motorway.getPointsBetween(fromId, toId);
     }
   }
-  
+
   /// Get points between two points on the combined M1+M2 route
-  static List<MotorwayPoint> _getCombinedPointsBetween(String fromId, String toId) {
+  static List<MotorwayPoint> _getCombinedPointsBetween(
+      String fromId, String toId) {
     final allPoints = getCombinedM1M2Points();
     final fromIndex = allPoints.indexWhere((p) => p.id == fromId);
     final toIndex = allPoints.indexWhere((p) => p.id == toId);
-    
+
     if (fromIndex == -1 || toIndex == -1) return allPoints;
-    
+
     if (fromIndex > toIndex) {
       // Reverse direction (Peshawar to Lahore)
       return allPoints.sublist(toIndex, fromIndex + 1).reversed.toList();

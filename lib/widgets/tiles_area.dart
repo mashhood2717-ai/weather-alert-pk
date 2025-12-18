@@ -92,7 +92,7 @@ class TilesArea extends StatelessWidget {
       if (v is num) return v.toDouble();
       return double.tryParse(v.toString());
     }
-    
+
     int? parseInt(dynamic v) {
       if (v == null || v == '--') return null;
       if (v is int) return v;
@@ -103,22 +103,17 @@ class TilesArea extends StatelessWidget {
     if (controller.metarApplied && controller.metar != null) {
       final m = controller.metar!;
       final windDeg = parseInt(m["wind_degrees"]);
-      final metarWindDir = windDeg != null
-          ? _mapWindDegreesToCardinal(windDeg)
-          : "--";
+      final metarWindDir =
+          windDeg != null ? _mapWindDegreesToCardinal(windDeg) : "--";
 
       final dewC = parseDouble(m["dewpoint_c"]);
       final windKph = parseDouble(m["wind_kph"]);
 
       final dewDisplay = dewC != null
-          ? settings
-              .convertTemperature(dewC)
-              .toStringAsFixed(1)
+          ? settings.convertTemperature(dewC).toStringAsFixed(1)
           : "--";
       final windDisplay = windKph != null
-          ? settings
-              .convertWindSpeedHybrid(windKph)
-              .toStringAsFixed(0)
+          ? settings.convertWindSpeedHybrid(windKph).toStringAsFixed(0)
           : "--";
 
       return [

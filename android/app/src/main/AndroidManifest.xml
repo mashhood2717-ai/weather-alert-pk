@@ -86,6 +86,16 @@
             </intent-filter>
         </receiver>
 
+        <!-- Prayer alarm receiver for azan notifications -->
+        <receiver
+            android:name=".PrayerAlarmReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.mashhood.weatheralert.PRAYER_ALARM" />
+            </intent-filter>
+        </receiver>
+
         <!-- Explicit FCM Service for background message handling -->
         <service
             android:name="io.flutter.plugins.firebase.messaging.FlutterFirebaseMessagingService"

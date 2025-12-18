@@ -420,19 +420,19 @@ class PrayerService {
         }
       }
 
-      // Schedule today's notifications
-      await NotificationService().scheduleAllPrayerNotifications(
-        prayerTimes: prayerTimes,
-        prayerModes: notificationPrefs,
-        minutesBefore: 5,
-      );
+      // Combine today and tomorrow prayers for reliable scheduling
+      final allPrayers = <String, DateTime>{};
+      allPrayers.addAll(prayerTimes);
+      allPrayers.addAll(tomorrowPrayerTimes2);
 
-      // Schedule tomorrow's notifications (with offset IDs)
-      await NotificationService().scheduleTomorrowPrayerNotifications(
-        prayerTimes: tomorrowPrayerTimes2,
+      // Use the NEW reliable dual-method approach (native + flutter backup)
+      await NotificationService().scheduleAllPrayerNotificationsReliable(
+        prayerTimes: allPrayers,
         prayerModes: notificationPrefs,
         minutesBefore: 5,
       );
+      
+      debugPrint('✅ Prayer notifications scheduled with native AlarmManager');
     } catch (e) {
       debugPrint('Error scheduling prayer notifications: $e');
     }
