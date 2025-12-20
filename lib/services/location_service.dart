@@ -23,7 +23,37 @@ Future<Position> determinePosition() async {
     return Future.error('Location permissions are permanently denied.');
   }
 
-  // Use medium accuracy - saves battery while still being accurate enough for weather
-  return await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.medium);
+  // FAST LOCATION STRATEGY:
+  // 1. Try last known position first (instant, no GPS wait)
+  // 2. If no cached position, get current with timeout
+  
+  Position? lastKnown;
+  try {
+    lastKnown = await Geolocator.getLastKnownPosition();
+  } catch (_) {
+    // Ignore - will fall back to getCurrentPosition
+  }
+  
+  // If we have a recent last known position (< 5 minutes old), use it immediately
+  if (lastKnown != null) {
+    final age = DateTime.now().difference(lastKnown.timestamp);
+    if (age.inMinutes < 5) {
+      // Use cached position for instant response
+      return lastKnown;
+    }
+  }
+
+  // Get fresh position with 10-second timeout
+  try {
+    return await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.low, // Faster than medium
+      timeLimit: const Duration(seconds: 10),
+    );
+  } catch (e) {
+    // If timeout and we have any last known position, use it as fallback
+    if (lastKnown != null) {
+      return lastKnown;
+    }
+    rethrow;
+  }
 }

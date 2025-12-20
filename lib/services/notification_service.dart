@@ -150,7 +150,7 @@ class NotificationService {
   static const int _navigationNotificationId = 9999;
 
   Future<void> initialize() async {
-    // Request permission
+    // Request FCM permission
     NotificationSettings settings = await _messaging.requestPermission(
       alert: true,
       badge: true,
@@ -186,6 +186,11 @@ class NotificationService {
       await androidPlugin.createNotificationChannel(_prayerChannel);
       await androidPlugin.createNotificationChannel(_prayerReminderChannel);
       await androidPlugin.createNotificationChannel(_navigationChannel);
+      
+      // Request notification permission on Android 13+ (API 33+)
+      // This is REQUIRED for local notifications to work on Android 13+
+      final granted = await androidPlugin.requestNotificationsPermission();
+      print('🔔 Android notification permission granted: $granted');
     }
 
     // Initialize timezone for scheduled notifications
@@ -826,68 +831,17 @@ class NotificationService {
         '✅ Scheduled $scheduledCount prayer alarms (native + flutter backup)');
   }
 
-  /// Show an immediate prayer notification (for testing)
+  /// Show an immediate prayer notification with azan using native MediaPlayer
   Future<void> showImmediatePrayerNotification(String prayerName) async {
-    final vibrationPattern =
-        Int64List.fromList([0, 500, 200, 500, 200, 500, 200, 500]);
+    if (!Platform.isAndroid) {
+      // Fallback for non-Android
+      final vibrationPattern =
+          Int64List.fromList([0, 500, 200, 500, 200, 500, 200, 500]);
 
-    await _localNotifications.show(
-      999, // Test notification ID
-      '🕌 $prayerName Time',
-      'Allahu Akbar - It\'s time for $prayerName prayer',
-      NotificationDetails(
-        android: AndroidNotificationDetails(
-          _prayerChannel.id,
-          _prayerChannel.name,
-          channelDescription: _prayerChannel.description,
-          importance: Importance.max,
-          priority: Priority.max,
-          icon: '@mipmap/ic_launcher',
-          color: const Color(0xFF4CAF50),
-          enableVibration: true,
-          vibrationPattern: vibrationPattern,
-          playSound: true,
-          sound: const RawResourceAndroidNotificationSound('azan'),
-          fullScreenIntent: true,
-          category: AndroidNotificationCategory.alarm,
-          visibility: NotificationVisibility.public,
-        ),
-      ),
-      payload: 'prayer_$prayerName',
-    );
-    print('Immediate prayer notification shown for $prayerName');
-  }
-
-  /// Schedule a test prayer notification for 30 seconds from now (for testing)
-  Future<void> scheduleTestPrayerNotification() async {
-    _ensureTimezoneInitialized();
-
-    // First check exact alarm permission
-    final canScheduleExact = await canScheduleExactAlarms();
-    print('📱 Can schedule exact alarms: $canScheduleExact');
-
-    final scheduledTime = DateTime.now().add(const Duration(seconds: 30));
-    final tzScheduledTime = tz.TZDateTime.from(scheduledTime, tz.local);
-
-    final vibrationPattern =
-        Int64List.fromList([0, 500, 200, 500, 200, 500, 200, 500]);
-
-    // Use inexact if exact alarms not available
-    final scheduleMode = canScheduleExact
-        ? AndroidScheduleMode.exactAllowWhileIdle
-        : AndroidScheduleMode.inexactAllowWhileIdle;
-
-    print('📅 Using schedule mode: $scheduleMode');
-    print('📅 Current time: ${DateTime.now()}');
-    print('📅 Target time: $tzScheduledTime');
-    print('📅 Timezone: ${tz.local.name}');
-
-    try {
-      await _localNotifications.zonedSchedule(
-        998, // Test scheduled notification ID
-        '🕌 Test Prayer Time',
-        'Allahu Akbar - This is a scheduled test notification',
-        tzScheduledTime,
+      await _localNotifications.show(
+        999,
+        '🕌 $prayerName Time',
+        'Allahu Akbar - It\'s time for $prayerName prayer',
         NotificationDetails(
           android: AndroidNotificationDetails(
             _prayerChannel.id,
@@ -906,27 +860,43 @@ class NotificationService {
             visibility: NotificationVisibility.public,
           ),
         ),
-        androidScheduleMode: scheduleMode,
-        matchDateTimeComponents: null,
-        payload: 'prayer_test',
+        payload: 'prayer_$prayerName',
       );
-      print(
-          '✅ Test prayer notification scheduled for $tzScheduledTime (30 seconds from now)');
+      return;
+    }
 
-      // Check pending notifications
-      final pending = await getPendingNotifications();
-      print('📋 Pending notifications count: ${pending.length}');
-      final testNotification = pending.where((n) => n.id == 998).toList();
-      if (testNotification.isNotEmpty) {
-        print('✅ Test notification (ID 998) is in pending list');
-        for (final n in testNotification) {
-          print('   - Title: ${n.title}');
-          print('   - Body: ${n.body}');
-          print('   - Payload: ${n.payload}');
-        }
-      } else {
-        print('❌ Test notification (ID 998) NOT FOUND in pending list!');
-      }
+    // Use native method for immediate azan with full MediaPlayer playback
+    try {
+      await _prayerAlarmChannel.invokeMethod('triggerImmediateAzan', {
+        'prayerName': prayerName,
+        'notificationId': 999,
+        'useAzan': true,
+      });
+      print('🕌 Immediate azan triggered using native MediaPlayer for $prayerName');
+    } catch (e) {
+      print('❌ Error triggering immediate azan: $e');
+    }
+  }
+
+  /// Schedule a test prayer notification for 10 seconds from now (for testing)
+  /// Uses native AlarmManager + MediaPlayer for full azan playback
+  Future<void> scheduleTestPrayerNotification() async {
+    final scheduledTime = DateTime.now().add(const Duration(seconds: 10));
+    
+    print('📅 Current time: ${DateTime.now()}');
+    print('📅 Target time: $scheduledTime');
+    print('🕌 Using NATIVE AlarmManager with MediaPlayer for test');
+
+    try {
+      // Use the native alarm system (same as real prayer notifications)
+      await scheduleNativePrayerAlarm(
+        prayerName: 'Test Azan',
+        prayerTime: scheduledTime,
+        notificationId: 2999, // Test notification ID
+        useAzan: true,
+      );
+      print('✅ Test prayer notification scheduled for $scheduledTime (10 seconds from now)');
+      print('🔊 Azan will play using MediaPlayer (full duration)');
     } catch (e) {
       print('❌ Error scheduling test prayer notification: $e');
     }

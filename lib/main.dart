@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'firebase_options.dart';
 import 'screens/home_screen.dart';
 import 'screens/alerts_screen.dart';
@@ -20,6 +21,10 @@ void main() async {
   // Set up background message handler
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
+  // Request notification permission IMMEDIATELY on first launch
+  // This is critical for prayer alarms to work
+  await _requestNotificationPermission();
+
   // Run the app immediately - don't wait for non-critical services
   runApp(const WeatherAlertApp());
 
@@ -27,14 +32,23 @@ void main() async {
   _initializeBackgroundServices();
 }
 
+/// Request notification permission immediately on app start
+Future<void> _requestNotificationPermission() async {
+  final status = await Permission.notification.status;
+  if (!status.isGranted) {
+    await Permission.notification.request();
+    debugPrint('🔔 Notification permission requested on app start');
+  }
+}
+
 /// Initialize background services after app is visible
 /// This improves perceived startup time significantly
 Future<void> _initializeBackgroundServices() async {
-  // Wait 5 seconds to allow location permission dialog to complete first
+  // Wait 3 seconds to allow location permission dialog to complete first
   // This prevents "Can request only one set of permissions at a time" error
-  await Future.delayed(const Duration(seconds: 5));
+  await Future.delayed(const Duration(seconds: 3));
 
-  // Initialize notification service (this requests FCM permission)
+  // Initialize notification service (this sets up channels, FCM, etc.)
   final notificationService = NotificationService();
   await notificationService.initialize();
 

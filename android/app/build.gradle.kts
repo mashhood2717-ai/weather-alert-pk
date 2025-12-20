@@ -56,6 +56,13 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("release")
+            // Enable minification but keep important classes
+            isMinifyEnabled = true
+            isShrinkResources = false  // Don't shrink resources (keep azan.mp3)
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 }

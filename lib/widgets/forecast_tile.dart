@@ -1,6 +1,5 @@
 // lib/widgets/forecast_tile.dart - WITH FEELS LIKE HIGH/LOW
 
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../utils/background_utils.dart';
 import '../models/daily_weather.dart';
@@ -300,66 +299,61 @@ class ForecastTile extends StatelessWidget {
     final fg = foregroundForCard(isDay);
     final tint = cardTint(isDay);
 
+    // PERFORMANCE: Removed BackdropFilter - too expensive for 7 tiles
     return GestureDetector(
       onTap: () => _showDayDetails(context),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-          child: Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: tint,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: tint,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+        ),
+        child: Row(
+          children: [
+            Image.network(
+              icon,
+              width: 44,
+              height: 44,
+              errorBuilder: (_, __, ___) => Icon(Icons.cloud,
+                  size: 40, color: fg.withValues(alpha: 0.6)),
             ),
-            child: Row(
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_formatDateDisplay(date),
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: fg)),
+                  Text(condition,
+                      style: TextStyle(
+                          fontSize: 12, color: fg.withValues(alpha: 0.7)),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Image.network(
-                  icon,
-                  width: 44,
-                  height: 44,
-                  errorBuilder: (_, __, ___) => Icon(Icons.cloud,
-                      size: 40, color: fg.withValues(alpha: 0.6)),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(_formatDateDisplay(date),
-                          style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: fg)),
-                      Text(condition,
-                          style: TextStyle(
-                              fontSize: 12, color: fg.withValues(alpha: 0.7)),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
-                    ],
-                  ),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text("$maxTemp°",
-                        style: TextStyle(
-                            color: Colors.orange[700],
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600)),
-                    Text("$minTemp°",
-                        style:
-                            TextStyle(color: Colors.blue[400], fontSize: 13)),
-                  ],
-                ),
-                const SizedBox(width: 6),
-                Icon(Icons.chevron_right,
-                    color: fg.withValues(alpha: 0.4), size: 18),
+                Text("$maxTemp°",
+                    style: TextStyle(
+                        color: Colors.orange[700],
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600)),
+                Text("$minTemp°",
+                    style:
+                        TextStyle(color: Colors.blue[400], fontSize: 13)),
               ],
             ),
-          ),
+            const SizedBox(width: 6),
+            Icon(Icons.chevron_right,
+                color: fg.withValues(alpha: 0.4), size: 18),
+          ],
         ),
       ),
     );

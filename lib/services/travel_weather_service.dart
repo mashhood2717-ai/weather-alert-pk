@@ -156,6 +156,9 @@ class TravelWeatherService {
           isDay: true,
         );
       }
+      // Default to day if is_day not present
+      final isDayValue = data['is_day'];
+      final isDay = isDayValue == null ? true : (isDayValue == 1 || isDayValue == true);
       return TravelWeather(
         tempC: (data['temp_c'] as num?)?.toDouble() ?? 0,
         condition: data['condition'] as String? ?? 'Unknown',
@@ -163,7 +166,7 @@ class TravelWeatherService {
         humidity: (data['humidity'] as num?)?.toInt() ?? 0,
         windKph: (data['wind_kph'] as num?)?.toDouble() ?? 0,
         rainChance: null, // WeatherAPI doesn't include in current
-        isDay: data['is_day'] == 1 || data['is_day'] == true,
+        isDay: isDay,
       );
     }).toList();
   }
@@ -600,6 +603,9 @@ class TravelWeatherService {
           if (idx != null) {
             final w = entry.value as Map<String, dynamic>;
             final source = w['source']?.toString() ?? 'weatherapi';
+            // Default to day if is_day not present (METAR doesn't include it)
+            final isDayValue = w['is_day'];
+            final isDay = isDayValue == null ? true : (isDayValue == 1 || isDayValue == true);
             final weather = TravelWeather(
               tempC: (w['temp_c'] as num?)?.toDouble() ?? 0,
               condition: w['condition']?.toString() ?? 'Unknown',
@@ -607,7 +613,7 @@ class TravelWeatherService {
               humidity: (w['humidity'] as num?)?.toInt() ?? 0,
               windKph: (w['wind_kph'] as num?)?.toDouble() ?? 0,
               rainChance: null, // Worker doesn't provide this yet
-              isDay: w['is_day'] == 1 || w['is_day'] == true,
+              isDay: isDay,
             );
             results[idx] = weather;
 
@@ -721,6 +727,9 @@ class TravelWeatherService {
     final data = jsonDecode(response.body);
     final current = data['current'];
 
+    // Default to day if is_day not present
+    final isDayValue = current['is_day'];
+    final isDay = isDayValue == null ? true : (isDayValue == 1 || isDayValue == true);
     return TravelWeather(
       tempC: (current['temp_c'] as num?)?.toDouble() ?? 0,
       condition: current['condition']?['text']?.toString() ?? 'Unknown',
@@ -728,7 +737,7 @@ class TravelWeatherService {
       humidity: (current['humidity'] as num?)?.toInt() ?? 0,
       windKph: (current['wind_kph'] as num?)?.toDouble() ?? 0,
       rainChance: null,
-      isDay: current['is_day'] == 1 || current['is_day'] == true,
+      isDay: isDay,
     );
   }
 

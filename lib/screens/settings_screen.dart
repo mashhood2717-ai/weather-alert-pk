@@ -2,6 +2,8 @@
 
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../services/settings_service.dart';
 import '../utils/background_utils.dart';
 
@@ -16,11 +18,17 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final SettingsService _settings = SettingsService();
+  
+  // Permission status
+  bool _locationPermissionGranted = false;
+  bool _notificationPermissionGranted = false;
+  bool _checkingPermissions = true;
 
   @override
   void initState() {
     super.initState();
     _settings.addListener(_onSettingsChanged);
+    _checkPermissions();
   }
 
   @override
@@ -31,6 +39,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _onSettingsChanged() {
     if (mounted) setState(() {});
+  }
+  
+  Future<void> _checkPermissions() async {
+    setState(() => _checkingPermissions = true);
+    
+    // Check location permission
+    final locationStatus = await Geolocator.checkPermission();
+    final locationGranted = locationStatus == LocationPermission.always || 
+                            locationStatus == LocationPermission.whileInUse;
+    
+    // Check notification permission
+    final notificationStatus = await Permission.notification.status;
+    final notificationGranted = notificationStatus.isGranted;
+    
+    if (mounted) {
+      setState(() {
+        _locationPermissionGranted = locationGranted;
+        _notificationPermissionGranted = notificationGranted;
+        _checkingPermissions = false;
+      });
+    }
+  }
+  
+  Future<void> _requestLocationPermission() async {
+    final status = await Geolocator.requestPermission();
+    if (status == LocationPermission.always || status == LocationPermission.whileInUse) {
+      setState(() => _locationPermissionGranted = true);
+    } else if (status == LocationPermission.deniedForever) {
+      // Open app settings
+      await openAppSettings();
+    }
+    _checkPermissions();
+  }
+  
+  Future<void> _requestNotificationPermission() async {
+    final status = await Permission.notification.request();
+    if (status.isGranted) {
+      setState(() => _notificationPermissionGranted = true);
+    } else if (status.isPermanentlyDenied) {
+      await openAppSettings();
+    }
+    _checkPermissions();
   }
 
   @override
@@ -84,6 +134,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _buildSectionHeader('Units', Icons.straighten, fg),
                 const SizedBox(height: 12),
                 _buildUnitsCard(fg, tint),
+                const SizedBox(height: 24),
+
+                // Permissions Section
+                _buildSectionHeader('Permissions', Icons.security, fg),
+                const SizedBox(height: 12),
+                _buildPermissionsCard(fg, tint),
                 const SizedBox(height: 24),
 
                 // Appearance Section
@@ -245,6 +301,122 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Widget _buildPermissionsCard(Color fg, Color tint) {
+    return _buildGlassCard(
+      tint: tint,
+      child: Column(
+        children: [
+          // Location Permission
+          _buildPermissionTile(
+            icon: Icons.location_on,
+            title: 'Location Permission',
+            isGranted: _locationPermissionGranted,
+            isLoading: _checkingPermissions,
+            fg: fg,
+            onTap: _locationPermissionGranted ? null : _requestLocationPermission,
+          ),
+          Divider(color: fg.withValues(alpha: 0.1), height: 1),
+          // Notification Permission
+          _buildPermissionTile(
+            icon: Icons.notifications,
+            title: 'Notification Permission',
+            isGranted: _notificationPermissionGranted,
+            isLoading: _checkingPermissions,
+            fg: fg,
+            onTap: _notificationPermissionGranted ? null : _requestNotificationPermission,
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildPermissionTile({
+    required IconData icon,
+    required String title,
+    required bool isGranted,
+    required bool isLoading,
+    required Color fg,
+    VoidCallback? onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: (isGranted ? Colors.green : Colors.red).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  icon,
+                  color: isGranted ? Colors.green : Colors.red,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: fg,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    if (isLoading)
+                      Text(
+                        'Checking...',
+                        style: TextStyle(
+                          color: fg.withValues(alpha: 0.6),
+                          fontSize: 13,
+                        ),
+                      )
+                    else
+                      Row(
+                        children: [
+                          Icon(
+                            isGranted ? Icons.check_circle : Icons.cancel,
+                            color: isGranted ? Colors.green : Colors.red,
+                            size: 14,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            isGranted ? 'Granted' : 'Not Granted - Tap to enable',
+                            style: TextStyle(
+                              color: isGranted ? Colors.green : Colors.red,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+              if (!isGranted && !isLoading)
+                Icon(
+                  Icons.arrow_forward_ios,
+                  color: fg.withValues(alpha: 0.4),
+                  size: 16,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildAboutCard(Color fg, Color tint) {
     return _buildGlassCard(
       tint: tint,
@@ -254,7 +426,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             icon: Icons.apps,
             iconColor: Colors.purple,
             title: 'App Version',
-            subtitle: '1.1.6',
+            subtitle: '1.1.13',
             fg: fg,
             showArrow: false,
           ),

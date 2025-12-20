@@ -47,6 +47,22 @@ class MainActivity : FlutterActivity() {
                     )
                     result.success(true)
                 }
+                "triggerImmediateAzan" -> {
+                    // Trigger azan notification immediately using native MediaPlayer
+                    val prayerName = call.argument<String>("prayerName") ?: "Test"
+                    val notificationId = call.argument<Int>("notificationId") ?: 2999
+                    val useAzan = call.argument<Boolean>("useAzan") ?: true
+                    
+                    // Create and send broadcast intent directly
+                    val intent = android.content.Intent(this, PrayerAlarmReceiver::class.java).apply {
+                        action = PrayerAlarmReceiver.ACTION_PRAYER_ALARM
+                        putExtra(PrayerAlarmReceiver.EXTRA_PRAYER_NAME, prayerName)
+                        putExtra(PrayerAlarmReceiver.EXTRA_NOTIFICATION_ID, notificationId)
+                        putExtra(PrayerAlarmReceiver.EXTRA_USE_AZAN, useAzan)
+                    }
+                    sendBroadcast(intent)
+                    result.success(true)
+                }
                 "cancelPrayerAlarm" -> {
                     val notificationId = call.argument<Int>("notificationId") ?: 2000
                     PrayerAlarmScheduler.cancelPrayerAlarm(this, notificationId)

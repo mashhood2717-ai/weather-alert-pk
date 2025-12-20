@@ -7,9 +7,11 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
-import android.media.RingtoneManager
+import android.media.AudioManager
+import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 
@@ -26,18 +28,91 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
         const val EXTRA_NOTIFICATION_ID = "notification_id"
         const val EXTRA_USE_AZAN = "use_azan"
         const val CHANNEL_ID = "prayer_azan_native"
+        
+        // Static MediaPlayer to keep azan playing
+        private var mediaPlayer: MediaPlayer? = null
     }
 
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != ACTION_PRAYER_ALARM) return
+        Log.d(TAG, "🕌 onReceive called! Action: ${intent.action}")
+        
+        if (intent.action != ACTION_PRAYER_ALARM) {
+            Log.w(TAG, "Unknown action: ${intent.action}")
+            return
+        }
 
         val prayerName = intent.getStringExtra(EXTRA_PRAYER_NAME) ?: "Prayer"
         val notificationId = intent.getIntExtra(EXTRA_NOTIFICATION_ID, 2000)
         val useAzan = intent.getBooleanExtra(EXTRA_USE_AZAN, true)
 
-        Log.d(TAG, "Prayer alarm received: $prayerName, useAzan: $useAzan")
+        Log.d(TAG, "🕌 Prayer alarm received: $prayerName, useAzan: $useAzan, id: $notificationId")
 
-        showPrayerNotification(context, prayerName, notificationId, useAzan)
+        // Acquire wake lock to ensure notification is shown even if device is sleeping
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        val wakeLock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+            "weatheralert:prayeralarm"
+        )
+        wakeLock.acquire(300000) // 5 minutes max for full azan
+        
+        try {
+            showPrayerNotification(context, prayerName, notificationId, useAzan)
+            
+            // Play azan sound using MediaPlayer (for full duration)
+            if (useAzan) {
+                playAzanSound(context, wakeLock)
+            } else {
+                // Just vibration, release wake lock after a short delay
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    if (wakeLock.isHeld) wakeLock.release()
+                }, 5000)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing prayer notification: ${e.message}")
+            if (wakeLock.isHeld) wakeLock.release()
+        }
+    }
+    
+    private fun playAzanSound(context: Context, wakeLock: PowerManager.WakeLock) {
+        try {
+            // Stop any existing playback
+            mediaPlayer?.stop()
+            mediaPlayer?.release()
+            
+            val azanUri = Uri.parse("android.resource://${context.packageName}/raw/azan")
+            
+            mediaPlayer = MediaPlayer().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .build()
+                )
+                setDataSource(context, azanUri)
+                prepare()
+                
+                setOnCompletionListener {
+                    Log.d(TAG, "🕌 Azan playback completed")
+                    it.release()
+                    mediaPlayer = null
+                    if (wakeLock.isHeld) wakeLock.release()
+                }
+                
+                setOnErrorListener { mp, what, extra ->
+                    Log.e(TAG, "MediaPlayer error: what=$what, extra=$extra")
+                    mp.release()
+                    mediaPlayer = null
+                    if (wakeLock.isHeld) wakeLock.release()
+                    true
+                }
+                
+                start()
+                Log.d(TAG, "🕌 Azan playback started")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error playing azan: ${e.message}")
+            if (wakeLock.isHeld) wakeLock.release()
+        }
     }
 
     private fun showPrayerNotification(
@@ -49,13 +124,8 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         // Create notification channel for Android 8+
+        // Sound is handled separately via MediaPlayer for full azan duration
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val azanSoundUri = Uri.parse("android.resource://${context.packageName}/raw/azan")
-            val audioAttributes = AudioAttributes.Builder()
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .setUsage(AudioAttributes.USAGE_ALARM)
-                .build()
-
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "Prayer Time Azan (Native)",
@@ -64,9 +134,8 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
                 description = "Prayer time notifications with azan sound"
                 enableVibration(true)
                 vibrationPattern = longArrayOf(0, 500, 200, 500, 200, 500, 200, 500)
-                if (useAzan) {
-                    setSound(azanSoundUri, audioAttributes)
-                }
+                // Don't set sound on channel - we play via MediaPlayer for full duration
+                setSound(null, null)
                 enableLights(true)
                 lightColor = 0xFF4CAF50.toInt()
             }
@@ -82,8 +151,7 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Build notification
-        val azanSoundUri = Uri.parse("android.resource://${context.packageName}/raw/azan")
+        // Build notification - sound handled via MediaPlayer
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("🕌 $prayerName Time")
@@ -95,11 +163,7 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .setFullScreenIntent(pendingIntent, true)
-
-        if (useAzan && Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            // For pre-Oreo, set sound directly on notification
-            builder.setSound(azanSoundUri)
-        }
+            .setSilent(false) // Allow vibration
 
         notificationManager.notify(notificationId, builder.build())
         Log.d(TAG, "Prayer notification shown: $prayerName (ID: $notificationId)")

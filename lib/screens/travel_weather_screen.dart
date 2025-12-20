@@ -488,9 +488,14 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   /// Recenter on user location
   /// [resetHeading] - if true, also resets the camera bearing to heading direction (like Google Maps double-tap)
   void _recenterOnUser(bool resetHeading) {
-    if (_currentPosition == null) return;
+    if (_currentPosition == null || _mapController == null) return;
 
     setState(() => _isFollowingUser = true);
+    
+    // Ensure ticker is running when following
+    if (_isNavigating && (_mapTicker == null || !_mapTicker!.isActive)) {
+      _startMapTicker();
+    }
 
     if (_isNavigating) {
       // Use ACTUAL current position - not smoothed, not offset
@@ -507,8 +512,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
 
       _isProgrammaticCameraMove =
           true; // Prevent onCameraMove from disabling follow
-      _mapController
-          ?.animateCamera(
+      _mapController!
+          .animateCamera(
         CameraUpdate.newCameraPosition(
           CameraPosition(
             target: LatLng(lat, lon),
@@ -519,15 +524,23 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
         ),
       )
           .then((_) {
-        _isProgrammaticCameraMove = false;
+        // Delay resetting flag to prevent immediate unfollow from animation settling
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) _isProgrammaticCameraMove = false;
+        });
       });
     } else {
       // Not navigating, just move to current location (no tilt/bearing)
-      _mapController?.animateCamera(
+      _isProgrammaticCameraMove = true;
+      _mapController!.animateCamera(
         CameraUpdate.newLatLng(
           LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
         ),
-      );
+      ).then((_) {
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) _isProgrammaticCameraMove = false;
+        });
+      });
     }
   }
 
@@ -1398,6 +1411,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       // Show UI immediately
       _updateMapMarkers();
       _isLoadingRoute = false;
+      _hasRetriedLoad = false; // Reset retry flag on success
       setState(() => _isLoading = false);
 
       // Fetch Google Directions in background for accurate road polyline
@@ -1410,11 +1424,24 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       // Fetch METAR data in background
       _fetchMetarForRoute();
     } catch (e) {
+      debugPrint('❌ Failed to load route: $e');
+      // Auto-retry once after a short delay for transient network errors
+      if (!_hasRetriedLoad) {
+        _hasRetriedLoad = true;
+        _isLoadingRoute = false;
+        await Future.delayed(const Duration(seconds: 1));
+        debugPrint('🔄 Auto-retrying route load...');
+        return _loadRoute();
+      }
       setState(() => _error = 'Failed to load route: $e');
       _isLoadingRoute = false;
       setState(() => _isLoading = false);
+      _hasRetriedLoad = false; // Reset for next attempt
     }
   }
+
+  // Track auto-retry to prevent infinite loops
+  bool _hasRetriedLoad = false;
 
   /// Fetch Google Directions API in background for accurate road route
   Future<void> _fetchGoogleDirectionsInBackground(
@@ -1783,7 +1810,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
 
         // If bearing difference > 90°, current point is behind us (we've passed it)
         // Current point is to our back, next point is ahead
-        final currentPointIsBehind = bearingDiff > 90;
+        // Also require minimum 200m past the point to prevent GPS jitter flip-flop
+        final currentPointIsBehind = bearingDiff > 90 && distToCurrent > 200;
 
         if (currentPointIsBehind) {
           shouldAdvance = true;
@@ -2041,6 +2069,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   Future<void> _saveNavigationProgress() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('nav_current_point_index', _currentPointIndex);
+    await prefs.setInt('nav_highest_achieved_index', _highestAchievedIndex);
     await prefs.setBool('nav_is_navigating', _isNavigating);
     await prefs.setString('nav_route_id', '${_fromId ?? "current"}_to_$_toId');
   }
@@ -5639,8 +5668,19 @@ Shared via Weather Alert Pakistan
               // Set map style based on theme
               controller
                   .setMapStyle(_isDarkMode ? _darkMapStyle : _lightMapStyle);
-              // Fit bounds to show entire route
-              if (_routePoints.isNotEmpty) {
+              
+              // If navigating, restart the map ticker and recenter on user
+              if (_isNavigating && _currentPosition != null) {
+                _isFollowingUser = true;
+                _startMapTicker();
+                // Delay recenter slightly to ensure controller is fully ready
+                Future.delayed(const Duration(milliseconds: 100), () {
+                  if (mounted && _isNavigating && _mapController != null) {
+                    _recenterOnUser(true);
+                  }
+                });
+              } else if (_routePoints.isNotEmpty) {
+                // Fit bounds to show entire route
                 final bounds = LatLngBounds(
                   southwest: LatLng(
                     _routePoints
@@ -5671,38 +5711,71 @@ Shared via Weather Alert Pakistan
           ),
         ),
 
-        // Top right - Distance and time badge
+        // Top right - Distance, time, and destination badge (DYNAMIC GPS-based)
         Positioned(
           top: 16,
           right: 16,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.7),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  _routeDistanceMeters >= 1000
-                      ? '${(_routeDistanceMeters / 1000).toStringAsFixed(0)} km'
-                      : '$_routeDistanceMeters m',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+          child: Builder(
+            builder: (context) {
+              // Use distanceFromUser from routePoints (same as timeline)
+              // This is road distance: GPS to first plaza + road distance between plazas
+              double remainingDistanceKm = _routeDistanceMeters / 1000;
+              int remainingSeconds = _routeDurationSeconds;
+              
+              // Use the same distance calculation as timeline
+              if (_routePoints.isNotEmpty) {
+                // Road distance from timeline (matches what user sees in timeline)
+                remainingDistanceKm = _routePoints.last.distanceFromUser.toDouble();
+                
+                // Estimate time based on current speed or average 80 km/h
+                final speedKmh = _currentSpeed > 5 ? _currentSpeed : 80;
+                remainingSeconds = ((remainingDistanceKm / speedKmh) * 3600).round();
+              }
+              
+              final distanceText = remainingDistanceKm >= 1
+                  ? '${remainingDistanceKm.toStringAsFixed(0)} km'
+                  : '${(remainingDistanceKm * 1000).toStringAsFixed(0)} m';
+              
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.7),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                Text(
-                  _formatDuration(Duration(seconds: _routeDurationSeconds)),
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.8),
-                    fontSize: 13,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    // Destination name
+                    if (_routePoints.isNotEmpty)
+                      Text(
+                        _routePoints.last.point.name.length > 15
+                            ? '${_routePoints.last.point.name.substring(0, 15)}...'
+                            : _routePoints.last.point.name,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.9),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    Text(
+                      distanceText,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      _formatDuration(Duration(seconds: remainingSeconds)),
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.8),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              );
+            },
           ),
         ),
 
@@ -7132,16 +7205,8 @@ Shared via Weather Alert Pakistan
                   icon: const Icon(Icons.close, color: Colors.white),
                   onPressed: () {
                     setState(() => _currentView = 0);
-                    // When switching to Map view during navigation, reset following
-                    if (_isNavigating && _currentPosition != null) {
-                      _isFollowingUser = true;
-                      _startMapTicker();
-                      Future.delayed(const Duration(milliseconds: 300), () {
-                        if (mounted && _isNavigating) {
-                          _recenterOnUser(true);
-                        }
-                      });
-                    }
+                    // The ticker and recenter will be handled in onMapCreated
+                    // when the map view is rebuilt
                   },
                 ),
               ],
@@ -7441,14 +7506,15 @@ Shared via Weather Alert Pakistan
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (metarVisibility != null) ...[
-                        Icon(Icons.visibility,
-                            color: Colors.teal.withOpacity(0.7), size: 10),
+                        const Icon(Icons.visibility,
+                            color: Colors.amber, size: 10),
                         const SizedBox(width: 2),
                         Text(
                           metarVisibility,
-                          style: TextStyle(
-                              color: Colors.teal.withOpacity(0.8),
-                              fontSize: 10),
+                          style: const TextStyle(
+                              color: Colors.amber,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w500),
                         ),
                         const SizedBox(width: 4),
                       ],
@@ -7456,7 +7522,7 @@ Shared via Weather Alert Pakistan
                         padding: const EdgeInsets.symmetric(
                             horizontal: 4, vertical: 1),
                         decoration: BoxDecoration(
-                          color: Colors.blue.withOpacity(0.3),
+                          color: Colors.green.withOpacity(0.3),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: const Text(
@@ -7585,8 +7651,19 @@ Shared via Weather Alert Pakistan
             polylines: _polylines,
             onMapCreated: (controller) {
               _mapController = controller;
-              // Fit bounds to show entire route
-              if (_routePoints.isNotEmpty) {
+              
+              // If navigating, restart the map ticker and recenter on user
+              if (_isNavigating && _currentPosition != null) {
+                _isFollowingUser = true;
+                _startMapTicker();
+                // Delay recenter slightly to ensure controller is fully ready
+                Future.delayed(const Duration(milliseconds: 100), () {
+                  if (mounted && _isNavigating && _mapController != null) {
+                    _recenterOnUser(true);
+                  }
+                });
+              } else if (_routePoints.isNotEmpty) {
+                // Fit bounds to show entire route
                 final bounds = LatLngBounds(
                   southwest: LatLng(
                     _routePoints

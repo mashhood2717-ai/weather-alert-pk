@@ -78,9 +78,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   late TabController tabs;
   WebViewController? windy;
+  bool _windyInitialized = false; // Lazy load Windy
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
   late AnimationController _shimmerController;
+  
+  // Cache isDay to avoid recalculating
+  bool _cachedIsDay = true;
+  String _cachedCondition = "";
 
   @override
   void initState() {
@@ -93,11 +98,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _fadeAnimation =
         CurvedAnimation(parent: _fadeController, curve: Curves.easeInOut);
 
-    // Shimmer animation controller
+    // Shimmer animation controller - DON'T repeat() here, control in loading state
     _shimmerController = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
-    )..repeat();
+    );
 
     controller.onDataLoaded = _onWeatherDataLoaded;
     controller.current.addListener(_onCurrentWeatherChanged);
@@ -105,7 +110,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _loadInitial();
     _loadFavorites();
     _startLocationAutoRefresh();
-    tabs.addListener(() => setState(() {}));
+    // Removed: tabs.addListener(() => setState(() {})) - causes unnecessary rebuilds
     _settings.addListener(_onSettingsChanged);
 
     // Initialize widget services in background (non-blocking)
@@ -211,6 +216,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   // Track last city to detect geocoding updates
   String? _lastNotifiedCity;
+
+  /// Helper to set loading state and control shimmer animation
+  void _setLoading(bool isLoading) {
+    if (!mounted) return;
+    setState(() => loading = isLoading);
+    if (isLoading) {
+      _shimmerController.repeat();
+    } else {
+      _shimmerController.stop();
+      _shimmerController.reset();
+    }
+  }
 
   /// Called when current weather value changes (e.g. after geocoding updates city)
   void _onCurrentWeatherChanged() {
@@ -369,9 +386,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _search.clear();
     FocusScope.of(context).unfocus();
 
-    setState(() {
-      loading = true;
-    });
+    _setLoading(true);
     _fadeController.reset();
 
     try {
@@ -401,7 +416,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _showError('Search Error: ${e.toString()}');
     }
 
-    setState(() => loading = false);
+    _setLoading(false);
   }
 
   void _onWeatherDataLoaded() {
@@ -563,7 +578,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _loadFavoriteLocation(FavoriteLocation fav) async {
-    setState(() => loading = true);
+    _setLoading(true);
     _fadeController.reset();
     Navigator.pop(context);
     try {
@@ -572,7 +587,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     } catch (e) {
       _showError('Error loading ${fav.name}');
     }
-    setState(() => loading = false);
+    _setLoading(false);
   }
 
   void _showFavoritesSheet(bool isDay) {
@@ -894,7 +909,7 @@ Is GPS: ${controller.isFromCurrentLocation}
   }
 
   Future<void> _loadInitial() async {
-    setState(() => loading = true);
+    _setLoading(true);
     try {
       // Request location permission immediately on fresh install
       // FCM permission is delayed in main.dart to avoid conflict
@@ -903,17 +918,15 @@ Is GPS: ${controller.isFromCurrentLocation}
     } catch (e) {
       _showError('Location Error: ${e.toString().split(':').last.trim()}');
     }
-    setState(() => loading = false);
+    _setLoading(false);
   }
 
   Future<void> _onSearch() async {
     final q = _search.text.trim();
     if (q.isEmpty) return;
-    setState(() {
-      loading = true;
-      _showSuggestions = false;
-      _suggestions = [];
-    });
+    _setLoading(true);
+    _showSuggestions = false;
+    _suggestions = [];
     _fadeController.reset();
     _search.clear(); // Clear search text after searching
     FocusScope.of(context).unfocus(); // Hide keyboard
@@ -926,7 +939,7 @@ Is GPS: ${controller.isFromCurrentLocation}
     } catch (e) {
       _showError('Search Error: ${e.toString()}');
     }
-    setState(() => loading = false);
+    _setLoading(false);
   }
 
   void _updateWindy() {
@@ -1359,7 +1372,7 @@ Is GPS: ${controller.isFromCurrentLocation}
             icon: Icons.my_location_rounded,
             isDay: isDay,
             onTap: () async {
-              setState(() => loading = true);
+              _setLoading(true);
               _fadeController.reset();
               try {
                 await controller.loadByLocation();
@@ -1368,7 +1381,7 @@ Is GPS: ${controller.isFromCurrentLocation}
                 _showError(
                     'Location Error: ${e.toString().split(':').last.trim()}');
               }
-              setState(() => loading = false);
+              _setLoading(false);
             }),
         const SizedBox(width: 6),
         _buildAppBarButton(
@@ -1783,39 +1796,45 @@ Is GPS: ${controller.isFromCurrentLocation}
       dynamic c, String windDirection, DailyWeather? dailyData, bool isDay) {
     return ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        cacheExtent: 500, // Cache more items to reduce rebuilds
         children: [
-          _buildWeatherCard(c, windDirection, isDay),
+          RepaintBoundary(child: _buildWeatherCard(c, windDirection, isDay)),
           const SizedBox(height: 12),
           if (controller.hourly.isNotEmpty) ...[
             _buildSectionTitle("Hourly Forecast", isDay),
             const SizedBox(height: 8),
-            SizedBox(
-                height: 130,
-                child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: controller.hourly.length > 24
-                        ? 24
-                        : controller.hourly.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 8),
-                    itemBuilder: (_, i) {
-                      final h = controller.hourly[i];
-                      final hourlyTemp = _settings.convertTemperature(h.tempC);
-                      return HourlyTile(
-                          time: h.time,
-                          temp: "${hourlyTemp.toStringAsFixed(0)}°",
-                          icon: h.icon,
-                          humidity: h.humidity.toString(),
-                          isDay: isDay);
-                    })),
+            RepaintBoundary(
+              child: SizedBox(
+                  height: 130,
+                  child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      cacheExtent: 300, // Pre-build more hourly tiles
+                      itemCount: controller.hourly.length > 24
+                          ? 24
+                          : controller.hourly.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 8),
+                      itemBuilder: (_, i) {
+                        final h = controller.hourly[i];
+                        final hourlyTemp = _settings.convertTemperature(h.tempC);
+                        return HourlyTile(
+                            time: h.time,
+                            temp: "${hourlyTemp.toStringAsFixed(0)}°",
+                            icon: h.icon,
+                            humidity: h.humidity.toString(),
+                            isDay: isDay);
+                      })),
+            ),
             const SizedBox(height: 14),
           ],
-          TilesArea(controller: controller),
+          RepaintBoundary(child: TilesArea(controller: controller)),
           const SizedBox(height: 12),
           if (dailyData != null)
-            SunWidget(
-                sunrise: dailyData.sunrise,
-                sunset: dailyData.sunset,
-                isDay: isDay),
+            RepaintBoundary(
+              child: SunWidget(
+                  sunrise: dailyData.sunrise,
+                  sunset: dailyData.sunset,
+                  isDay: isDay),
+            ),
           const SizedBox(height: 14),
           if (controller.daily.isNotEmpty) ...[
             _buildSectionTitle("7-Day Forecast", isDay),
@@ -1823,16 +1842,18 @@ Is GPS: ${controller.isFromCurrentLocation}
             ...controller.daily.map((d) {
               final maxTemp = _settings.convertTemperature(d.maxTemp);
               final minTemp = _settings.convertTemperature(d.minTemp);
-              return ForecastTile(
-                  date: d.date,
-                  icon: d.icon,
-                  condition: d.condition,
-                  maxTemp: maxTemp.toStringAsFixed(0),
-                  minTemp: minTemp.toStringAsFixed(0),
-                  isDay: isDay,
-                  dailyWeather: d,
-                  feelsLikeHigh: maxTemp + (d.uvIndexMax ?? 0) * 0.5,
-                  feelsLikeLow: minTemp - 2);
+              return RepaintBoundary(
+                child: ForecastTile(
+                    date: d.date,
+                    icon: d.icon,
+                    condition: d.condition,
+                    maxTemp: maxTemp.toStringAsFixed(0),
+                    minTemp: minTemp.toStringAsFixed(0),
+                    isDay: isDay,
+                    dailyWeather: d,
+                    feelsLikeHigh: maxTemp + (d.uvIndexMax ?? 0) * 0.5,
+                    feelsLikeLow: minTemp - 2),
+              );
             }),
           ],
           const SizedBox(height: 8),
