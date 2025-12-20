@@ -56,12 +56,12 @@ class GeocodingResult {
 }
 
 class GeocodingService {
-    /// Returns true if coordinates are within Islamabad bounding box
-    static bool _isInIslamabad(double lat, double lon) {
-      // Rough bounding box for Islamabad city
-      // North: 33.85, South: 33.60, West: 72.80, East: 73.20
-      return lat >= 33.60 && lat <= 33.85 && lon >= 72.80 && lon <= 73.20;
-    }
+  /// Returns true if coordinates are within Islamabad bounding box
+  static bool _isInIslamabad(double lat, double lon) {
+    // Rough bounding box for Islamabad city
+    // North: 33.85, South: 33.60, West: 72.80, East: 73.20
+    return lat >= 33.60 && lat <= 33.85 && lon >= 72.80 && lon <= 73.20;
+  }
 
   static const String _baseUrl =
       'https://maps.googleapis.com/maps/api/geocode/json';
@@ -301,11 +301,11 @@ class GeocodingService {
   static bool _isGenericName(String name) {
     final lower = name.toLowerCase();
     return lower == 'pakistan' ||
-      lower == 'punjab' ||
-      lower == 'sindh' ||
-      lower == 'kpk' ||
-      lower == 'balochistan' ||
-      lower == 'ict';
+        lower == 'punjab' ||
+        lower == 'sindh' ||
+        lower == 'kpk' ||
+        lower == 'balochistan' ||
+        lower == 'ict';
   }
 
   /// Clear the cache (useful when memory is low)
