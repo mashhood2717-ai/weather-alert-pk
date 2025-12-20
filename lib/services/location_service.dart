@@ -26,14 +26,14 @@ Future<Position> determinePosition() async {
   // FAST LOCATION STRATEGY:
   // 1. Try last known position first (instant, no GPS wait)
   // 2. If no cached position, get current with timeout
-  
+
   Position? lastKnown;
   try {
     lastKnown = await Geolocator.getLastKnownPosition();
   } catch (_) {
     // Ignore - will fall back to getCurrentPosition
   }
-  
+
   // If we have a recent last known position (< 5 minutes old), use it immediately
   if (lastKnown != null) {
     final age = DateTime.now().difference(lastKnown.timestamp);

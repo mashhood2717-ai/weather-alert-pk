@@ -316,8 +316,8 @@ class ForecastTile extends StatelessWidget {
               icon,
               width: 44,
               height: 44,
-              errorBuilder: (_, __, ___) => Icon(Icons.cloud,
-                  size: 40, color: fg.withValues(alpha: 0.6)),
+              errorBuilder: (_, __, ___) =>
+                  Icon(Icons.cloud, size: 40, color: fg.withValues(alpha: 0.6)),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -346,8 +346,7 @@ class ForecastTile extends StatelessWidget {
                         fontSize: 14,
                         fontWeight: FontWeight.w600)),
                 Text("$minTemp°",
-                    style:
-                        TextStyle(color: Colors.blue[400], fontSize: 13)),
+                    style: TextStyle(color: Colors.blue[400], fontSize: 13)),
               ],
             ),
             const SizedBox(width: 6),

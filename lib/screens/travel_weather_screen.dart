@@ -491,7 +491,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     if (_currentPosition == null || _mapController == null) return;
 
     setState(() => _isFollowingUser = true);
-    
+
     // Ensure ticker is running when following
     if (_isNavigating && (_mapTicker == null || !_mapTicker!.isActive)) {
       _startMapTicker();
@@ -532,11 +532,13 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     } else {
       // Not navigating, just move to current location (no tilt/bearing)
       _isProgrammaticCameraMove = true;
-      _mapController!.animateCamera(
+      _mapController!
+          .animateCamera(
         CameraUpdate.newLatLng(
           LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
         ),
-      ).then((_) {
+      )
+          .then((_) {
         Future.delayed(const Duration(milliseconds: 500), () {
           if (mounted) _isProgrammaticCameraMove = false;
         });
@@ -5668,7 +5670,7 @@ Shared via Weather Alert Pakistan
               // Set map style based on theme
               controller
                   .setMapStyle(_isDarkMode ? _darkMapStyle : _lightMapStyle);
-              
+
               // If navigating, restart the map ticker and recenter on user
               if (_isNavigating && _currentPosition != null) {
                 _isFollowingUser = true;
@@ -5721,23 +5723,26 @@ Shared via Weather Alert Pakistan
               // This is road distance: GPS to first plaza + road distance between plazas
               double remainingDistanceKm = _routeDistanceMeters / 1000;
               int remainingSeconds = _routeDurationSeconds;
-              
+
               // Use the same distance calculation as timeline
               if (_routePoints.isNotEmpty) {
                 // Road distance from timeline (matches what user sees in timeline)
-                remainingDistanceKm = _routePoints.last.distanceFromUser.toDouble();
-                
+                remainingDistanceKm =
+                    _routePoints.last.distanceFromUser.toDouble();
+
                 // Estimate time based on current speed or average 80 km/h
                 final speedKmh = _currentSpeed > 5 ? _currentSpeed : 80;
-                remainingSeconds = ((remainingDistanceKm / speedKmh) * 3600).round();
+                remainingSeconds =
+                    ((remainingDistanceKm / speedKmh) * 3600).round();
               }
-              
+
               final distanceText = remainingDistanceKm >= 1
                   ? '${remainingDistanceKm.toStringAsFixed(0)} km'
                   : '${(remainingDistanceKm * 1000).toStringAsFixed(0)} m';
-              
+
               return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.7),
                   borderRadius: BorderRadius.circular(8),
@@ -7651,7 +7656,7 @@ Shared via Weather Alert Pakistan
             polylines: _polylines,
             onMapCreated: (controller) {
               _mapController = controller;
-              
+
               // If navigating, restart the map ticker and recenter on user
               if (_isNavigating && _currentPosition != null) {
                 _isFollowingUser = true;

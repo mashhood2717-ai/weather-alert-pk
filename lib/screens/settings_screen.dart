@@ -18,7 +18,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final SettingsService _settings = SettingsService();
-  
+
   // Permission status
   bool _locationPermissionGranted = false;
   bool _notificationPermissionGranted = false;
@@ -40,19 +40,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _onSettingsChanged() {
     if (mounted) setState(() {});
   }
-  
+
   Future<void> _checkPermissions() async {
     setState(() => _checkingPermissions = true);
-    
+
     // Check location permission
     final locationStatus = await Geolocator.checkPermission();
-    final locationGranted = locationStatus == LocationPermission.always || 
-                            locationStatus == LocationPermission.whileInUse;
-    
+    final locationGranted = locationStatus == LocationPermission.always ||
+        locationStatus == LocationPermission.whileInUse;
+
     // Check notification permission
     final notificationStatus = await Permission.notification.status;
     final notificationGranted = notificationStatus.isGranted;
-    
+
     if (mounted) {
       setState(() {
         _locationPermissionGranted = locationGranted;
@@ -61,10 +61,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       });
     }
   }
-  
+
   Future<void> _requestLocationPermission() async {
     final status = await Geolocator.requestPermission();
-    if (status == LocationPermission.always || status == LocationPermission.whileInUse) {
+    if (status == LocationPermission.always ||
+        status == LocationPermission.whileInUse) {
       setState(() => _locationPermissionGranted = true);
     } else if (status == LocationPermission.deniedForever) {
       // Open app settings
@@ -72,7 +73,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     _checkPermissions();
   }
-  
+
   Future<void> _requestNotificationPermission() async {
     final status = await Permission.notification.request();
     if (status.isGranted) {
@@ -313,7 +314,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             isGranted: _locationPermissionGranted,
             isLoading: _checkingPermissions,
             fg: fg,
-            onTap: _locationPermissionGranted ? null : _requestLocationPermission,
+            onTap:
+                _locationPermissionGranted ? null : _requestLocationPermission,
           ),
           Divider(color: fg.withValues(alpha: 0.1), height: 1),
           // Notification Permission
@@ -323,13 +325,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             isGranted: _notificationPermissionGranted,
             isLoading: _checkingPermissions,
             fg: fg,
-            onTap: _notificationPermissionGranted ? null : _requestNotificationPermission,
+            onTap: _notificationPermissionGranted
+                ? null
+                : _requestNotificationPermission,
           ),
         ],
       ),
     );
   }
-  
+
   Widget _buildPermissionTile({
     required IconData icon,
     required String title,
@@ -351,7 +355,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: (isGranted ? Colors.green : Colors.red).withValues(alpha: 0.15),
+                  color: (isGranted ? Colors.green : Colors.red)
+                      .withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
@@ -392,7 +397,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            isGranted ? 'Granted' : 'Not Granted - Tap to enable',
+                            isGranted
+                                ? 'Granted'
+                                : 'Not Granted - Tap to enable',
                             style: TextStyle(
                               color: isGranted ? Colors.green : Colors.red,
                               fontSize: 13,

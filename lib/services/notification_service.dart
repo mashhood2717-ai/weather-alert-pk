@@ -186,7 +186,7 @@ class NotificationService {
       await androidPlugin.createNotificationChannel(_prayerChannel);
       await androidPlugin.createNotificationChannel(_prayerReminderChannel);
       await androidPlugin.createNotificationChannel(_navigationChannel);
-      
+
       // Request notification permission on Android 13+ (API 33+)
       // This is REQUIRED for local notifications to work on Android 13+
       final granted = await androidPlugin.requestNotificationsPermission();
@@ -872,7 +872,8 @@ class NotificationService {
         'notificationId': 999,
         'useAzan': true,
       });
-      print('🕌 Immediate azan triggered using native MediaPlayer for $prayerName');
+      print(
+          '🕌 Immediate azan triggered using native MediaPlayer for $prayerName');
     } catch (e) {
       print('❌ Error triggering immediate azan: $e');
     }
@@ -882,7 +883,7 @@ class NotificationService {
   /// Uses native AlarmManager + MediaPlayer for full azan playback
   Future<void> scheduleTestPrayerNotification() async {
     final scheduledTime = DateTime.now().add(const Duration(seconds: 10));
-    
+
     print('📅 Current time: ${DateTime.now()}');
     print('📅 Target time: $scheduledTime');
     print('🕌 Using NATIVE AlarmManager with MediaPlayer for test');
@@ -895,7 +896,8 @@ class NotificationService {
         notificationId: 2999, // Test notification ID
         useAzan: true,
       );
-      print('✅ Test prayer notification scheduled for $scheduledTime (10 seconds from now)');
+      print(
+          '✅ Test prayer notification scheduled for $scheduledTime (10 seconds from now)');
       print('🔊 Azan will play using MediaPlayer (full duration)');
     } catch (e) {
       print('❌ Error scheduling test prayer notification: $e');

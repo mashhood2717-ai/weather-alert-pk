@@ -78,14 +78,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   late TabController tabs;
   WebViewController? windy;
-  bool _windyInitialized = false; // Lazy load Windy
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
   late AnimationController _shimmerController;
-  
-  // Cache isDay to avoid recalculating
-  bool _cachedIsDay = true;
-  String _cachedCondition = "";
 
   @override
   void initState() {
@@ -1815,7 +1810,8 @@ Is GPS: ${controller.isFromCurrentLocation}
                       separatorBuilder: (_, __) => const SizedBox(width: 8),
                       itemBuilder: (_, i) {
                         final h = controller.hourly[i];
-                        final hourlyTemp = _settings.convertTemperature(h.tempC);
+                        final hourlyTemp =
+                            _settings.convertTemperature(h.tempC);
                         return HourlyTile(
                             time: h.time,
                             temp: "${hourlyTemp.toStringAsFixed(0)}°",
