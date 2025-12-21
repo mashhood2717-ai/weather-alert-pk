@@ -93,6 +93,7 @@
             android:exported="false">
             <intent-filter>
                 <action android:name="com.mashhood.weatheralert.PRAYER_ALARM" />
+                <action android:name="com.mashhood.weatheralert.STOP_AZAN" />
             </intent-filter>
         </receiver>
 

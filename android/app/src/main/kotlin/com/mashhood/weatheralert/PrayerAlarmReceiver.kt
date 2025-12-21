@@ -24,6 +24,7 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
     companion object {
         private const val TAG = "PrayerAlarmReceiver"
         const val ACTION_PRAYER_ALARM = "com.mashhood.weatheralert.PRAYER_ALARM"
+        const val ACTION_STOP_AZAN = "com.mashhood.weatheralert.STOP_AZAN"
         const val EXTRA_PRAYER_NAME = "prayer_name"
         const val EXTRA_NOTIFICATION_ID = "notification_id"
         const val EXTRA_USE_AZAN = "use_azan"
@@ -31,10 +32,39 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
         
         // Static MediaPlayer to keep azan playing
         private var mediaPlayer: MediaPlayer? = null
+        private var wakeLockRef: PowerManager.WakeLock? = null
+        
+        // Public method to stop azan from anywhere
+        fun stopAzan() {
+            Log.d(TAG, "🛑 Stopping azan playback")
+            try {
+                mediaPlayer?.stop()
+                mediaPlayer?.release()
+                mediaPlayer = null
+                
+                wakeLockRef?.let {
+                    if (it.isHeld) it.release()
+                }
+                wakeLockRef = null
+            } catch (e: Exception) {
+                Log.e(TAG, "Error stopping azan: ${e.message}")
+            }
+        }
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         Log.d(TAG, "🕌 onReceive called! Action: ${intent.action}")
+        
+        // Handle stop azan action
+        if (intent.action == ACTION_STOP_AZAN) {
+            Log.d(TAG, "🛑 Stop azan action received")
+            stopAzan()
+            // Also cancel the notification
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val notificationId = intent.getIntExtra(EXTRA_NOTIFICATION_ID, 2000)
+            notificationManager.cancel(notificationId)
+            return
+        }
         
         if (intent.action != ACTION_PRAYER_ALARM) {
             Log.w(TAG, "Unknown action: ${intent.action}")
@@ -54,6 +84,7 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
             "weatheralert:prayeralarm"
         )
         wakeLock.acquire(300000) // 5 minutes max for full azan
+        wakeLockRef = wakeLock
         
         try {
             showPrayerNotification(context, prayerName, notificationId, useAzan)
@@ -95,6 +126,7 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
                     Log.d(TAG, "🕌 Azan playback completed")
                     it.release()
                     mediaPlayer = null
+                    wakeLockRef = null
                     if (wakeLock.isHeld) wakeLock.release()
                 }
                 
@@ -102,6 +134,7 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
                     Log.e(TAG, "MediaPlayer error: what=$what, extra=$extra")
                     mp.release()
                     mediaPlayer = null
+                    wakeLockRef = null
                     if (wakeLock.isHeld) wakeLock.release()
                     true
                 }
@@ -150,6 +183,26 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
             context, notificationId, openAppIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        
+        // Create "Stop Azan" action intent
+        val stopAzanIntent = Intent(context, PrayerAlarmReceiver::class.java).apply {
+            action = ACTION_STOP_AZAN
+            putExtra(EXTRA_NOTIFICATION_ID, notificationId)
+        }
+        val stopAzanPendingIntent = PendingIntent.getBroadcast(
+            context, notificationId + 1000, stopAzanIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        // Create delete intent (when notification is dismissed/swiped)
+        val deleteIntent = Intent(context, PrayerAlarmReceiver::class.java).apply {
+            action = ACTION_STOP_AZAN
+            putExtra(EXTRA_NOTIFICATION_ID, notificationId)
+        }
+        val deletePendingIntent = PendingIntent.getBroadcast(
+            context, notificationId + 2000, deleteIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
         // Build notification - sound handled via MediaPlayer
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
@@ -161,9 +214,15 @@ class PrayerAlarmReceiver : BroadcastReceiver() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setVibrate(longArrayOf(0, 500, 200, 500, 200, 500, 200, 500))
             .setContentIntent(pendingIntent)
+            .setDeleteIntent(deletePendingIntent)  // Stop azan when notification dismissed
             .setAutoCancel(true)
             .setFullScreenIntent(pendingIntent, true)
             .setSilent(false) // Allow vibration
+            .addAction(
+                R.mipmap.ic_launcher,
+                "Stop Azan",
+                stopAzanPendingIntent
+            )
 
         notificationManager.notify(notificationId, builder.build())
         Log.d(TAG, "Prayer notification shown: $prayerName (ID: $notificationId)")

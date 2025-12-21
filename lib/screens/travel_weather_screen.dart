@@ -3099,140 +3099,143 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          // From field
-          _buildLocationRow(
-            label: 'A',
-            value: _fromId == null
-                ? 'Current Location'
-                : _currentMotorwayPoints
-                    .firstWhere((p) => p.id == _fromId,
-                        orElse: () => _currentMotorwayPoints.first)
-                    .name,
-            isFrom: true,
-            onTap: () => setState(() => _showFromSearch = true),
-          ),
-          const SizedBox(height: 4),
-          // Divider with +Add Stops
-          Row(
-            children: [
-              const SizedBox(width: 32),
-              Expanded(
-                child: Container(
-                  height: 1,
-                  color: _borderColor,
-                ),
-              ),
-              const SizedBox(width: 12),
-              GestureDetector(
-                onTap: () {
-                  // Future: Add stops functionality
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Add stops coming soon')),
-                  );
-                },
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: _cardDark,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: const Text(
-                    '+ Add Stops',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
+          // Hide route input section when navigating
+          if (!_isNavigating) ...[
+            const SizedBox(height: 12),
+            // From field
+            _buildLocationRow(
+              label: 'A',
+              value: _fromId == null
+                  ? 'Current Location'
+                  : _currentMotorwayPoints
+                      .firstWhere((p) => p.id == _fromId,
+                          orElse: () => _currentMotorwayPoints.first)
+                      .name,
+              isFrom: true,
+              onTap: () => setState(() => _showFromSearch = true),
+            ),
+            const SizedBox(height: 4),
+            // Divider with +Add Stops
+            Row(
+              children: [
+                const SizedBox(width: 32),
+                Expanded(
+                  child: Container(
+                    height: 1,
+                    color: _borderColor,
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          // To field
-          _buildLocationRow(
-            label: 'B',
-            value: _toId == null
-                ? 'Choose Destination'
-                : _currentMotorwayPoints
-                    .firstWhere((p) => p.id == _toId,
-                        orElse: () => _currentMotorwayPoints.last)
-                    .name,
-            isFrom: false,
-            onTap: () => setState(() => _showToSearch = true),
-          ),
-          const SizedBox(height: 12),
-          // Departure time row (simplified - removed non-functional elements)
-          Row(
-            children: [
-              // Departure time - tappable with time picker
-              GestureDetector(
-                onTap: _showDepartureTimePicker,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: _cardDark,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.schedule,
-                          color: Colors.white.withOpacity(0.6), size: 16),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Departure: ',
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.6),
-                          fontSize: 14,
-                        ),
-                      ),
-                      Text(
-                        _getDepartureTimeText(),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Icon(Icons.keyboard_arrow_down,
-                          color: Colors.white.withOpacity(0.6), size: 18),
-                    ],
-                  ),
-                ),
-              ),
-              const Spacer(),
-              // Reset to Now button (only show if custom time is set)
-              if (_departureTime != null)
+                const SizedBox(width: 12),
                 GestureDetector(
                   onTap: () {
-                    setState(() => _departureTime = null);
-                    if (_routeConfirmed) _loadRoute();
+                    // Future: Add stops functionality
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Add stops coming soon')),
+                    );
                   },
                   child: Container(
                     padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                      color: _cardDark,
+                      borderRadius: BorderRadius.circular(16),
                     ),
                     child: const Text(
-                      'Reset to Now',
+                      '+ Add Stops',
                       style: TextStyle(
-                        color: Colors.blue,
+                        color: Colors.white70,
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
                 ),
-            ],
-          ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            // To field
+            _buildLocationRow(
+              label: 'B',
+              value: _toId == null
+                  ? 'Choose Destination'
+                  : _currentMotorwayPoints
+                      .firstWhere((p) => p.id == _toId,
+                          orElse: () => _currentMotorwayPoints.last)
+                      .name,
+              isFrom: false,
+              onTap: () => setState(() => _showToSearch = true),
+            ),
+            const SizedBox(height: 12),
+            // Departure time row (simplified - removed non-functional elements)
+            Row(
+              children: [
+                // Departure time - tappable with time picker
+                GestureDetector(
+                  onTap: _showDepartureTimePicker,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: _cardDark,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.schedule,
+                            color: Colors.white.withOpacity(0.6), size: 16),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Departure: ',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.6),
+                            fontSize: 14,
+                          ),
+                        ),
+                        Text(
+                          _getDepartureTimeText(),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(Icons.keyboard_arrow_down,
+                            color: Colors.white.withOpacity(0.6), size: 18),
+                      ],
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                // Reset to Now button (only show if custom time is set)
+                if (_departureTime != null)
+                  GestureDetector(
+                    onTap: () {
+                      setState(() => _departureTime = null);
+                      if (_routeConfirmed) _loadRoute();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                      ),
+                      child: const Text(
+                        'Reset to Now',
+                        style: TextStyle(
+                          color: Colors.blue,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
     );

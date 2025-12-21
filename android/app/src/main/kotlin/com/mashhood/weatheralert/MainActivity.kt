@@ -63,6 +63,11 @@ class MainActivity : FlutterActivity() {
                     sendBroadcast(intent)
                     result.success(true)
                 }
+                "stopAzan" -> {
+                    // Stop azan playback immediately
+                    PrayerAlarmReceiver.stopAzan()
+                    result.success(true)
+                }
                 "cancelPrayerAlarm" -> {
                     val notificationId = call.argument<Int>("notificationId") ?: 2000
                     PrayerAlarmScheduler.cancelPrayerAlarm(this, notificationId)
@@ -308,5 +313,11 @@ class MainActivity : FlutterActivity() {
             data = Uri.parse("package:$packageName")
         }
         startActivity(intent)
+    }
+    
+    override fun onResume() {
+        super.onResume()
+        // Stop azan when app comes to foreground (user tapped notification)
+        PrayerAlarmReceiver.stopAzan()
     }
 }
