@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:convert';
 import '../models/motorway_point.dart';
 import '../services/travel_weather_service.dart';
@@ -50,6 +51,12 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   // Theme mode - null means follow system, true/false means user override
   bool? _userThemeOverride;
   bool _isDarkMode = true; // Will be set from system in didChangeDependencies
+
+  // Road Alerts Ticker - Live road condition updates
+  List<RoadAlert> _roadAlerts = [];
+  StreamSubscription<QuerySnapshot>? _roadAlertsSubscription;
+  final ScrollController _tickerScrollController = ScrollController();
+  Timer? _tickerScrollTimer;
 
   // Motorway selection
   String _selectedMotorwayId = 'm2'; // Default to M2 (Islamabad-Lahore)
@@ -197,6 +204,9 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
 
     // Just get current location, don't load route yet
     _initializeLocation();
+
+    // Subscribe to road alerts from Firebase
+    _subscribeToRoadAlerts();
   }
 
   @override
@@ -218,6 +228,9 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     _mapController?.dispose();
     _positionStream?.cancel(); // Cancel location tracking
     _sliderPlayTimer?.cancel(); // Cancel slider auto-play
+    _roadAlertsSubscription?.cancel(); // Cancel road alerts subscription
+    _tickerScrollTimer?.cancel(); // Cancel ticker scroll timer
+    _tickerScrollController.dispose(); // Dispose ticker scroll controller
 
     // Cancel navigation notification when leaving screen
     if (_isNavigating) {
@@ -5711,9 +5724,18 @@ Shared via Weather Alert Pakistan
           ),
         ),
 
+        // Road alerts ticker at top
+        if (_roadAlerts.isNotEmpty)
+          Positioned(
+            top: 8,
+            left: 0,
+            right: 0,
+            child: _buildRoadAlertsTicker(),
+          ),
+
         // Top right - Distance, time, and destination badge (DYNAMIC GPS-based)
         Positioned(
-          top: 16,
+          top: _roadAlerts.isNotEmpty ? 56 : 16,
           right: 16,
           child: Builder(
             builder: (context) {
@@ -7025,6 +7047,9 @@ Shared via Weather Alert Pakistan
       color: _bgDark,
       child: Column(
         children: [
+          // Road alerts ticker
+          if (_roadAlerts.isNotEmpty) _buildRoadAlertsTicker(),
+
           // Header
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -8514,4 +8539,215 @@ Shared via Weather Alert Pakistan
       ],
     );
   }
+
+  // ============ ROAD ALERTS TICKER ============
+
+  /// Subscribe to road alerts from Firebase Firestore
+  void _subscribeToRoadAlerts() {
+    _roadAlertsSubscription = FirebaseFirestore.instance
+        .collection('road_alerts')
+        .where('active', isEqualTo: true)
+        .orderBy('createdAt', descending: true)
+        .limit(10)
+        .snapshots()
+        .listen((snapshot) {
+      if (mounted) {
+        setState(() {
+          _roadAlerts = snapshot.docs.map((doc) {
+            final data = doc.data();
+            return RoadAlert(
+              id: doc.id,
+              message: data['message'] ?? '',
+              type: _parseAlertType(data['type']),
+              motorwayId: data['motorwayId'],
+              location: data['location'],
+              createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+            );
+          }).toList();
+        });
+        // Start auto-scroll if we have alerts
+        if (_roadAlerts.isNotEmpty) {
+          _startTickerAutoScroll();
+        }
+      }
+    }, onError: (e) {
+      debugPrint('Road alerts subscription error: $e');
+    });
+  }
+
+  AlertType _parseAlertType(String? type) {
+    switch (type) {
+      case 'accident':
+        return AlertType.accident;
+      case 'construction':
+        return AlertType.construction;
+      case 'weather':
+        return AlertType.weather;
+      case 'closure':
+        return AlertType.closure;
+      case 'congestion':
+        return AlertType.congestion;
+      default:
+        return AlertType.info;
+    }
+  }
+
+  /// Start auto-scrolling ticker animation
+  void _startTickerAutoScroll() {
+    _tickerScrollTimer?.cancel();
+    if (_roadAlerts.isEmpty) return;
+
+    // Auto-scroll every 50ms for smooth scrolling
+    _tickerScrollTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+      if (!mounted || !_tickerScrollController.hasClients) return;
+
+      final maxScroll = _tickerScrollController.position.maxScrollExtent;
+      final currentScroll = _tickerScrollController.offset;
+
+      if (currentScroll >= maxScroll) {
+        // Reset to beginning
+        _tickerScrollController.jumpTo(0);
+      } else {
+        // Scroll smoothly
+        _tickerScrollController.jumpTo(currentScroll + 1.5);
+      }
+    });
+  }
+
+  /// Build the road alerts ticker widget
+  Widget _buildRoadAlertsTicker() {
+    if (_roadAlerts.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      height: 36,
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.8),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.orange.withOpacity(0.5), width: 1),
+      ),
+      child: Row(
+        children: [
+          // Alert icon
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            decoration: BoxDecoration(
+              color: Colors.orange.withOpacity(0.2),
+              borderRadius: const BorderRadius.horizontal(left: Radius.circular(7)),
+            ),
+            child: const Icon(Icons.campaign, color: Colors.orange, size: 18),
+          ),
+          // Scrolling text
+          Expanded(
+            child: ClipRect(
+              child: SingleChildScrollView(
+                controller: _tickerScrollController,
+                scrollDirection: Axis.horizontal,
+                physics: const NeverScrollableScrollPhysics(),
+                child: Row(
+                  children: _roadAlerts.map((alert) {
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 60),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _getAlertIcon(alert.type),
+                            color: _getAlertColor(alert.type),
+                            size: 14,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            alert.message,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          if (alert.location != null) ...[
+                            const SizedBox(width: 8),
+                            Text(
+                              '• ${alert.location}',
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.7),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  IconData _getAlertIcon(AlertType type) {
+    switch (type) {
+      case AlertType.accident:
+        return Icons.car_crash;
+      case AlertType.construction:
+        return Icons.construction;
+      case AlertType.weather:
+        return Icons.thunderstorm;
+      case AlertType.closure:
+        return Icons.block;
+      case AlertType.congestion:
+        return Icons.traffic;
+      case AlertType.info:
+        return Icons.info_outline;
+    }
+  }
+
+  Color _getAlertColor(AlertType type) {
+    switch (type) {
+      case AlertType.accident:
+        return Colors.red;
+      case AlertType.construction:
+        return Colors.orange;
+      case AlertType.weather:
+        return Colors.blue;
+      case AlertType.closure:
+        return Colors.red;
+      case AlertType.congestion:
+        return Colors.amber;
+      case AlertType.info:
+        return Colors.white70;
+    }
+  }
+}
+
+/// Road alert model
+class RoadAlert {
+  final String id;
+  final String message;
+  final AlertType type;
+  final String? motorwayId;
+  final String? location;
+  final DateTime createdAt;
+
+  RoadAlert({
+    required this.id,
+    required this.message,
+    required this.type,
+    this.motorwayId,
+    this.location,
+    required this.createdAt,
+  });
+}
+
+/// Alert types for road conditions
+enum AlertType {
+  accident,
+  construction,
+  weather,
+  closure,
+  congestion,
+  info,
 }

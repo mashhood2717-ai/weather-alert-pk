@@ -970,6 +970,67 @@
                         <p style="color: #666; font-size: 0.85rem; text-align: center; padding: 20px;">No alerts sent yet</p>
                     </div>
                 </div>
+
+                <!-- ROAD ALERTS SECTION -->
+                <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <div class="card-title">
+                        <span class="icon">🚗</span>
+                        Road Alerts (Travel Weather Ticker)
+                    </div>
+                    <p style="color: #888; font-size: 0.85rem; margin-bottom: 15px;">
+                        Send real-time road condition updates that appear as a scrolling ticker in the Travel Weather screen.
+                    </p>
+
+                    <div class="form-group">
+                        <label>Alert Message</label>
+                        <input type="text" id="roadAlertMessage" placeholder="e.g., Road closed near Bhera due to accident">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Alert Type</label>
+                        <select id="roadAlertType">
+                            <option value="info">ℹ️ General Info</option>
+                            <option value="accident">🚗 Accident</option>
+                            <option value="construction">🚧 Construction</option>
+                            <option value="weather">🌧️ Weather Related</option>
+                            <option value="closure">🚫 Road Closure</option>
+                            <option value="congestion">🚦 Traffic Congestion</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Motorway (Optional)</label>
+                        <select id="roadAlertMotorway">
+                            <option value="">All Routes</option>
+                            <option value="m1">M1 - Peshawar to Islamabad</option>
+                            <option value="m2">M2 - Islamabad to Lahore</option>
+                            <option value="m3">M3 - Lahore to Abdul Hakeem</option>
+                            <option value="m4">M4 - Faisalabad to Multan</option>
+                            <option value="m5">M5 - Multan to Sukkur</option>
+                            <option value="m9">M9 - Karachi to Hyderabad</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Location (Optional)</label>
+                        <input type="text" id="roadAlertLocation" placeholder="e.g., Near Bhera Interchange">
+                    </div>
+
+                    <button class="btn btn-primary" onclick="sendRoadAlert()" style="background: linear-gradient(135deg, #ff9500, #ff6b00);">
+                        <span>📢</span>
+                        Send Road Alert
+                    </button>
+
+                    <div style="margin-top: 15px;">
+                        <div class="card-title" style="font-size: 0.95rem;">
+                            <span class="icon">📋</span>
+                            Active Road Alerts
+                        </div>
+                        <div id="roadAlertsList">
+                            <p style="color: #666; font-size: 0.85rem; text-align: center; padding: 15px;">Loading...</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -1801,10 +1862,128 @@
             }
         }
 
+        // ============ ROAD ALERTS ============
+
+        // Send a road alert to Firestore
+        async function sendRoadAlert() {
+            const message = document.getElementById('roadAlertMessage').value.trim();
+            const type = document.getElementById('roadAlertType').value;
+            const motorwayId = document.getElementById('roadAlertMotorway').value || null;
+            const location = document.getElementById('roadAlertLocation').value.trim() || null;
+
+            if (!message) {
+                showToast('Please enter an alert message', 'error');
+                return;
+            }
+
+            try {
+                await db.collection('road_alerts').add({
+                    message: message,
+                    type: type,
+                    motorwayId: motorwayId,
+                    location: location,
+                    active: true,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+
+                showToast('Road alert sent successfully!', 'success');
+                
+                // Clear form
+                document.getElementById('roadAlertMessage').value = '';
+                document.getElementById('roadAlertLocation').value = '';
+                
+                // Reload list
+                loadRoadAlerts();
+            } catch (error) {
+                console.error('Error sending road alert:', error);
+                showToast('Failed to send road alert', 'error');
+            }
+        }
+
+        // Load active road alerts
+        async function loadRoadAlerts() {
+            const container = document.getElementById('roadAlertsList');
+            
+            try {
+                const snapshot = await db.collection('road_alerts')
+                    .where('active', '==', true)
+                    .orderBy('createdAt', 'desc')
+                    .limit(10)
+                    .get();
+
+                if (snapshot.empty) {
+                    container.innerHTML = '<p style="color: #666; font-size: 0.85rem; text-align: center; padding: 15px;">No active road alerts</p>';
+                    return;
+                }
+
+                const alertTypeIcons = {
+                    'info': 'ℹ️',
+                    'accident': '🚗',
+                    'construction': '🚧',
+                    'weather': '🌧️',
+                    'closure': '🚫',
+                    'congestion': '🚦'
+                };
+
+                let html = '';
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const icon = alertTypeIcons[data.type] || 'ℹ️';
+                    const timeAgo = data.createdAt ? getTimeAgo(data.createdAt.toDate()) : 'Just now';
+                    
+                    html += `
+                        <div style="background: rgba(255,255,255,0.05); border-radius: 8px; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <div style="font-size: 0.9rem;">${icon} ${data.message}</div>
+                                <div style="font-size: 0.75rem; color: #888; margin-top: 4px;">
+                                    ${data.location ? '📍 ' + data.location + ' • ' : ''}${timeAgo}
+                                </div>
+                            </div>
+                            <button onclick="deactivateRoadAlert('${doc.id}')" style="background: rgba(255,100,100,0.2); border: none; color: #ff6464; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.8rem;">
+                                ✕ Remove
+                            </button>
+                        </div>
+                    `;
+                });
+
+                container.innerHTML = html;
+            } catch (error) {
+                console.error('Error loading road alerts:', error);
+                container.innerHTML = '<p style="color: #ff6464; font-size: 0.85rem; text-align: center; padding: 15px;">Error loading alerts</p>';
+            }
+        }
+
+        // Deactivate (hide) a road alert
+        async function deactivateRoadAlert(alertId) {
+            try {
+                await db.collection('road_alerts').doc(alertId).update({
+                    active: false
+                });
+                showToast('Road alert removed', 'success');
+                loadRoadAlerts();
+            } catch (error) {
+                console.error('Error deactivating road alert:', error);
+                showToast('Failed to remove alert', 'error');
+            }
+        }
+
+        // Helper: Get time ago string
+        function getTimeAgo(date) {
+            const seconds = Math.floor((new Date() - date) / 1000);
+            if (seconds < 60) return 'Just now';
+            const minutes = Math.floor(seconds / 60);
+            if (minutes < 60) return `${minutes}m ago`;
+            const hours = Math.floor(minutes / 60);
+            if (hours < 24) return `${hours}h ago`;
+            const days = Math.floor(hours / 24);
+            return `${days}d ago`;
+        }
+
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', () => {
             initMap();
             loadAlertHistory();
+            loadRoadAlerts();
         });
     </script>
 </body>

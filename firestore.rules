@@ -30,5 +30,13 @@ service cloud.firestore {
     match /alert_deliveries/{deliveryId} {
       allow read, write: if true;
     }
+
+    // Road alerts for travel weather ticker
+    match /road_alerts/{alertId} {
+      // App can read all alerts
+      allow read: if true;
+      // Only admin portal can write (for now allow all, add auth later)
+      allow write: if true;
+    }
   }
 }
