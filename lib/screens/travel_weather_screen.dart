@@ -3887,6 +3887,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                 _roadRoutePoints = [];
                 _routeConfirmed = false;
               });
+              // Re-filter road alerts for new motorway
+              _refilterRoadAlerts();
             }
           },
         ),
@@ -5088,6 +5090,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                         _roadRoutePoints = [];
                         _routeConfirmed = false;
                       });
+                      // Re-filter road alerts for new motorway
+                      _refilterRoadAlerts();
                     }
                   },
                 )),
@@ -5837,7 +5841,7 @@ Shared via Weather Alert Pakistan
         // Next toll plaza weather card (when navigating)
         if (_isNavigating)
           Positioned(
-            top: 100,
+            top: _roadAlerts.isNotEmpty ? 130 : 100,
             right: 16,
             left: 16,
             child: _buildNextTollPlazaCard(),
@@ -7616,9 +7620,9 @@ Shared via Weather Alert Pakistan
             ),
           ),
 
-        // Weather Card Overlay - Top Left (always visible)
+        // Weather Card Overlay - Top Left (always visible, below ticker)
         Positioned(
-          top: _isOffRoute ? 50 : 16,
+          top: _isOffRoute ? 100 : 60,
           left: 16,
           right: 80, // Leave room for compass button on right
           child: _buildMapWeatherCard(),
@@ -7629,7 +7633,7 @@ Shared via Weather Alert Pakistan
         // Next Toll Plaza Card - During Navigation
         if (_isNavigating)
           Positioned(
-            top: _isOffRoute ? 140 : 100,
+            top: _isOffRoute ? 190 : 150,
             left: 16,
             right: 16,
             child: _buildNextTollPlazaCard(),
@@ -8543,6 +8547,7 @@ Shared via Weather Alert Pakistan
   // ============ ROAD ALERTS TICKER ============
 
   /// Subscribe to road alerts from Firebase Firestore
+  /// Filters by selected motorway and route intersection
   void _subscribeToRoadAlerts() {
     _roadAlertsSubscription = FirebaseFirestore.instance
         .collection('road_alerts')
@@ -8551,7 +8556,7 @@ Shared via Weather Alert Pakistan
         .listen((snapshot) {
       if (mounted) {
         debugPrint('🚗 Road alerts received: ${snapshot.docs.length}');
-        final alerts = snapshot.docs.map((doc) {
+        final allAlerts = snapshot.docs.map((doc) {
           final data = doc.data();
           return RoadAlert(
             id: doc.id,
@@ -8559,16 +8564,37 @@ Shared via Weather Alert Pakistan
             type: _parseAlertType(data['type']),
             motorwayId: data['motorwayId'],
             location: data['location'],
+            geoData: data['geoData'] as Map<String, dynamic>?,
             createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
           );
         }).toList();
         
+        // Filter alerts for current motorway
+        final filteredAlerts = allAlerts.where((alert) {
+          // If alert has no motorway specified, show on all routes
+          if (alert.motorwayId == null || alert.motorwayId!.isEmpty) {
+            return true;
+          }
+          // Show alert only if it matches current selected motorway
+          return alert.motorwayId == _selectedMotorwayId;
+        }).toList();
+        
+        // Further filter by geo intersection if route is loaded
+        final routeFilteredAlerts = filteredAlerts.where((alert) {
+          // If no geo data, show the alert
+          if (alert.geoData == null) return true;
+          // Check if alert intersects with current route
+          return _alertIntersectsRoute(alert);
+        }).toList();
+        
         // Sort by createdAt descending
-        alerts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        routeFilteredAlerts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
         
         setState(() {
-          _roadAlerts = alerts.take(10).toList();
+          _roadAlerts = routeFilteredAlerts.take(10).toList();
         });
+        
+        debugPrint('🚗 Filtered alerts for $_selectedMotorwayId: ${_roadAlerts.length}');
         
         // Start auto-scroll if we have alerts
         if (_roadAlerts.isNotEmpty) {
@@ -8578,6 +8604,55 @@ Shared via Weather Alert Pakistan
     }, onError: (e) {
       debugPrint('🚗 Road alerts subscription error: $e');
     });
+  }
+
+  /// Re-filter road alerts when motorway selection changes
+  void _refilterRoadAlerts() {
+    _roadAlertsSubscription?.cancel();
+    _subscribeToRoadAlerts();
+  }
+
+  /// Check if alert geo data intersects with current route
+  bool _alertIntersectsRoute(RoadAlert alert) {
+    if (alert.geoData == null || _routePoints.isEmpty) return true;
+    
+    final geoType = alert.geoData!['type'] as String?;
+    
+    if (geoType == 'point') {
+      // Check if point is near any route point
+      final lat = (alert.geoData!['lat'] as num?)?.toDouble();
+      final lng = (alert.geoData!['lng'] as num?)?.toDouble();
+      if (lat == null || lng == null) return true;
+      
+      for (final tp in _routePoints) {
+        final distance = Geolocator.distanceBetween(
+          lat, lng, tp.point.lat, tp.point.lon,
+        );
+        // Within 10km of any route point
+        if (distance < 10000) return true;
+      }
+      return false;
+    } else if (geoType == 'line' || geoType == 'polygon') {
+      // Check if any line/polygon point is near route
+      final points = alert.geoData!['points'] as List<dynamic>?;
+      if (points == null || points.isEmpty) return true;
+      
+      for (final point in points) {
+        final lat = (point as List<dynamic>)[0] as double;
+        final lng = point[1] as double;
+        
+        for (final tp in _routePoints) {
+          final distance = Geolocator.distanceBetween(
+            lat, lng, tp.point.lat, tp.point.lon,
+          );
+          // Within 10km of any route point
+          if (distance < 10000) return true;
+        }
+      }
+      return false;
+    }
+    
+    return true; // Default show if unknown type
   }
 
   AlertType _parseAlertType(String? type) {
@@ -8597,7 +8672,9 @@ Shared via Weather Alert Pakistan
     }
   }
 
-  /// Start auto-scrolling ticker animation
+  bool _tickerScrollingForward = true;
+  
+  /// Start auto-scrolling ticker animation - smooth right to left loop
   void _startTickerAutoScroll() {
     _tickerScrollTimer?.cancel();
     if (_roadAlerts.isEmpty) return;
@@ -8608,13 +8685,25 @@ Shared via Weather Alert Pakistan
 
       final maxScroll = _tickerScrollController.position.maxScrollExtent;
       final currentScroll = _tickerScrollController.offset;
+      
+      if (maxScroll <= 0) return; // Nothing to scroll
 
-      if (currentScroll >= maxScroll) {
-        // Reset to beginning
-        _tickerScrollController.jumpTo(0);
+      if (_tickerScrollingForward) {
+        // Scroll content left (increase offset = content moves left)
+        if (currentScroll >= maxScroll) {
+          // Reached end, start scrolling back
+          _tickerScrollingForward = false;
+        } else {
+          _tickerScrollController.jumpTo(currentScroll + 1.0);
+        }
       } else {
-        // Scroll smoothly
-        _tickerScrollController.jumpTo(currentScroll + 1.5);
+        // Scroll content right (decrease offset = content moves right)
+        if (currentScroll <= 0) {
+          // Reached start, scroll forward again
+          _tickerScrollingForward = true;
+        } else {
+          _tickerScrollController.jumpTo(currentScroll - 1.0);
+        }
       }
     });
   }
@@ -8735,6 +8824,7 @@ class RoadAlert {
   final AlertType type;
   final String? motorwayId;
   final String? location;
+  final Map<String, dynamic>? geoData;
   final DateTime createdAt;
 
   RoadAlert({
@@ -8743,6 +8833,7 @@ class RoadAlert {
     required this.type,
     this.motorwayId,
     this.location,
+    this.geoData,
     required this.createdAt,
   });
 }

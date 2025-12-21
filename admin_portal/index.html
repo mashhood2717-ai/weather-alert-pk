@@ -57,6 +57,47 @@
             .main-grid {
                 grid-template-columns: 1fr;
             }
+            
+            /* Mobile navigation for quick access */
+            .mobile-nav {
+                display: flex;
+                gap: 10px;
+                margin-bottom: 15px;
+                overflow-x: auto;
+                padding-bottom: 10px;
+            }
+            
+            .mobile-nav-btn {
+                flex-shrink: 0;
+                padding: 10px 16px;
+                background: rgba(255, 255, 255, 0.1);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 8px;
+                color: #fff;
+                font-size: 0.85rem;
+                cursor: pointer;
+                white-space: nowrap;
+            }
+            
+            .mobile-nav-btn:hover, .mobile-nav-btn.active {
+                background: linear-gradient(135deg, #00d9ff 0%, #00ff88 100%);
+                color: #1a1a2e;
+                border-color: transparent;
+            }
+            
+            #map {
+                height: 350px !important;
+            }
+            
+            #roadAlertMap {
+                height: 250px !important;
+            }
+        }
+        
+        @media (min-width: 1025px) {
+            .mobile-nav {
+                display: none;
+            }
         }
 
         .card {
@@ -804,6 +845,14 @@
             </div>
         </div>
 
+        <!-- Mobile Quick Navigation -->
+        <div class="mobile-nav">
+            <button class="mobile-nav-btn active" onclick="scrollToSection('map')">📍 Map & Area</button>
+            <button class="mobile-nav-btn" onclick="scrollToSection('alertForm')">⚠️ Send Alert</button>
+            <button class="mobile-nav-btn" onclick="scrollToSection('roadAlerts')">🚗 Road Alerts</button>
+            <button class="mobile-nav-btn" onclick="scrollToSection('historyList')">📋 History</button>
+        </div>
+
         <div class="main-grid">
             <div class="card">
                 <div class="card-title">
@@ -905,7 +954,7 @@
                     </div>
                 </div>
 
-                <div class="form-group">
+                <div id="alertForm" class="form-group">
                     <label>Alert Title</label>
                     <input type="text" id="alertTitle" placeholder="e.g., Heavy Rain Warning">
                 </div>
@@ -972,7 +1021,7 @@
                 </div>
 
                 <!-- ROAD ALERTS SECTION -->
-                <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
+                <div id="roadAlerts" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
                     <div class="card-title">
                         <span class="icon">🚗</span>
                         Road Alerts (Travel Weather Ticker)
@@ -981,10 +1030,10 @@
                         Send real-time road condition updates that appear as a scrolling ticker in the Travel Weather screen.
                     </p>
 
-                    <!-- Road Alert Map -->
+                    <!-- Road Alert Map - LARGER -->
                     <div style="margin-bottom: 15px;">
                         <label style="display: block; margin-bottom: 8px; font-weight: 500;">📍 Mark Location on Map (Optional)</label>
-                        <div id="roadAlertMap" style="height: 200px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);"></div>
+                        <div id="roadAlertMap" style="height: 350px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);"></div>
                         <div style="display: flex; gap: 10px; margin-top: 8px;">
                             <button class="map-mode-btn" id="roadMapPointBtn" onclick="setRoadMapMode('point')" style="flex: 1; padding: 8px; font-size: 0.8rem;">
                                 📍 Point
@@ -1830,6 +1879,18 @@
             }
         }
 
+        // Mobile navigation scroll function
+        function scrollToSection(sectionId) {
+            const element = document.getElementById(sectionId);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                
+                // Update active button
+                document.querySelectorAll('.mobile-nav-btn').forEach(btn => btn.classList.remove('active'));
+                event.target.classList.add('active');
+            }
+        }
+
         function clearForm() {
             document.getElementById('alertTitle').value = '';
             document.getElementById('alertMessage').value = '';
@@ -1936,16 +1997,26 @@
             const container = document.getElementById('roadAlertsList');
             
             try {
+                // Simple query without orderBy to avoid index requirement
                 const snapshot = await db.collection('road_alerts')
                     .where('active', '==', true)
-                    .orderBy('createdAt', 'desc')
-                    .limit(10)
                     .get();
 
                 if (snapshot.empty) {
                     container.innerHTML = '<p style="color: #666; font-size: 0.85rem; text-align: center; padding: 15px;">No active road alerts</p>';
                     return;
                 }
+
+                // Sort in memory
+                const alerts = [];
+                snapshot.forEach(doc => {
+                    alerts.push({ id: doc.id, ...doc.data() });
+                });
+                alerts.sort((a, b) => {
+                    const aTime = a.createdAt?.toDate?.() || new Date(0);
+                    const bTime = b.createdAt?.toDate?.() || new Date(0);
+                    return bTime - aTime;
+                });
 
                 const alertTypeIcons = {
                     'info': 'ℹ️',
@@ -1957,10 +2028,9 @@
                 };
 
                 let html = '';
-                snapshot.forEach(doc => {
-                    const data = doc.data();
+                alerts.slice(0, 10).forEach(data => {
                     const icon = alertTypeIcons[data.type] || 'ℹ️';
-                    const timeAgo = data.createdAt ? getTimeAgo(data.createdAt.toDate()) : 'Just now';
+                    const timeAgo = data.createdAt?.toDate ? getTimeAgo(data.createdAt.toDate()) : 'Just now';
                     
                     html += `
                         <div style="background: rgba(255,255,255,0.05); border-radius: 8px; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
@@ -1970,7 +2040,7 @@
                                     ${data.location ? '📍 ' + data.location + ' • ' : ''}${timeAgo}
                                 </div>
                             </div>
-                            <button onclick="deactivateRoadAlert('${doc.id}')" style="background: rgba(255,100,100,0.2); border: none; color: #ff6464; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.8rem;">
+                            <button onclick="deactivateRoadAlert('${data.id}')" style="background: rgba(255,100,100,0.2); border: none; color: #ff6464; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.8rem;">
                                 ✕ Remove
                             </button>
                         </div>
@@ -1980,7 +2050,7 @@
                 container.innerHTML = html;
             } catch (error) {
                 console.error('Error loading road alerts:', error);
-                container.innerHTML = '<p style="color: #ff6464; font-size: 0.85rem; text-align: center; padding: 15px;">Error loading alerts</p>';
+                container.innerHTML = '<p style="color: #ff6464; font-size: 0.85rem; text-align: center; padding: 15px;">Error loading alerts: ' + error.message + '</p>';
             }
         }
 
