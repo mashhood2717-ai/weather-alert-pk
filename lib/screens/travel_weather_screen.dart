@@ -51,11 +51,6 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   bool? _userThemeOverride;
   bool _isDarkMode = true; // Will be set from system in didChangeDependencies
 
-  // Map layer selection
-  String _selectedMapLayer =
-      'temp'; // 'temp', 'humidity', 'visibility', 'wind', 'uv'
-  bool _showLayerPicker = false;
-
   // Motorway selection
   String _selectedMotorwayId = 'm2'; // Default to M2 (Islamabad-Lahore)
 
@@ -640,9 +635,9 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     // Uses: confirmed index, distance threshold, and debounce timing
     _updatePointProgress(position);
 
-    // Distances are calculated correctly in _loadRoute
-    // DON'T recalculate during navigation - just keep them as-is
-    // They're cumulative road distances which don't need real-time updates
+    // Update distances from current GPS position to all points
+    // This keeps the timeline and destination distance accurate
+    _updateDynamicDistances(position);
 
     _updateCurrentNavigationStep(position);
 
@@ -2035,35 +2030,49 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   }
 
   /// Update route points with dynamic distances from current position
-  /// Uses cumulative: GPS to FIRST plaza + road distance between plazas
-  /// Same calculation as _loadRoute for consistency
+  /// During navigation: GPS to NEXT point + remaining road distance
+  /// This ensures distance DECREASES as you approach destination
   // ignore: unused_element
   void _updateDynamicDistances(Position position) {
     if (_routePoints.isEmpty) return;
 
-    // GPS distance to FIRST plaza
-    final firstPoint = _routePoints.first;
-    final distToFirstPlaza = Geolocator.distanceBetween(
+    // Find the NEXT point we're heading towards (not passed yet)
+    // Use _confirmedPointIndex which tracks where we are on the route
+    final nextPointIdx = _confirmedPointIndex.clamp(0, _routePoints.length - 1);
+    final nextPoint = _routePoints[nextPointIdx];
+
+    // GPS distance from current position to the NEXT point
+    final distToNextPoint = Geolocator.distanceBetween(
       position.latitude,
       position.longitude,
-      firstPoint.point.lat,
-      firstPoint.point.lon,
+      nextPoint.point.lat,
+      nextPoint.point.lon,
     );
-    final distToFirstPlazaKm = (distToFirstPlaza / 1000).round();
+    final distToNextPointKm = distToNextPoint / 1000;
+
+    // Reference: road distance at the next point
+    final nextPointRoadDist = nextPoint.point.distanceFromStart;
 
     for (int i = 0; i < _routePoints.length; i++) {
       final tp = _routePoints[i];
 
-      // Road distance from first plaza to this plaza (using stored reference)
-      final roadDistFromFirst =
-          (tp.point.distanceFromStart - _firstPointDistFromStart).abs().round();
-
-      // Total = GPS to first + road from first to this
-      final totalDist = distToFirstPlazaKm + roadDistFromFirst;
-
-      _routePoints[i] = tp.copyWith(
-        distanceFromUser: totalDist,
-      );
+      if (i < nextPointIdx) {
+        // Already passed - show 0 or negative (passed)
+        _routePoints[i] = tp.copyWith(distanceFromUser: 0);
+      } else if (i == nextPointIdx) {
+        // This is the next point - distance is just GPS distance
+        _routePoints[i] = tp.copyWith(
+          distanceFromUser: distToNextPointKm.round(),
+        );
+      } else {
+        // Future points: GPS to next + road distance from next to this
+        final roadDistFromNext =
+            (tp.point.distanceFromStart - nextPointRoadDist).abs();
+        final totalDist = distToNextPointKm + roadDistFromNext;
+        _routePoints[i] = tp.copyWith(
+          distanceFromUser: totalDist.round(),
+        );
+      }
     }
   }
 
@@ -5787,83 +5796,8 @@ Shared via Weather Alert Pakistan
           ),
         ),
 
-        // Left side - Layer toggle button
-        Positioned(
-          top: 16,
-          left: 16,
-          child: GestureDetector(
-            onTap: () => setState(() => _showLayerPicker = !_showLayerPicker),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: _cardDark,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
-                    blurRadius: 8,
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(_getLayerIcon(_selectedMapLayer),
-                      color: _getLayerColor(_selectedMapLayer), size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    _getLayerLabel(_selectedMapLayer),
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500),
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(
-                    _showLayerPicker
-                        ? Icons.keyboard_arrow_up
-                        : Icons.keyboard_arrow_down,
-                    color: Colors.white54,
-                    size: 18,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-
-        // Layer picker dropdown
-        if (_showLayerPicker)
-          Positioned(
-            top: 60,
-            left: 16,
-            child: Container(
-              decoration: BoxDecoration(
-                color: _cardDark,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.4),
-                    blurRadius: 12,
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildLayerOption(
-                      'temp', Icons.thermostat, 'Temperature', Colors.orange),
-                  _buildLayerOption(
-                      'humidity', Icons.water_drop, 'Humidity', Colors.blue),
-                  _buildLayerOption('visibility', Icons.visibility,
-                      'Visibility', Colors.teal),
-                  _buildLayerOption('wind', Icons.air, 'Wind', Colors.cyan),
-                  _buildLayerOption(
-                      'uv', Icons.wb_sunny, 'UV Index', Colors.amber),
-                ],
-              ),
-            ),
-          ),
+        // Layer picker removed - not usable in current implementation
+        // Left side space now empty for cleaner UI
 
         // Speedometer widget (when navigating) - Bottom Left above green button
         if (_isNavigating)
@@ -6549,95 +6483,6 @@ Shared via Weather Alert Pakistan
         ),
       ],
     );
-  }
-
-  /// Build layer option for dropdown
-  Widget _buildLayerOption(
-      String id, IconData icon, String label, Color color) {
-    final isSelected = _selectedMapLayer == id;
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedMapLayer = id;
-          _showLayerPicker = false;
-        });
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected ? color.withOpacity(0.2) : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: isSelected ? color : Colors.white70, size: 20),
-            const SizedBox(width: 12),
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected ? color : Colors.white,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-              ),
-            ),
-            if (isSelected) ...[
-              const SizedBox(width: 8),
-              Icon(Icons.check, color: color, size: 18),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  IconData _getLayerIcon(String layer) {
-    switch (layer) {
-      case 'temp':
-        return Icons.thermostat;
-      case 'humidity':
-        return Icons.water_drop;
-      case 'visibility':
-        return Icons.visibility;
-      case 'wind':
-        return Icons.air;
-      case 'uv':
-        return Icons.wb_sunny;
-      default:
-        return Icons.thermostat;
-    }
-  }
-
-  Color _getLayerColor(String layer) {
-    switch (layer) {
-      case 'temp':
-        return Colors.orange;
-      case 'humidity':
-        return Colors.blue;
-      case 'visibility':
-        return Colors.teal;
-      case 'wind':
-        return Colors.cyan;
-      case 'uv':
-        return Colors.amber;
-      default:
-        return Colors.orange;
-    }
-  }
-
-  String _getLayerLabel(String layer) {
-    switch (layer) {
-      case 'temp':
-        return 'Temp';
-      case 'humidity':
-        return 'Humidity';
-      case 'visibility':
-        return 'Visibility';
-      case 'wind':
-        return 'Wind';
-      case 'uv':
-        return 'UV';
-      default:
-        return 'Temp';
-    }
   }
 
   /// Speedometer widget - circular style
@@ -7749,17 +7594,12 @@ Shared via Weather Alert Pakistan
           child: _buildMapWeatherCard(),
         ),
 
-        // Layer Picker Button - Below weather card
-        Positioned(
-          top: _isOffRoute ? 140 : 100,
-          left: 16,
-          child: _buildLayerPickerButton(),
-        ),
+        // Layer Picker removed - not usable
 
         // Next Toll Plaza Card - During Navigation
         if (_isNavigating)
           Positioned(
-            top: _isOffRoute ? 200 : 150,
+            top: _isOffRoute ? 140 : 100,
             left: 16,
             right: 16,
             child: _buildNextTollPlazaCard(),
@@ -8083,94 +7923,6 @@ Shared via Weather Alert Pakistan
         ),
         child: Icon(icon, color: _primaryBlue, size: 24),
       ),
-    );
-  }
-
-  /// Layer picker button with dropdown for selecting weather layer
-  Widget _buildLayerPickerButton() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Main button
-        GestureDetector(
-          onTap: () {
-            setState(() {
-              _showLayerPicker = !_showLayerPicker;
-            });
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: _cardDark,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(_getLayerIcon(_selectedMapLayer),
-                    color: _getLayerColor(_selectedMapLayer), size: 18),
-                const SizedBox(width: 6),
-                Text(
-                  _getLayerLabel(_selectedMapLayer),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Icon(
-                  _showLayerPicker
-                      ? Icons.keyboard_arrow_up
-                      : Icons.keyboard_arrow_down,
-                  color: Colors.white70,
-                  size: 18,
-                ),
-              ],
-            ),
-          ),
-        ),
-
-        // Dropdown options
-        if (_showLayerPicker)
-          Container(
-            margin: const EdgeInsets.only(top: 4),
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            decoration: BoxDecoration(
-              color: _cardDark,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildLayerOption('temp', _getLayerIcon('temp'),
-                    _getLayerLabel('temp'), _getLayerColor('temp')),
-                _buildLayerOption('humidity', _getLayerIcon('humidity'),
-                    _getLayerLabel('humidity'), _getLayerColor('humidity')),
-                _buildLayerOption('visibility', _getLayerIcon('visibility'),
-                    _getLayerLabel('visibility'), _getLayerColor('visibility')),
-                _buildLayerOption('wind', _getLayerIcon('wind'),
-                    _getLayerLabel('wind'), _getLayerColor('wind')),
-                _buildLayerOption('uv', _getLayerIcon('uv'),
-                    _getLayerLabel('uv'), _getLayerColor('uv')),
-              ],
-            ),
-          ),
-      ],
     );
   }
 
