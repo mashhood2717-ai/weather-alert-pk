@@ -2030,49 +2030,35 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   }
 
   /// Update route points with dynamic distances from current position
-  /// During navigation: GPS to NEXT point + remaining road distance
-  /// This ensures distance DECREASES as you approach destination
+  /// Uses cumulative: GPS to FIRST plaza + road distance between plazas
+  /// Same calculation as _loadRoute for consistency
   // ignore: unused_element
   void _updateDynamicDistances(Position position) {
     if (_routePoints.isEmpty) return;
 
-    // Find the NEXT point we're heading towards (not passed yet)
-    // Use _confirmedPointIndex which tracks where we are on the route
-    final nextPointIdx = _confirmedPointIndex.clamp(0, _routePoints.length - 1);
-    final nextPoint = _routePoints[nextPointIdx];
-
-    // GPS distance from current position to the NEXT point
-    final distToNextPoint = Geolocator.distanceBetween(
+    // GPS distance to FIRST plaza
+    final firstPoint = _routePoints.first;
+    final distToFirstPlaza = Geolocator.distanceBetween(
       position.latitude,
       position.longitude,
-      nextPoint.point.lat,
-      nextPoint.point.lon,
+      firstPoint.point.lat,
+      firstPoint.point.lon,
     );
-    final distToNextPointKm = distToNextPoint / 1000;
-
-    // Reference: road distance at the next point
-    final nextPointRoadDist = nextPoint.point.distanceFromStart;
+    final distToFirstPlazaKm = (distToFirstPlaza / 1000).round();
 
     for (int i = 0; i < _routePoints.length; i++) {
       final tp = _routePoints[i];
 
-      if (i < nextPointIdx) {
-        // Already passed - show 0 or negative (passed)
-        _routePoints[i] = tp.copyWith(distanceFromUser: 0);
-      } else if (i == nextPointIdx) {
-        // This is the next point - distance is just GPS distance
-        _routePoints[i] = tp.copyWith(
-          distanceFromUser: distToNextPointKm.round(),
-        );
-      } else {
-        // Future points: GPS to next + road distance from next to this
-        final roadDistFromNext =
-            (tp.point.distanceFromStart - nextPointRoadDist).abs();
-        final totalDist = distToNextPointKm + roadDistFromNext;
-        _routePoints[i] = tp.copyWith(
-          distanceFromUser: totalDist.round(),
-        );
-      }
+      // Road distance from first plaza to this plaza (using stored reference)
+      final roadDistFromFirst =
+          (tp.point.distanceFromStart - _firstPointDistFromStart).abs().round();
+
+      // Total = GPS to first + road from first to this
+      final totalDist = distToFirstPlazaKm + roadDistFromFirst;
+
+      _routePoints[i] = tp.copyWith(
+        distanceFromUser: totalDist,
+      );
     }
   }
 
@@ -5731,16 +5717,35 @@ Shared via Weather Alert Pakistan
           right: 16,
           child: Builder(
             builder: (context) {
-              // Use distanceFromUser from routePoints (same as timeline)
-              // This is road distance: GPS to first plaza + road distance between plazas
+              // Calculate REMAINING distance from current position to destination
+              // Uses: GPS to next point + road distance from next point to destination
               double remainingDistanceKm = _routeDistanceMeters / 1000;
               int remainingSeconds = _routeDurationSeconds;
 
-              // Use the same distance calculation as timeline
-              if (_routePoints.isNotEmpty) {
-                // Road distance from timeline (matches what user sees in timeline)
-                remainingDistanceKm =
-                    _routePoints.last.distanceFromUser.toDouble();
+              if (_routePoints.isNotEmpty && _currentPosition != null) {
+                // Get the next point we're heading towards
+                final nextIdx =
+                    _confirmedPointIndex.clamp(0, _routePoints.length - 1);
+                final nextPoint = _routePoints[nextIdx];
+                final lastPoint = _routePoints.last;
+
+                // GPS distance from current position to the NEXT point
+                final distToNextPoint = Geolocator.distanceBetween(
+                  _currentPosition!.latitude,
+                  _currentPosition!.longitude,
+                  nextPoint.point.lat,
+                  nextPoint.point.lon,
+                );
+                final distToNextKm = distToNextPoint / 1000;
+
+                // Road distance from next point to destination
+                final roadDistToDestKm =
+                    (lastPoint.point.distanceFromStart -
+                            nextPoint.point.distanceFromStart)
+                        .abs();
+
+                // Total remaining = GPS to next + road to destination
+                remainingDistanceKm = distToNextKm + roadDistToDestKm;
 
                 // Estimate time based on current speed or average 80 km/h
                 final speedKmh = _currentSpeed > 5 ? _currentSpeed : 80;
