@@ -981,6 +981,29 @@
                         Send real-time road condition updates that appear as a scrolling ticker in the Travel Weather screen.
                     </p>
 
+                    <!-- Road Alert Map -->
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 500;">📍 Mark Location on Map (Optional)</label>
+                        <div id="roadAlertMap" style="height: 200px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);"></div>
+                        <div style="display: flex; gap: 10px; margin-top: 8px;">
+                            <button class="map-mode-btn" id="roadMapPointBtn" onclick="setRoadMapMode('point')" style="flex: 1; padding: 8px; font-size: 0.8rem;">
+                                📍 Point
+                            </button>
+                            <button class="map-mode-btn" id="roadMapLineBtn" onclick="setRoadMapMode('line')" style="flex: 1; padding: 8px; font-size: 0.8rem;">
+                                📏 Road Segment
+                            </button>
+                            <button class="map-mode-btn" id="roadMapPolygonBtn" onclick="setRoadMapMode('polygon')" style="flex: 1; padding: 8px; font-size: 0.8rem;">
+                                🔷 Area
+                            </button>
+                            <button class="map-clear-btn" onclick="clearRoadAlertMap()" style="padding: 8px; font-size: 0.8rem;">
+                                🗑️
+                            </button>
+                        </div>
+                        <div id="roadMapInfo" style="margin-top: 8px; font-size: 0.8rem; color: #888;">
+                            Click map to mark location
+                        </div>
+                    </div>
+
                     <div class="form-group">
                         <label>Alert Message</label>
                         <input type="text" id="roadAlertMessage" placeholder="e.g., Road closed near Bhera due to accident">
@@ -1012,7 +1035,7 @@
                     </div>
 
                     <div class="form-group">
-                        <label>Location (Optional)</label>
+                        <label>Location Name (Optional)</label>
                         <input type="text" id="roadAlertLocation" placeholder="e.g., Near Bhera Interchange">
                     </div>
 
@@ -1877,20 +1900,28 @@
             }
 
             try {
-                await db.collection('road_alerts').add({
+                const alertData = {
                     message: message,
                     type: type,
                     motorwayId: motorwayId,
                     location: location,
                     active: true,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                });
+                };
+
+                // Add geo data if available
+                if (roadAlertGeoData) {
+                    alertData.geoData = roadAlertGeoData;
+                }
+
+                await db.collection('road_alerts').add(alertData);
 
                 showToast('Road alert sent successfully!', 'success');
                 
                 // Clear form
                 document.getElementById('roadAlertMessage').value = '';
                 document.getElementById('roadAlertLocation').value = '';
+                clearRoadAlertMap();
                 
                 // Reload list
                 loadRoadAlerts();
@@ -1979,11 +2010,147 @@
             return `${days}d ago`;
         }
 
+        // ============ ROAD ALERT MAP ============
+        let roadAlertMap = null;
+        let roadAlertMarker = null;
+        let roadAlertLine = null;
+        let roadAlertPolygon = null;
+        let roadMapMode = 'point'; // 'point', 'line', 'polygon'
+        let roadLinePoints = [];
+        let roadPolygonPoints = [];
+        let roadTempMarkers = [];
+        let roadAlertGeoData = null;
+
+        function initRoadAlertMap() {
+            if (roadAlertMap) return;
+            
+            roadAlertMap = L.map('roadAlertMap').setView([31.5, 73.0], 6);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                maxZoom: 19
+            }).addTo(roadAlertMap);
+
+            roadAlertMap.on('click', onRoadMapClick);
+        }
+
+        function setRoadMapMode(mode) {
+            roadMapMode = mode;
+            clearRoadAlertMap();
+            
+            // Update button styles
+            document.getElementById('roadMapPointBtn').classList.remove('active');
+            document.getElementById('roadMapLineBtn').classList.remove('active');
+            document.getElementById('roadMapPolygonBtn').classList.remove('active');
+            
+            if (mode === 'point') {
+                document.getElementById('roadMapPointBtn').classList.add('active');
+                document.getElementById('roadMapInfo').textContent = 'Click to place a marker';
+            } else if (mode === 'line') {
+                document.getElementById('roadMapLineBtn').classList.add('active');
+                document.getElementById('roadMapInfo').textContent = 'Click to draw road segment (2+ points), double-click to finish';
+            } else if (mode === 'polygon') {
+                document.getElementById('roadMapPolygonBtn').classList.add('active');
+                document.getElementById('roadMapInfo').textContent = 'Click to draw area (3+ points), double-click to finish';
+            }
+        }
+
+        function onRoadMapClick(e) {
+            const lat = e.latlng.lat;
+            const lng = e.latlng.lng;
+
+            if (roadMapMode === 'point') {
+                // Single point marker
+                if (roadAlertMarker) roadAlertMap.removeLayer(roadAlertMarker);
+                roadAlertMarker = L.marker([lat, lng], {
+                    icon: L.divIcon({
+                        className: 'road-alert-marker',
+                        html: '<div style="background: #ff9500; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3);"></div>',
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10]
+                    })
+                }).addTo(roadAlertMap);
+                
+                roadAlertGeoData = { type: 'point', lat, lng };
+                document.getElementById('roadMapInfo').textContent = `📍 Point: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+                
+            } else if (roadMapMode === 'line') {
+                // Road segment (polyline)
+                roadLinePoints.push([lat, lng]);
+                
+                // Add temp marker
+                const marker = L.circleMarker([lat, lng], {
+                    radius: 6,
+                    fillColor: '#ff9500',
+                    color: '#fff',
+                    weight: 2,
+                    fillOpacity: 1
+                }).addTo(roadAlertMap);
+                roadTempMarkers.push(marker);
+                
+                // Draw/update line
+                if (roadAlertLine) roadAlertMap.removeLayer(roadAlertLine);
+                if (roadLinePoints.length >= 2) {
+                    roadAlertLine = L.polyline(roadLinePoints, {
+                        color: '#ff9500',
+                        weight: 5
+                    }).addTo(roadAlertMap);
+                }
+                
+                roadAlertGeoData = { type: 'line', points: [...roadLinePoints] };
+                document.getElementById('roadMapInfo').textContent = `📏 Line: ${roadLinePoints.length} points`;
+                
+            } else if (roadMapMode === 'polygon') {
+                // Area polygon
+                roadPolygonPoints.push([lat, lng]);
+                
+                // Add temp marker
+                const marker = L.circleMarker([lat, lng], {
+                    radius: 6,
+                    fillColor: '#ff9500',
+                    color: '#fff',
+                    weight: 2,
+                    fillOpacity: 1
+                }).addTo(roadAlertMap);
+                roadTempMarkers.push(marker);
+                
+                // Draw/update polygon
+                if (roadAlertPolygon) roadAlertMap.removeLayer(roadAlertPolygon);
+                if (roadPolygonPoints.length >= 3) {
+                    roadAlertPolygon = L.polygon(roadPolygonPoints, {
+                        color: '#ff9500',
+                        fillColor: '#ff9500',
+                        fillOpacity: 0.3,
+                        weight: 2
+                    }).addTo(roadAlertMap);
+                }
+                
+                roadAlertGeoData = { type: 'polygon', points: [...roadPolygonPoints] };
+                document.getElementById('roadMapInfo').textContent = `🔷 Polygon: ${roadPolygonPoints.length} points`;
+            }
+        }
+
+        function clearRoadAlertMap() {
+            if (roadAlertMarker) { roadAlertMap.removeLayer(roadAlertMarker); roadAlertMarker = null; }
+            if (roadAlertLine) { roadAlertMap.removeLayer(roadAlertLine); roadAlertLine = null; }
+            if (roadAlertPolygon) { roadAlertMap.removeLayer(roadAlertPolygon); roadAlertPolygon = null; }
+            roadTempMarkers.forEach(m => roadAlertMap.removeLayer(m));
+            roadTempMarkers = [];
+            roadLinePoints = [];
+            roadPolygonPoints = [];
+            roadAlertGeoData = null;
+            document.getElementById('roadMapInfo').textContent = 'Click map to mark location';
+        }
+
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', () => {
             initMap();
             loadAlertHistory();
             loadRoadAlerts();
+            
+            // Initialize road alert map after a slight delay (for DOM to be ready)
+            setTimeout(() => {
+                initRoadAlertMap();
+                setRoadMapMode('point');
+            }, 500);
         });
     </script>
 </body>

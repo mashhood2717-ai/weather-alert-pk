@@ -8547,31 +8547,36 @@ Shared via Weather Alert Pakistan
     _roadAlertsSubscription = FirebaseFirestore.instance
         .collection('road_alerts')
         .where('active', isEqualTo: true)
-        .orderBy('createdAt', descending: true)
-        .limit(10)
         .snapshots()
         .listen((snapshot) {
       if (mounted) {
+        debugPrint('🚗 Road alerts received: ${snapshot.docs.length}');
+        final alerts = snapshot.docs.map((doc) {
+          final data = doc.data();
+          return RoadAlert(
+            id: doc.id,
+            message: data['message'] ?? '',
+            type: _parseAlertType(data['type']),
+            motorwayId: data['motorwayId'],
+            location: data['location'],
+            createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+          );
+        }).toList();
+        
+        // Sort by createdAt descending
+        alerts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        
         setState(() {
-          _roadAlerts = snapshot.docs.map((doc) {
-            final data = doc.data();
-            return RoadAlert(
-              id: doc.id,
-              message: data['message'] ?? '',
-              type: _parseAlertType(data['type']),
-              motorwayId: data['motorwayId'],
-              location: data['location'],
-              createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-            );
-          }).toList();
+          _roadAlerts = alerts.take(10).toList();
         });
+        
         // Start auto-scroll if we have alerts
         if (_roadAlerts.isNotEmpty) {
           _startTickerAutoScroll();
         }
       }
     }, onError: (e) {
-      debugPrint('Road alerts subscription error: $e');
+      debugPrint('🚗 Road alerts subscription error: $e');
     });
   }
 
