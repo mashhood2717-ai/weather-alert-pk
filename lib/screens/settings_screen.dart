@@ -239,7 +239,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   child: Center(
                     child: Text(
-                      isGuest ? '👤' : userName.isNotEmpty ? userName[0].toUpperCase() : '?',
+                      isGuest
+                          ? '👤'
+                          : userName.isNotEmpty
+                              ? userName[0].toUpperCase()
+                              : '?',
                       style: const TextStyle(fontSize: 24),
                     ),
                   ),
@@ -260,7 +264,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       const SizedBox(height: 4),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
                           color: isGuest
                               ? Colors.orange.withValues(alpha: 0.2)
@@ -286,7 +291,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ],
             ),
-
           ],
         ),
       ),
@@ -294,8 +298,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showEditNameDialog(Color fg, Color tint) {
-    final controller = TextEditingController(text: UserService().userName == 'Guest' ? '' : UserService().userName);
-    
+    final controller = TextEditingController(
+        text: UserService().userName == 'Guest' ? '' : UserService().userName);
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -323,7 +328,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: TextStyle(color: fg.withValues(alpha: 0.6))),
+            child: Text('Cancel',
+                style: TextStyle(color: fg.withValues(alpha: 0.6))),
           ),
           TextButton(
             onPressed: () async {

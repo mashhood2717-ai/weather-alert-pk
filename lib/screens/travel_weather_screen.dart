@@ -8695,7 +8695,7 @@ Shared via Weather Alert Pakistan
         debugPrint('🚗 Road alerts received: ${snapshot.docs.length}');
         final allAlerts = snapshot.docs.map((doc) {
           final data = doc.data();
-          
+
           // Parse activeFrom and activeTill
           DateTime? activeFrom;
           DateTime? activeTill;
@@ -8705,7 +8705,7 @@ Shared via Weather Alert Pakistan
           if (data['activeTill'] != null) {
             activeTill = DateTime.tryParse(data['activeTill'] as String);
           }
-          
+
           return RoadAlert(
             id: doc.id,
             message: data['message'] ?? '',
@@ -8721,7 +8721,8 @@ Shared via Weather Alert Pakistan
         }).toList();
 
         // Filter alerts by time range (activeFrom/activeTill)
-        final timeFilteredAlerts = allAlerts.where((alert) => alert.isCurrentlyActive).toList();
+        final timeFilteredAlerts =
+            allAlerts.where((alert) => alert.isCurrentlyActive).toList();
 
         // Filter alerts for current motorway
         final filteredAlerts = timeFilteredAlerts.where((alert) {
@@ -9006,17 +9007,17 @@ class RoadAlert {
   /// Check if the alert is currently active based on time range
   bool get isCurrentlyActive {
     final now = DateTime.now();
-    
+
     // If activeFrom is set and we're before it, not active
     if (activeFrom != null && now.isBefore(activeFrom!)) {
       return false;
     }
-    
+
     // If activeTill is set and we're past it, not active
     if (activeTill != null && now.isAfter(activeTill!)) {
       return false;
     }
-    
+
     return true;
   }
 }

@@ -27,13 +27,13 @@ class UserService {
 
   /// Get the current user ID
   String get userId => _userId ?? '';
-  
+
   /// Get the current user name
   String get userName => _userName ?? 'Guest';
-  
+
   /// Check if user is a guest
   bool get isGuest => _isGuest;
-  
+
   /// Check if onboarding is complete
   bool get onboardingComplete => _onboardingComplete;
 
@@ -43,15 +43,15 @@ class UserService {
   /// Initialize the user service
   Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
-    
+
     _userId = prefs.getString(_userIdKey);
     _userName = prefs.getString(_userNameKey);
     _isGuest = prefs.getBool(_isGuestKey) ?? true;
     _onboardingComplete = prefs.getBool(_onboardingCompleteKey) ?? false;
-    
+
     // Get device info
     await _getDeviceInfo();
-    
+
     // Generate user ID if not exists
     if (_userId == null || _userId!.isEmpty) {
       _userId = _generateUserId();
@@ -60,7 +60,7 @@ class UserService {
     } else {
       debugPrint('🆔 Loaded existing user ID: $_userId');
     }
-    
+
     // Update last active in Firestore (fire and forget)
     _updateLastActive();
   }
@@ -71,7 +71,8 @@ class UserService {
       final deviceInfoPlugin = DeviceInfoPlugin();
       if (Platform.isAndroid) {
         final androidInfo = await deviceInfoPlugin.androidInfo;
-        _deviceInfo = 'Android ${androidInfo.version.release} - ${androidInfo.model}';
+        _deviceInfo =
+            'Android ${androidInfo.version.release} - ${androidInfo.model}';
       } else if (Platform.isIOS) {
         final iosInfo = await deviceInfoPlugin.iosInfo;
         _deviceInfo = 'iOS ${iosInfo.systemVersion} - ${iosInfo.model}';
@@ -96,13 +97,13 @@ class UserService {
     final prefs = await SharedPreferences.getInstance();
     _userName = name.trim();
     _isGuest = false;
-    
+
     await prefs.setString(_userNameKey, _userName!);
     await prefs.setBool(_isGuestKey, false);
-    
+
     // Sync to Firestore
     await _syncUserToFirestore();
-    
+
     debugPrint('🆔 User name set: $_userName');
   }
 
@@ -111,20 +112,20 @@ class UserService {
     final prefs = await SharedPreferences.getInstance();
     _userName = 'Guest';
     _isGuest = true;
-    
+
     await prefs.setString(_userNameKey, 'Guest');
     await prefs.setBool(_isGuestKey, true);
-    
+
     // Sync to Firestore
     await _syncUserToFirestore();
-    
+
     debugPrint('🆔 Continuing as guest');
   }
 
   /// Sync user data to Firestore
   Future<void> _syncUserToFirestore() async {
     if (_userId == null || _userId!.isEmpty) return;
-    
+
     try {
       await _firestore.collection('users').doc(_userId).set({
         'userId': _userId,
@@ -134,7 +135,7 @@ class UserService {
         'createdAt': FieldValue.serverTimestamp(),
         'lastActive': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-      
+
       debugPrint('🆔 User synced to Firestore: $_userId');
     } catch (e) {
       debugPrint('🆔 Error syncing user to Firestore: $e');
@@ -145,7 +146,7 @@ class UserService {
   Future<void> _updateLastActive() async {
     if (_userId == null || _userId!.isEmpty) return;
     if (!_onboardingComplete) return; // Only update if onboarding is done
-    
+
     try {
       await _firestore.collection('users').doc(_userId).update({
         'lastActive': FieldValue.serverTimestamp(),
@@ -176,7 +177,7 @@ class UserService {
     required String alertType,
   }) async {
     if (_userId == null || _userId!.isEmpty) return;
-    
+
     try {
       await _firestore.collection('alert_receipts').add({
         'userId': _userId,

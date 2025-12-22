@@ -789,14 +789,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                    _debugSectionWithCopy('User Info', [
-                      'Name: $userName',
-                      'User ID: $userId',
-                    ], ctx),
-                    _debugSectionWithCopy('Device Info', [
-                      'Device ID: $deviceId',
-                      'Is GPS Location: ${controller.isFromCurrentLocation}',
-                    ], ctx),
+                    _debugSectionWithCopy(
+                        'User Info',
+                        [
+                          'Name: $userName',
+                          'User ID: $userId',
+                        ],
+                        ctx),
+                    _debugSectionWithCopy(
+                        'Device Info',
+                        [
+                          'Device ID: $deviceId',
+                          'Is GPS Location: ${controller.isFromCurrentLocation}',
+                        ],
+                        ctx),
                     _debugSectionWithCopy(
                         'FCM Token',
                         [
@@ -804,16 +810,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         ],
                         ctx,
                         isMonospace: true),
-                    _debugSectionWithCopy('Location Data', [
-                      'City: ${c?.city ?? "--"}',
-                      'Lat: ${coords?.$1 ?? "--"}',
-                      'Lon: ${coords?.$2 ?? "--"}',
-                      'Street: ${c?.streetAddress ?? "--"}',
-                    ], ctx),
-                    _debugSectionWithCopy('Weather Source', [
-                      'METAR Applied: ${controller.metarApplied}',
-                      'Last City Searched: ${controller.lastCitySearched ?? "--"}',
-                    ], ctx),
+                    _debugSectionWithCopy(
+                        'Location Data',
+                        [
+                          'City: ${c?.city ?? "--"}',
+                          'Lat: ${coords?.$1 ?? "--"}',
+                          'Lon: ${coords?.$2 ?? "--"}',
+                          'Street: ${c?.streetAddress ?? "--"}',
+                        ],
+                        ctx),
+                    _debugSectionWithCopy(
+                        'Weather Source',
+                        [
+                          'METAR Applied: ${controller.metarApplied}',
+                          'Last City Searched: ${controller.lastCitySearched ?? "--"}',
+                        ],
+                        ctx),
                     const Divider(),
                     const Text('📍 Motorway Testing Tips:',
                         style: TextStyle(
@@ -854,7 +866,8 @@ Is GPS: ${controller.isFromCurrentLocation}
             ));
   }
 
-  Widget _debugSectionWithCopy(String title, List<String> lines, BuildContext ctx,
+  Widget _debugSectionWithCopy(
+      String title, List<String> lines, BuildContext ctx,
       {bool isMonospace = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -865,16 +878,18 @@ Is GPS: ${controller.isFromCurrentLocation}
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(title,
-                  style:
-                      const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 13)),
               InkWell(
                 onTap: () {
                   Clipboard.setData(ClipboardData(text: lines.join('\n')));
-                  ScaffoldMessenger.of(ctx).showSnackBar(
-                      SnackBar(content: Text('$title copied!'), duration: const Duration(seconds: 1)));
+                  ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+                      content: Text('$title copied!'),
+                      duration: const Duration(seconds: 1)));
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: Colors.deepPurple.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(4),
@@ -884,7 +899,9 @@ Is GPS: ${controller.isFromCurrentLocation}
                     children: [
                       Icon(Icons.copy, size: 12, color: Colors.deepPurple),
                       SizedBox(width: 4),
-                      Text('Copy', style: TextStyle(fontSize: 10, color: Colors.deepPurple)),
+                      Text('Copy',
+                          style: TextStyle(
+                              fontSize: 10, color: Colors.deepPurple)),
                     ],
                   ),
                 ),

@@ -70,7 +70,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             child: Column(
               children: [
                 const Spacer(flex: 2),
-                
+
                 // App Logo/Icon
                 Container(
                   width: 120,
@@ -89,9 +89,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     color: Colors.white,
                   ),
                 ),
-                
+
                 const SizedBox(height: 32),
-                
+
                 // Title
                 const Text(
                   'Weather Alert Pakistan',
@@ -101,9 +101,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     color: Colors.white,
                   ),
                 ),
-                
+
                 const SizedBox(height: 8),
-                
+
                 Text(
                   'Real-time weather updates for Pakistan',
                   style: TextStyle(
@@ -111,9 +111,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     color: Colors.white.withOpacity(0.7),
                   ),
                 ),
-                
+
                 const Spacer(flex: 2),
-                
+
                 // Name Input Card
                 Container(
                   padding: const EdgeInsets.all(24),
@@ -137,9 +137,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             color: Colors.white.withOpacity(0.9),
                           ),
                         ),
-                        
+
                         const SizedBox(height: 16),
-                        
+
                         TextFormField(
                           controller: _nameController,
                           style: const TextStyle(color: Colors.white),
@@ -173,21 +173,24 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             ),
                           ),
                           validator: (value) {
-                            if (value != null && value.trim().isNotEmpty && value.trim().length < 2) {
+                            if (value != null &&
+                                value.trim().isNotEmpty &&
+                                value.trim().length < 2) {
                               return 'Name must be at least 2 characters';
                             }
                             return null;
                           },
                         ),
-                        
+
                         const SizedBox(height: 20),
-                        
+
                         // Continue with Name Button
                         SizedBox(
                           width: double.infinity,
                           height: 50,
                           child: ElevatedButton(
-                            onPressed: _isLoading || _nameController.text.trim().isEmpty
+                            onPressed: _isLoading ||
+                                    _nameController.text.trim().isEmpty
                                 ? null
                                 : _continueWithName,
                             style: ElevatedButton.styleFrom(
@@ -196,7 +199,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              disabledBackgroundColor: Colors.blue.withOpacity(0.3),
+                              disabledBackgroundColor:
+                                  Colors.blue.withOpacity(0.3),
                             ),
                             child: _isLoading
                                 ? const SizedBox(
@@ -216,9 +220,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                   ),
                           ),
                         ),
-                        
+
                         const SizedBox(height: 16),
-                        
+
                         // Divider
                         Row(
                           children: [
@@ -228,7 +232,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                               ),
                             ),
                             Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
                               child: Text(
                                 'OR',
                                 style: TextStyle(
@@ -244,9 +249,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             ),
                           ],
                         ),
-                        
+
                         const SizedBox(height: 16),
-                        
+
                         // Continue as Guest Button
                         SizedBox(
                           width: double.infinity,
@@ -275,9 +280,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     ),
                   ),
                 ),
-                
+
                 const Spacer(flex: 1),
-                
+
                 // User ID info
                 FutureBuilder<void>(
                   future: Future.value(),
@@ -292,7 +297,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     );
                   },
                 ),
-                
+
                 const SizedBox(height: 8),
               ],
             ),

@@ -28,14 +28,14 @@ class AlertStorageService {
 
   Future<List<WeatherAlert>> getAlerts() async {
     final prefs = await SharedPreferences.getInstance();
-    
+
     // Try user-specific key first, fall back to generic key
     String? alertsJson = prefs.getString(_userAlertsKey);
-    
+
     // If no user-specific alerts, check generic key and migrate
     if (alertsJson == null) {
       alertsJson = prefs.getString(_alertsKey);
-      
+
       // Migrate existing alerts to user-specific key
       if (alertsJson != null && _userAlertsKey != _alertsKey) {
         await prefs.setString(_userAlertsKey, alertsJson);
@@ -88,7 +88,7 @@ class AlertStorageService {
 
     final encoded = jsonEncode(trimmedAlerts.map((e) => e.toJson()).toList());
     await prefs.setString(_userAlertsKey, encoded);
-    
+
     // Record alert receipt to Firestore
     await UserService().recordAlertReceived(
       alertId: alert.id,
