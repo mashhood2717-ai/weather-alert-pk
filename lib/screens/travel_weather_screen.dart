@@ -276,52 +276,6 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     }
   }
 
-  /// Called when user taps "Start Journey" button
-  Future<void> _confirmRouteAndLoad() async {
-    if (_toId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a destination')),
-      );
-      return;
-    }
-
-    setState(() {
-      _routeConfirmed = true;
-      _isLoading = true;
-    });
-
-    // Ensure we have current position before fetching weather
-    if (_currentPosition == null) {
-      try {
-        final position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high,
-          timeLimit: const Duration(seconds: 10),
-        );
-        if (mounted) {
-          setState(() => _currentPosition = position);
-        }
-      } catch (e) {
-        debugPrint('Error getting position: $e');
-        // Show warning that distances may be inaccurate
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                  'Could not get GPS location. Distances may be inaccurate.'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-      }
-    }
-
-    // Fetch current location weather
-    await _fetchCurrentLocationWeather();
-
-    // Load route data
-    await _loadRoute();
-  }
-
   /// Start real-time navigation tracking
   void _startNavigation() {
     if (_isNavigating) return;
@@ -552,6 +506,67 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
         });
       });
     }
+  }
+
+  /// Show entire route on map - zooms out to fit all route points
+  void _showEntireRoute() {
+    if (_mapController == null || _routePoints.isEmpty) return;
+
+    // Stop following user when viewing full route
+    setState(() => _isFollowingUser = false);
+
+    // Calculate bounds that include all route points and current position
+    double minLat = _routePoints.first.point.lat;
+    double maxLat = _routePoints.first.point.lat;
+    double minLon = _routePoints.first.point.lon;
+    double maxLon = _routePoints.first.point.lon;
+
+    for (final tp in _routePoints) {
+      if (tp.point.lat < minLat) minLat = tp.point.lat;
+      if (tp.point.lat > maxLat) maxLat = tp.point.lat;
+      if (tp.point.lon < minLon) minLon = tp.point.lon;
+      if (tp.point.lon > maxLon) maxLon = tp.point.lon;
+    }
+
+    // Include current position in bounds
+    if (_currentPosition != null) {
+      if (_currentPosition!.latitude < minLat) {
+        minLat = _currentPosition!.latitude;
+      }
+      if (_currentPosition!.latitude > maxLat) {
+        maxLat = _currentPosition!.latitude;
+      }
+      if (_currentPosition!.longitude < minLon) {
+        minLon = _currentPosition!.longitude;
+      }
+      if (_currentPosition!.longitude > maxLon) {
+        maxLon = _currentPosition!.longitude;
+      }
+    }
+
+    // Also include road route points for more accurate bounds
+    for (final point in _roadRoutePoints) {
+      if (point.latitude < minLat) minLat = point.latitude;
+      if (point.latitude > maxLat) maxLat = point.latitude;
+      if (point.longitude < minLon) minLon = point.longitude;
+      if (point.longitude > maxLon) maxLon = point.longitude;
+    }
+
+    final bounds = LatLngBounds(
+      southwest: LatLng(minLat, minLon),
+      northeast: LatLng(maxLat, maxLon),
+    );
+
+    _isProgrammaticCameraMove = true;
+    _mapController!
+        .animateCamera(
+      CameraUpdate.newLatLngBounds(bounds, 60), // 60px padding
+    )
+        .then((_) {
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) _isProgrammaticCameraMove = false;
+      });
+    });
   }
 
   /// Handle location updates during navigation - SMOOTH like Google Maps
@@ -1301,6 +1316,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     setState(() {
       _isLoading = true;
       _error = null;
+      _routeConfirmed = true; // Route is confirmed when we start loading it
     });
 
     try {
@@ -1311,6 +1327,9 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
           if (_currentPosition != null) break;
         }
       }
+
+      // Fetch current location weather in background
+      _fetchCurrentLocationWeather();
 
       // Get points for the route
       List<MotorwayPoint> points;
@@ -3625,43 +3644,6 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
               ),
             ),
           ),
-
-          const SizedBox(height: 16),
-
-          // Start Journey Button
-          SizedBox(
-            width: double.infinity,
-            height: 56,
-            child: ElevatedButton(
-              onPressed: hasDestination ? _confirmRouteAndLoad : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: hasDestination ? Colors.white : Colors.white38,
-                foregroundColor: _primaryBlue,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                elevation: hasDestination ? 4 : 0,
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.navigation,
-                    color: hasDestination ? _primaryBlue : Colors.white54,
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    'Start Journey',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: hasDestination ? _primaryBlue : Colors.white54,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -5934,22 +5916,22 @@ Shared via Weather Alert Pakistan
             ),
           ),
 
-        // Start Journey button (only when NOT navigating - Stop is in bottom bar)
-        if (!_showTimelineSlider && !_isNavigating)
+        // Route Tracker button (only when navigating) - Shows entire route on map
+        if (_isNavigating && !_showTimelineSlider)
           Positioned(
             bottom: 80,
             right: 16,
             child: GestureDetector(
-              onTap: _startNavigation,
+              onTap: _showEntireRoute,
               child: Container(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
-                  color: Colors.green.shade600,
-                  borderRadius: BorderRadius.circular(28),
+                  color: _primaryBlue,
+                  borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.green.withValues(alpha: 0.4),
+                      color: _primaryBlue.withValues(alpha: 0.4),
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
@@ -5959,16 +5941,16 @@ Shared via Weather Alert Pakistan
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      Icons.navigation,
+                      Icons.route,
                       color: Colors.white,
-                      size: 22,
+                      size: 20,
                     ),
                     SizedBox(width: 8),
                     Text(
-                      'Start Journey',
+                      'Route',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 15,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -5978,56 +5960,57 @@ Shared via Weather Alert Pakistan
             ),
           ),
 
-        // Bottom left - Timeline slider button (GREEN) - Above speedometer
-        Positioned(
-          bottom: _showTimelineSlider ? 200 : (_isNavigating ? 185 : 16),
-          left: 24,
-          child: GestureDetector(
-            onTap: () {
-              setState(() {
-                _showTimelineSlider = !_showTimelineSlider;
-                if (_showTimelineSlider) {
-                  _sliderValue = 0.0;
-                  _sliderPointIndex = 0;
-                } else {
-                  _stopSliderPlayback();
-                }
-              });
-            },
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: _showTimelineSlider
-                    ? Colors.green.shade700
-                    : Colors.green.shade600,
-                borderRadius: BorderRadius.circular(28),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.green.withValues(alpha: 0.4),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.timeline, color: Colors.white, size: 24),
-                  if (_showTimelineSlider) ...[
-                    const SizedBox(width: 8),
-                    const Text(
-                      'Close',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                      ),
+        // Bottom left - Timeline slider button (GREEN) - Only show when navigating
+        if (_isNavigating)
+          Positioned(
+            bottom: _showTimelineSlider ? 200 : 185,
+            left: 24,
+            child: GestureDetector(
+              onTap: () {
+                setState(() {
+                  _showTimelineSlider = !_showTimelineSlider;
+                  if (_showTimelineSlider) {
+                    _sliderValue = 0.0;
+                    _sliderPointIndex = 0;
+                  } else {
+                    _stopSliderPlayback();
+                  }
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: _showTimelineSlider
+                      ? Colors.green.shade700
+                      : Colors.green.shade600,
+                  borderRadius: BorderRadius.circular(28),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.green.withValues(alpha: 0.4),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
                     ),
                   ],
-                ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.timeline, color: Colors.white, size: 24),
+                    if (_showTimelineSlider) ...[
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Close',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ),
           ),
-        ),
 
         // Bottom right - Timeline list view button (visible during navigation too)
         if (!_showTimelineSlider)
