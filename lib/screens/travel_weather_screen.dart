@@ -5755,119 +5755,13 @@ Shared via Weather Alert Pakistan
             child: _buildRoadAlertsTicker(),
           ),
 
-        // Destination tile - Bottom Left above speedometer (when navigating)
+        // NAVIGATION BOTTOM BAR - Only during navigation
         if (_isNavigating)
           Positioned(
-            bottom: 210, // Above speedometer
+            bottom: 16,
             left: 16,
-            child: Builder(
-              builder: (context) {
-                // Calculate REMAINING distance from current position to destination
-                double remainingDistanceKm = _routeDistanceMeters / 1000;
-                int remainingSeconds = _routeDurationSeconds;
-
-                if (_routePoints.isNotEmpty && _currentPosition != null) {
-                  final nextIdx =
-                      _confirmedPointIndex.clamp(0, _routePoints.length - 1);
-                  final nextPoint = _routePoints[nextIdx];
-                  final lastPoint = _routePoints.last;
-
-                  final distToNextPoint = Geolocator.distanceBetween(
-                    _currentPosition!.latitude,
-                    _currentPosition!.longitude,
-                    nextPoint.point.lat,
-                    nextPoint.point.lon,
-                  );
-                  final distToNextKm = distToNextPoint / 1000;
-                  final roadDistToDestKm = (lastPoint.point.distanceFromStart -
-                          nextPoint.point.distanceFromStart)
-                      .abs();
-                  remainingDistanceKm = distToNextKm + roadDistToDestKm;
-                  final speedKmh = _currentSpeed > 5 ? _currentSpeed : 80;
-                  remainingSeconds =
-                      ((remainingDistanceKm / speedKmh) * 3600).round();
-                }
-
-                final distanceText = remainingDistanceKm >= 1
-                    ? '${remainingDistanceKm.toStringAsFixed(0)} km'
-                    : '${(remainingDistanceKm * 1000).toStringAsFixed(0)} m';
-
-                return Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        const Color(0xFF1E3A5F).withOpacity(0.95),
-                        const Color(0xFF0D2137).withOpacity(0.95),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: _orangeAccent.withOpacity(0.4),
-                      width: 1,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Destination icon and name
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.flag_rounded,
-                            color: _orangeAccent,
-                            size: 14,
-                          ),
-                          const SizedBox(width: 6),
-                          if (_routePoints.isNotEmpty)
-                            Text(
-                              _routePoints.last.point.name.length > 12
-                                  ? '${_routePoints.last.point.name.substring(0, 12)}...'
-                                  : _routePoints.last.point.name,
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.85),
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      // Distance
-                      Text(
-                        distanceText,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      // Time
-                      Text(
-                        _formatDuration(Duration(seconds: remainingSeconds)),
-                        style: TextStyle(
-                          color: _orangeAccent.withOpacity(0.9),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
+            right: 16,
+            child: _buildNavigationBottomBar(),
           ),
 
         // Top right - Distance, time, and destination badge (when NOT navigating)
@@ -5976,18 +5870,18 @@ Shared via Weather Alert Pakistan
         // Layer picker removed - not usable in current implementation
         // Left side space now empty for cleaner UI
 
-        // Speedometer widget (when navigating) - Bottom Left above green button
+        // Speedometer widget (when navigating) - Bottom Left below route slider button
         if (_isNavigating)
           Positioned(
-            bottom: 100, // Just above the green slider button
+            bottom: 90, // Below the route slider button
             left: 16,
             child: _buildSpeedometerWidget(),
           ),
 
-        // Recenter Button - Always visible above Start/Stop button
+        // Recenter/Follow Button - Always visible above Timeline button
         if (!_showTimelineSlider)
           Positioned(
-            bottom: 145,
+            bottom: _isNavigating ? 155 : 145,
             right: 16,
             child: GestureDetector(
               onTap: () => _recenterOnUser(true),
@@ -6016,7 +5910,7 @@ Shared via Weather Alert Pakistan
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      _isFollowingUser ? 'Following' : 'Recenter',
+                      _isFollowingUser ? 'Follow' : 'Recenter',
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
@@ -6029,42 +5923,39 @@ Shared via Weather Alert Pakistan
             ),
           ),
 
-        // Start/Stop Journey button
-        if (!_showTimelineSlider)
+        // Start Journey button (only when NOT navigating - Stop is in bottom bar)
+        if (!_showTimelineSlider && !_isNavigating)
           Positioned(
             bottom: 80,
             right: 16,
             child: GestureDetector(
-              onTap: _isNavigating ? _stopNavigation : _startNavigation,
+              onTap: _startNavigation,
               child: Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                 decoration: BoxDecoration(
-                  color: _isNavigating
-                      ? Colors.red.shade600
-                      : Colors.green.shade600,
+                  color: Colors.green.shade600,
                   borderRadius: BorderRadius.circular(28),
                   boxShadow: [
                     BoxShadow(
-                      color: (_isNavigating ? Colors.red : Colors.green)
-                          .withOpacity(0.4),
+                      color: Colors.green.withOpacity(0.4),
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
                   ],
                 ),
-                child: Row(
+                child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      _isNavigating ? Icons.stop : Icons.navigation,
+                      Icons.navigation,
                       color: Colors.white,
                       size: 22,
                     ),
-                    const SizedBox(width: 8),
+                    SizedBox(width: 8),
                     Text(
-                      _isNavigating ? 'Stop' : 'Start Journey',
-                      style: const TextStyle(
+                      'Start Journey',
+                      style: TextStyle(
                         color: Colors.white,
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
@@ -6076,10 +5967,10 @@ Shared via Weather Alert Pakistan
             ),
           ),
 
-        // Bottom left - Timeline slider button (GREEN)
+        // Bottom left - Timeline slider button (GREEN) - Above speedometer
         Positioned(
-          bottom: _showTimelineSlider ? 200 : 16,
-          left: 16,
+          bottom: _showTimelineSlider ? 200 : (_isNavigating ? 185 : 16),
+          left: 24,
           child: GestureDetector(
             onTap: () {
               setState(() {
@@ -6127,10 +6018,10 @@ Shared via Weather Alert Pakistan
           ),
         ),
 
-        // Bottom right - Timeline list view button
+        // Bottom right - Timeline list view button (visible during navigation too)
         if (!_showTimelineSlider)
           Positioned(
-            bottom: 16,
+            bottom: _isNavigating ? 100 : 16,
             right: 16,
             child: GestureDetector(
               onTap: () => setState(() => _currentView = 1),
@@ -6169,6 +6060,199 @@ Shared via Weather Alert Pakistan
         // Timeline slider overlay
         if (_showTimelineSlider) _buildTimelineSliderOverlay(),
       ],
+    );
+  }
+
+  /// Build the navigation bottom bar with destination, ETA, distance, and stop button
+  Widget _buildNavigationBottomBar() {
+    // Calculate REMAINING distance from current position to destination
+    double remainingDistanceKm = _routeDistanceMeters / 1000;
+    int remainingSeconds = _routeDurationSeconds;
+
+    if (_routePoints.isNotEmpty && _currentPosition != null) {
+      final nextIdx = _confirmedPointIndex.clamp(0, _routePoints.length - 1);
+      final nextPoint = _routePoints[nextIdx];
+      final lastPoint = _routePoints.last;
+
+      final distToNextPoint = Geolocator.distanceBetween(
+        _currentPosition!.latitude,
+        _currentPosition!.longitude,
+        nextPoint.point.lat,
+        nextPoint.point.lon,
+      );
+      final distToNextKm = distToNextPoint / 1000;
+      final roadDistToDestKm = (lastPoint.point.distanceFromStart -
+              nextPoint.point.distanceFromStart)
+          .abs();
+      remainingDistanceKm = distToNextKm + roadDistToDestKm;
+      final speedKmh = _currentSpeed > 5 ? _currentSpeed : 80;
+      remainingSeconds = ((remainingDistanceKm / speedKmh) * 3600).round();
+    }
+
+    // Format distance
+    final distanceText = remainingDistanceKm >= 1
+        ? '${remainingDistanceKm.toStringAsFixed(0)} km'
+        : '${(remainingDistanceKm * 1000).toStringAsFixed(0)} m';
+
+    // Calculate arrival time
+    final arrivalTime = DateTime.now().add(Duration(seconds: remainingSeconds));
+    final arrivalTimeText =
+        '${arrivalTime.hour.toString().padLeft(2, '0')}:${arrivalTime.minute.toString().padLeft(2, '0')}';
+
+    // Get destination name
+    String destinationName = 'Destination';
+    if (_routePoints.isNotEmpty) {
+      destinationName = _routePoints.last.point.name;
+      if (destinationName.length > 20) {
+        destinationName = '${destinationName.substring(0, 18)}...';
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: _cardDark.withOpacity(0.98),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: _borderColor,
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.4),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Destination flag icon
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: _orangeAccent.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              Icons.flag_rounded,
+              color: _orangeAccent,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Destination info
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Destination name
+                Text(
+                  destinationName,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                // Distance, duration, arrival time
+                Row(
+                  children: [
+                    // Distance
+                    Icon(
+                      Icons.straighten,
+                      color: Colors.white.withOpacity(0.7),
+                      size: 14,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      distanceText,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.9),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Duration
+                    Icon(
+                      Icons.timer_outlined,
+                      color: Colors.white.withOpacity(0.7),
+                      size: 14,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      _formatDuration(Duration(seconds: remainingSeconds)),
+                      style: TextStyle(
+                        color: _orangeAccent,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Arrival time
+                    Icon(
+                      Icons.access_time,
+                      color: Colors.white.withOpacity(0.7),
+                      size: 14,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      arrivalTimeText,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.9),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Stop button
+          GestureDetector(
+            onTap: _stopNavigation,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.red.shade600,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.red.withOpacity(0.4),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.stop,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                  SizedBox(width: 6),
+                  Text(
+                    'Stop',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -7776,7 +7860,7 @@ Shared via Weather Alert Pakistan
             child: _buildNextTollPlazaCard(),
           ),
 
-        // Route Info Card - Bottom (always visible)
+        // Destination Card - Bottom (always visible)
         Positioned(
           bottom: 16,
           left: 16,
@@ -7784,62 +7868,64 @@ Shared via Weather Alert Pakistan
           child: _buildRouteInfoCard(),
         ),
 
-        // Recenter Button - Above the route info card
-        Positioned(
-          bottom: 200,
-          left: 0,
-          right: 0,
-          child: Center(
-            child: GestureDetector(
-              onTap: () => _recenterOnUser(true),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  color: _isFollowingUser ? Colors.green : _orangeAccent,
-                  borderRadius: BorderRadius.circular(25),
-                  boxShadow: [
-                    BoxShadow(
-                      color: (_isFollowingUser ? Colors.green : _orangeAccent)
-                          .withOpacity(0.4),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      _isFollowingUser ? Icons.gps_fixed : Icons.my_location,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      _isFollowingUser ? 'Following' : 'Recenter',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
+        // Recenter Button - Only show during navigation
+        if (_isNavigating)
+          Positioned(
+            bottom: 100,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: GestureDetector(
+                onTap: () => _recenterOnUser(true),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: _isFollowingUser ? Colors.green : _orangeAccent,
+                    borderRadius: BorderRadius.circular(25),
+                    boxShadow: [
+                      BoxShadow(
+                        color: (_isFollowingUser ? Colors.green : _orangeAccent)
+                            .withOpacity(0.4),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _isFollowingUser ? Icons.gps_fixed : Icons.my_location,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _isFollowingUser ? 'Following' : 'Recenter',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
 
-        // START/STOP Navigation Button - Bottom Center
-        Positioned(
-          bottom: 145,
-          left: 0,
-          right: 0,
-          child: Center(
-            child: _buildStartStopButton(),
+        // START Navigation Button - Only show before navigation starts
+        if (!_isNavigating)
+          Positioned(
+            bottom: 110,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: _buildStartStopButton(),
+            ),
           ),
-        ),
 
         // Off-route warning indicator
         if (_isNavigating && _isOffRoute)
@@ -8486,13 +8572,8 @@ Shared via Weather Alert Pakistan
   }
 
   Widget _buildRouteInfoCard() {
-    final startPoint = _fromId == null
-        ? 'Current Location'
-        : _currentMotorwayPoints
-            .firstWhere((p) => p.id == _fromId,
-                orElse: () => _currentMotorwayPoints.first)
-            .name;
-    final endPoint = _toId == null
+    // Get destination name
+    final destinationName = _toId == null
         ? 'Destination'
         : _currentMotorwayPoints
             .firstWhere((p) => p.id == _toId,
@@ -8507,144 +8588,214 @@ Shared via Weather Alert Pakistan
             ? _formatDuration(_routePoints.last.etaFromStart!)
             : '--';
 
+    // Calculate arrival time
+    final arrivalTime =
+        _routePoints.isNotEmpty && _routePoints.last.etaFromStart != null
+            ? DateTime.now().add(_routePoints.last.etaFromStart!)
+            : null;
+    final arrivalTimeStr = arrivalTime != null
+        ? '${arrivalTime.hour.toString().padLeft(2, '0')}:${arrivalTime.minute.toString().padLeft(2, '0')}'
+        : '--:--';
+
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(20),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            color: _darkBlue.withOpacity(0.95),
-            borderRadius: BorderRadius.circular(16),
+            color: _cardDark.withOpacity(0.9),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.1),
+              width: 1,
+            ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 12,
-                offset: const Offset(0, -2),
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 20,
+                offset: const Offset(0, -4),
               ),
             ],
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Route points row
-              Row(
-                children: [
-                  // From
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: _accentBlue,
-                            shape: BoxShape.circle,
+          child: _isNavigating
+              // DURING NAVIGATION - Show navigation bar with stop button
+              ? Row(
+                  children: [
+                    // Destination info
+                    Expanded(
+                      child: Row(
+                        children: [
+                          // Flag icon
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade400,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.flag_rounded,
+                              color: Colors.white,
+                              size: 20,
+                            ),
                           ),
+                          const SizedBox(width: 12),
+                          // Destination name
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  destinationName,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Arriving at $arrivalTimeStr',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.6),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Distance & Time
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                      margin: const EdgeInsets.only(right: 10),
+                      decoration: BoxDecoration(
+                        color: _primaryBlue.withOpacity(0.25),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '$totalDistance km',
+                            style: TextStyle(
+                              color: _accentBlue,
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            totalEta,
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.7),
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Stop button
+                    GestureDetector(
+                      onTap: _stopNavigation,
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade500,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.red.withOpacity(0.4),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            startPoint,
+                        child: const Icon(
+                          Icons.stop_rounded,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              // BEFORE NAVIGATION - Show destination card
+              : Row(
+                  children: [
+                    // Destination icon
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade400,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.flag_rounded,
+                        color: Colors.white,
+                        size: 22,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    // Destination name and ETA
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            destinationName,
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.2,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Arrow
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Icon(Icons.arrow_forward,
-                        color: Colors.white54, size: 18),
-                  ),
-                  // To
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: Colors.green.shade400,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            endPoint,
-                            style: const TextStyle(
-                              color: Colors.white,
+                          const SizedBox(height: 4),
+                          Text(
+                            'ETA: $totalEta',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.7),
                               fontSize: 13,
-                              fontWeight: FontWeight.w500,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
                           ),
+                        ],
+                      ),
+                    ),
+                    // Distance badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: _primaryBlue.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: _accentBlue.withOpacity(0.4),
+                          width: 1,
                         ),
-                      ],
+                      ),
+                      child: Text(
+                        '$totalDistance km',
+                        style: TextStyle(
+                          color: _accentBlue,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              // Stats row
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _buildRouteInfoStat(
-                      Icons.route, '$totalDistance km', 'Distance'),
-                  Container(width: 1, height: 30, color: Colors.white24),
-                  _buildRouteInfoStat(Icons.access_time, totalEta, 'ETA'),
-                  Container(width: 1, height: 30, color: Colors.white24),
-                  _buildRouteInfoStat(Icons.location_on,
-                      '${_routePoints.length - _currentPointIndex}', 'Left'),
-                ],
-              ),
-              const SizedBox(height: 12),
-              // Navigation Start/Stop Button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    if (_isNavigating) {
-                      _stopNavigation();
-                    } else {
-                      _startNavigation();
-                    }
-                  },
-                  icon: Icon(
-                    _isNavigating ? Icons.stop : Icons.navigation,
-                    size: 20,
-                  ),
-                  label: Text(
-                    _isNavigating ? 'Stop Navigation' : 'Start Navigation',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _isNavigating
-                        ? Colors.red.shade400
-                        : Colors.green.shade400,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
+                  ],
                 ),
-              ),
-            ],
-          ),
         ),
       ),
     );
