@@ -5874,7 +5874,7 @@ Shared via Weather Alert Pakistan
         // Recenter/Follow Button - Always visible above Timeline button
         if (!_showTimelineSlider)
           Positioned(
-            bottom: _isNavigating ? 155 : 145,
+            bottom: _isNavigating ? 210 : 80,
             right: 16,
             child: GestureDetector(
               onTap: () => _recenterOnUser(true),
@@ -5919,7 +5919,7 @@ Shared via Weather Alert Pakistan
         // Route Tracker button (only when navigating) - Shows entire route on map
         if (_isNavigating && !_showTimelineSlider)
           Positioned(
-            bottom: 80,
+            bottom: 155,
             right: 16,
             child: GestureDetector(
               onTap: _showEntireRoute,
@@ -5964,7 +5964,7 @@ Shared via Weather Alert Pakistan
         if (_isNavigating)
           Positioned(
             bottom: _showTimelineSlider ? 200 : 185,
-            left: 24,
+            left: 26,
             child: GestureDetector(
               onTap: () {
                 setState(() {
