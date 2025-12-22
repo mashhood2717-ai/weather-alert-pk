@@ -690,7 +690,9 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       if (!mounted ||
           !_isNavigating ||
           !_isFollowingUser ||
-          _mapController == null) return;
+          _mapController == null) {
+        return;
+      }
 
       final now = DateTime.now();
       final dt = _lastTickTime != null
@@ -816,7 +818,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
         rotation: _isNavigating ? _displayBearing : 0,
         anchor: const Offset(0.5, 0.5),
         flat: _isNavigating,
-        zIndex: 100,
+        zIndexInt: 100,
       ),
     );
 
@@ -1970,7 +1972,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.2),
+                color: Colors.green.withValues(alpha: 0.2),
                 shape: BoxShape.circle,
               ),
               child:
@@ -2000,7 +2002,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
             Text(
               'Thanks for using Weather Alert PK',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withValues(alpha: 0.7),
                 fontSize: 14,
               ),
               textAlign: TextAlign.center,
@@ -2116,7 +2118,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
 
     // Outer glow
     final glowPaint = Paint()
-      ..color = const Color(0xFF4285F4).withOpacity(0.3)
+      ..color = const Color(0xFF4285F4).withValues(alpha: 0.3)
       ..style = PaintingStyle.fill;
     canvas.drawCircle(const Offset(size / 2, size / 2), size / 2, glowPaint);
 
@@ -2152,7 +2154,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
 
       // Draw outer glow circle
       final glowPaint = Paint()
-        ..color = const Color(0xFF4285F4).withOpacity(0.2)
+        ..color = const Color(0xFF4285F4).withValues(alpha: 0.2)
         ..style = PaintingStyle.fill;
       canvas.drawCircle(const Offset(size / 2, size / 2), size / 2, glowPaint);
 
@@ -2528,7 +2530,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
           infoWindow: InfoWindow(
             title: tp.point.name,
             snippet:
-                '${temp}°C - $condition${visibility != null ? ' • Vis: $visibility' : ''}${hasMetar ? ' (METAR)' : ''}',
+                '$temp°C - $condition${visibility != null ? ' • Vis: $visibility' : ''}${hasMetar ? ' (METAR)' : ''}',
           ),
           onTap: () => _showPointDetails(tp),
         ),
@@ -2588,7 +2590,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
           anchor: const Offset(0.5, 0.5),
           flat:
               _isNavigating, // Flat when navigating - arrow points in direction of travel
-          zIndex: 100,
+          zIndexInt: 100,
         ),
       );
     }
@@ -2669,7 +2671,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
           Polyline(
             polylineId: const PolylineId('route_fallback'),
             points: straightPoints,
-            color: _primaryBlue.withOpacity(0.7),
+            color: _primaryBlue.withValues(alpha: 0.7),
             width: 4,
             patterns: [
               PatternItem.dash(20),
@@ -2860,7 +2862,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.4),
+            color: Colors.black.withValues(alpha: 0.4),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -2895,7 +2897,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                           ? 'Search starting point...'
                           : 'Search destination...',
                       hintStyle:
-                          TextStyle(color: Colors.white.withOpacity(0.4)),
+                          TextStyle(color: Colors.white.withValues(alpha: 0.4)),
                       border: InputBorder.none,
                       isDense: true,
                       contentPadding: EdgeInsets.zero,
@@ -2915,7 +2917,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                   child: Container(
                     padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
+                      color: Colors.white.withValues(alpha: 0.1),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(Icons.close,
@@ -2939,7 +2941,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
               subtitle: Text(
                 'Use GPS',
                 style: TextStyle(
-                    color: Colors.white.withOpacity(0.5), fontSize: 12),
+                    color: Colors.white.withValues(alpha: 0.5), fontSize: 12),
               ),
               onTap: () {
                 setState(() {
@@ -2964,7 +2966,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      color: _getPointColor(point.type).withOpacity(0.15),
+                      color: _getPointColor(point.type).withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(
@@ -2981,11 +2983,12 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                   subtitle: Text(
                     '${point.distanceFromStart.toStringAsFixed(0)} km from Islamabad',
                     style: TextStyle(
-                        color: Colors.white.withOpacity(0.5), fontSize: 12),
+                        color: Colors.white.withValues(alpha: 0.5),
+                        fontSize: 12),
                   ),
                   trailing: Icon(
                     Icons.arrow_forward_ios,
-                    color: Colors.white.withOpacity(0.3),
+                    color: Colors.white.withValues(alpha: 0.3),
                     size: 14,
                   ),
                   onTap: () {
@@ -3085,7 +3088,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                           ),
                         ),
                         Icon(Icons.keyboard_arrow_down,
-                            color: Colors.white.withOpacity(0.6), size: 20),
+                            color: Colors.white.withValues(alpha: 0.6),
+                            size: 20),
                       ],
                     ),
                   ),
@@ -3191,12 +3195,13 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.schedule,
-                            color: Colors.white.withOpacity(0.6), size: 16),
+                            color: Colors.white.withValues(alpha: 0.6),
+                            size: 16),
                         const SizedBox(width: 6),
                         Text(
                           'Departure: ',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.6),
+                            color: Colors.white.withValues(alpha: 0.6),
                             fontSize: 14,
                           ),
                         ),
@@ -3210,7 +3215,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                         ),
                         const SizedBox(width: 4),
                         Icon(Icons.keyboard_arrow_down,
-                            color: Colors.white.withOpacity(0.6), size: 18),
+                            color: Colors.white.withValues(alpha: 0.6),
+                            size: 18),
                       ],
                     ),
                   ),
@@ -3227,9 +3233,10 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.2),
+                        color: Colors.blue.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                        border: Border.all(
+                            color: Colors.blue.withValues(alpha: 0.3)),
                       ),
                       child: const Text(
                         'Reset to Now',
@@ -3421,9 +3428,10 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                 child: Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.12),
+                    color: Colors.white.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white.withOpacity(0.2)),
+                    border:
+                        Border.all(color: Colors.white.withValues(alpha: 0.2)),
                   ),
                   child: Column(
                     children: [
@@ -3431,7 +3439,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                       Container(
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.05),
+                          color: Colors.white.withValues(alpha: 0.05),
                           borderRadius: const BorderRadius.vertical(
                               top: Radius.circular(20)),
                         ),
@@ -3440,7 +3448,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: _accentBlue.withOpacity(0.3),
+                                color: _accentBlue.withValues(alpha: 0.3),
                                 shape: BoxShape.circle,
                               ),
                               child: const Icon(Icons.navigation,
@@ -3464,7 +3472,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                                         ? 'To $destinationName'
                                         : 'Select your destination above',
                                     style: TextStyle(
-                                      color: Colors.white.withOpacity(0.7),
+                                      color:
+                                          Colors.white.withValues(alpha: 0.7),
                                       fontSize: 14,
                                     ),
                                   ),
@@ -3567,7 +3576,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                                               '${point.distanceFromStart} km',
                                               style: TextStyle(
                                                 color: Colors.white
-                                                    .withOpacity(0.5),
+                                                    .withValues(alpha: 0.5),
                                                 fontSize: 11,
                                               ),
                                             ),
@@ -3592,14 +3601,14 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                                 Icon(
                                   Icons.route,
                                   size: 80,
-                                  color: Colors.white.withOpacity(0.2),
+                                  color: Colors.white.withValues(alpha: 0.2),
                                 ),
                                 const SizedBox(height: 16),
                                 Text(
                                   'Select a destination\nto see route preview',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
-                                    color: Colors.white.withOpacity(0.5),
+                                    color: Colors.white.withValues(alpha: 0.5),
                                     fontSize: 16,
                                   ),
                                 ),
@@ -3674,7 +3683,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
         Text(
           label,
           style: TextStyle(
-            color: Colors.white.withOpacity(0.6),
+            color: Colors.white.withValues(alpha: 0.6),
             fontSize: 12,
           ),
         ),
@@ -3722,7 +3731,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                 Text(
                   'Following your route',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.8),
+                    color: Colors.white.withValues(alpha: 0.8),
                     fontSize: 13,
                   ),
                 ),
@@ -3762,9 +3771,9 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
+              color: Colors.white.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withOpacity(0.2)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
             ),
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -3825,9 +3834,9 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white.withOpacity(0.2)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
@@ -3865,7 +3874,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                         Text(
                           '${motorway.subtitle} • ${motorway.distanceKm} km',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.7),
+                            color: Colors.white.withValues(alpha: 0.7),
                             fontSize: 11,
                           ),
                         ),
@@ -3910,11 +3919,11 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           color: isActive
-              ? Colors.white.withOpacity(0.2)
-              : Colors.white.withOpacity(0.1),
+              ? Colors.white.withValues(alpha: 0.2)
+              : Colors.white.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isActive ? _accentBlue : Colors.white.withOpacity(0.2),
+            color: isActive ? _accentBlue : Colors.white.withValues(alpha: 0.2),
           ),
         ),
         child: Row(
@@ -3928,7 +3937,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                   Text(
                     label,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.7),
+                      color: Colors.white.withValues(alpha: 0.7),
                       fontSize: 11,
                     ),
                   ),
@@ -3961,7 +3970,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       margin: const EdgeInsets.only(top: 8),
       constraints: const BoxConstraints(maxHeight: 200),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -3975,10 +3984,11 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
                 hintText: 'Search toll plaza...',
-                hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                hintStyle:
+                    TextStyle(color: Colors.white.withValues(alpha: 0.5)),
                 border: InputBorder.none,
-                prefixIcon:
-                    Icon(Icons.search, color: Colors.white.withOpacity(0.7)),
+                prefixIcon: Icon(Icons.search,
+                    color: Colors.white.withValues(alpha: 0.7)),
                 isDense: true,
               ),
               onChanged: (_) => setState(() {}),
@@ -4012,7 +4022,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                       dense: true,
                       leading: Icon(
                         _getPointIcon(point.type),
-                        color: Colors.white.withOpacity(0.8),
+                        color: Colors.white.withValues(alpha: 0.8),
                         size: 20,
                       ),
                       title: Text(
@@ -4022,7 +4032,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                       subtitle: Text(
                         '${point.distanceFromStart} km from ISB',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.6),
+                          color: Colors.white.withValues(alpha: 0.6),
                           fontSize: 11,
                         ),
                       ),
@@ -4069,8 +4079,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: _isDarkMode
-            ? Colors.white.withOpacity(0.15)
-            : _darkBlue.withOpacity(0.3),
+            ? Colors.white.withValues(alpha: 0.15)
+            : _darkBlue.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
@@ -4129,7 +4139,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
           boxShadow: isActive
               ? [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.15),
+                    color: Colors.black.withValues(alpha: 0.15),
                     blurRadius: 4,
                     offset: const Offset(0, 2),
                   ),
@@ -4144,7 +4154,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
               color: isActive
                   ? (_isDarkMode ? _primaryBlue : _darkBlue)
                   : (_isDarkMode
-                      ? Colors.white.withOpacity(0.8)
+                      ? Colors.white.withValues(alpha: 0.8)
                       : Colors.white),
               size: 18,
             ),
@@ -4155,7 +4165,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                 color: isActive
                     ? (_isDarkMode ? _primaryBlue : _darkBlue)
                     : (_isDarkMode
-                        ? Colors.white.withOpacity(0.9)
+                        ? Colors.white.withValues(alpha: 0.9)
                         : Colors.white),
                 fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
                 fontSize: 14,
@@ -4179,7 +4189,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
             child: Text(
               'Loading timeline weather data...',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.8),
+                color: Colors.white.withValues(alpha: 0.8),
                 fontSize: 16,
                 fontWeight: FontWeight.w500,
               ),
@@ -4198,9 +4208,9 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.1)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -4260,7 +4270,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
               width: width,
               height: height,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(value),
+                color: Colors.white.withValues(alpha: value),
                 borderRadius:
                     isCircle ? null : BorderRadius.circular(height / 2),
                 shape: isCircle ? BoxShape.circle : BoxShape.rectangle,
@@ -4278,7 +4288,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(Icons.error_outline,
-              color: Colors.white.withOpacity(0.7), size: 48),
+              color: Colors.white.withValues(alpha: 0.7), size: 48),
           const SizedBox(height: 16),
           Text(
             _error ?? 'An error occurred',
@@ -4291,7 +4301,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
             icon: const Icon(Icons.refresh),
             label: const Text('Retry'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white.withOpacity(0.2),
+              backgroundColor: Colors.white.withValues(alpha: 0.2),
               foregroundColor: Colors.white,
             ),
           ),
@@ -4334,9 +4344,9 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withOpacity(0.3)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
             ),
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -4347,7 +4357,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: _accentBlue.withOpacity(0.3),
+                        color: _accentBlue.withValues(alpha: 0.3),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
@@ -4401,7 +4411,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                               color: (_currentSpeed > 100
                                       ? Colors.red
                                       : Colors.green)
-                                  .withOpacity(0.3),
+                                  .withValues(alpha: 0.3),
                               blurRadius: 8,
                               offset: const Offset(0, 2),
                             ),
@@ -4438,7 +4448,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(0.3),
+                          color: Colors.green.withValues(alpha: 0.3),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Row(
@@ -4496,7 +4506,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                             ? [Colors.orange.shade300, Colors.orange.shade600]
                             : [
                                 _getPointColor(tp.point.type),
-                                _getPointColor(tp.point.type).withOpacity(0.7)
+                                _getPointColor(tp.point.type)
+                                    .withValues(alpha: 0.7)
                               ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
@@ -4505,7 +4516,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                   border: Border.all(color: Colors.white, width: 2.5),
                   boxShadow: [
                     BoxShadow(
-                      color: _getPointColor(tp.point.type).withOpacity(0.4),
+                      color:
+                          _getPointColor(tp.point.type).withValues(alpha: 0.4),
                       blurRadius: 6,
                       offset: const Offset(0, 2),
                     ),
@@ -4525,8 +4537,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        Colors.white.withOpacity(0.5),
-                        Colors.white.withOpacity(0.2),
+                        Colors.white.withValues(alpha: 0.5),
+                        Colors.white.withValues(alpha: 0.2),
                       ],
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
@@ -4552,17 +4564,17 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                       gradient: LinearGradient(
                         colors: isDestination
                             ? [
-                                Colors.green.withOpacity(0.25),
-                                Colors.green.withOpacity(0.1)
+                                Colors.green.withValues(alpha: 0.25),
+                                Colors.green.withValues(alpha: 0.1)
                               ]
                             : isServiceArea
                                 ? [
-                                    Colors.orange.withOpacity(0.2),
-                                    Colors.orange.withOpacity(0.08)
+                                    Colors.orange.withValues(alpha: 0.2),
+                                    Colors.orange.withValues(alpha: 0.08)
                                   ]
                                 : [
-                                    Colors.white.withOpacity(0.18),
-                                    Colors.white.withOpacity(0.08)
+                                    Colors.white.withValues(alpha: 0.18),
+                                    Colors.white.withValues(alpha: 0.08)
                                   ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
@@ -4570,10 +4582,10 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
                         color: isDestination
-                            ? Colors.green.withOpacity(0.4)
+                            ? Colors.green.withValues(alpha: 0.4)
                             : isServiceArea
-                                ? Colors.orange.withOpacity(0.3)
-                                : Colors.white.withOpacity(0.25),
+                                ? Colors.orange.withValues(alpha: 0.3)
+                                : Colors.white.withValues(alpha: 0.25),
                       ),
                     ),
                     padding: const EdgeInsets.all(14),
@@ -4587,7 +4599,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
                                 color: _getPointColor(tp.point.type)
-                                    .withOpacity(0.2),
+                                    .withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Icon(
@@ -4618,7 +4630,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                                       Text(
                                         '${tp.distanceFromUser} km',
                                         style: TextStyle(
-                                          color: Colors.white.withOpacity(0.7),
+                                          color: Colors.white
+                                              .withValues(alpha: 0.7),
                                           fontSize: 12,
                                         ),
                                       ),
@@ -4630,8 +4643,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                                         Text(
                                           _formatDuration(tp.etaFromStart!),
                                           style: TextStyle(
-                                            color:
-                                                Colors.white.withOpacity(0.7),
+                                            color: Colors.white
+                                                .withValues(alpha: 0.7),
                                             fontSize: 12,
                                           ),
                                         ),
@@ -4649,7 +4662,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 6, vertical: 3),
                                     decoration: BoxDecoration(
-                                      color: Colors.green.withOpacity(0.3),
+                                      color:
+                                          Colors.green.withValues(alpha: 0.3),
                                       borderRadius: BorderRadius.circular(6),
                                     ),
                                     child: Row(
@@ -4681,10 +4695,10 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 10, vertical: 6),
                             decoration: BoxDecoration(
-                              color: Colors.orange.withOpacity(0.15),
+                              color: Colors.orange.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                  color: Colors.orange.withOpacity(0.3)),
+                                  color: Colors.orange.withValues(alpha: 0.3)),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -4722,13 +4736,13 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                             decoration: BoxDecoration(
                               gradient: LinearGradient(
                                 colors: [
-                                  Colors.purple.withOpacity(0.2),
-                                  Colors.indigo.withOpacity(0.15),
+                                  Colors.purple.withValues(alpha: 0.2),
+                                  Colors.indigo.withValues(alpha: 0.15),
                                 ],
                               ),
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                  color: Colors.purple.withOpacity(0.3)),
+                                  color: Colors.purple.withValues(alpha: 0.3)),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -4751,7 +4765,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 4, vertical: 2),
                                     decoration: BoxDecoration(
-                                      color: Colors.white.withOpacity(0.1),
+                                      color:
+                                          Colors.white.withValues(alpha: 0.1),
                                       borderRadius: BorderRadius.circular(4),
                                     ),
                                     child: Text(
@@ -4831,7 +4846,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.08),
+            color: Colors.white.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
@@ -4855,7 +4870,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       margin: const EdgeInsets.only(right: 8),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -4919,7 +4934,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: Colors.white.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -4933,7 +4948,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
               Text(
                 label,
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.6),
+                  color: Colors.white.withValues(alpha: 0.6),
                   fontSize: 10,
                 ),
               ),
@@ -5019,8 +5034,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                       color: motorway.id == _selectedMotorwayId
                           ? _orangeAccent
                           : motorway.isCombined
-                              ? Colors.teal.withOpacity(0.2)
-                              : Colors.white.withOpacity(0.1),
+                              ? Colors.teal.withValues(alpha: 0.2)
+                              : Colors.white.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                       border: motorway.isCombined
                           ? Border.all(color: Colors.teal, width: 1)
@@ -5072,7 +5087,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                   subtitle: Text(
                     '${motorway.subtitle} • ${motorway.distanceKm} km',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
+                      color: Colors.white.withValues(alpha: 0.6),
                       fontSize: 12,
                     ),
                   ),
@@ -5123,7 +5138,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: menuSecondaryColor.withOpacity(0.3),
+                color: menuSecondaryColor.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -5196,9 +5211,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                   _isDarkMode = !_isDarkMode;
                   _userThemeOverride = _isDarkMode; // User manually set theme
                 });
-                // Update map style when theme changes
-                _mapController
-                    ?.setMapStyle(_isDarkMode ? _darkMapStyle : _lightMapStyle);
+                // Map style updates automatically via GoogleMap.style property
               },
             ),
             const SizedBox(height: 20),
@@ -5385,7 +5398,7 @@ Shared via Weather Alert Pakistan
             Text(
               motorway.subtitle,
               style: TextStyle(
-                color: Colors.white.withOpacity(0.6),
+                color: Colors.white.withValues(alpha: 0.6),
                 fontSize: 14,
               ),
             ),
@@ -5420,7 +5433,7 @@ Shared via Weather Alert Pakistan
           Text(
             label,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.7),
+              color: Colors.white.withValues(alpha: 0.7),
               fontSize: 14,
             ),
           ),
@@ -5469,7 +5482,7 @@ Shared via Weather Alert Pakistan
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [_primaryBlue.withOpacity(0.95), _darkBlue],
+            colors: [_primaryBlue.withValues(alpha: 0.95), _darkBlue],
           ),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
@@ -5484,7 +5497,7 @@ Shared via Weather Alert Pakistan
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.3),
+                  color: Colors.white.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -5514,7 +5527,7 @@ Shared via Weather Alert Pakistan
                       Text(
                         '${tp.distanceFromUser} km away',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.7),
+                          color: Colors.white.withValues(alpha: 0.7),
                         ),
                       ),
                     ],
@@ -5525,7 +5538,7 @@ Shared via Weather Alert Pakistan
                     padding:
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.3),
+                      color: Colors.green.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Row(
@@ -5544,7 +5557,7 @@ Shared via Weather Alert Pakistan
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.2),
+                  color: Colors.orange.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
@@ -5568,7 +5581,7 @@ Shared via Weather Alert Pakistan
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
+                  color: Colors.white.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
@@ -5643,7 +5656,7 @@ Shared via Weather Alert Pakistan
       return Center(
         child: Text(
           'Select a route to view on map',
-          style: TextStyle(color: Colors.white.withOpacity(0.6)),
+          style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
         ),
       );
     }
@@ -5667,6 +5680,7 @@ Shared via Weather Alert Pakistan
               target: LatLng(centerLat, centerLon),
               zoom: 7,
             ),
+            style: _isDarkMode ? _darkMapStyle : _lightMapStyle,
             markers: _buildAppleStyleMarkers(),
             polylines: {
               Polyline(
@@ -5682,9 +5696,6 @@ Shared via Weather Alert Pakistan
             },
             onMapCreated: (controller) {
               _mapController = controller;
-              // Set map style based on theme
-              controller
-                  .setMapStyle(_isDarkMode ? _darkMapStyle : _lightMapStyle);
 
               // If navigating, restart the map ticker and recenter on user
               if (_isNavigating && _currentPosition != null) {
@@ -5809,13 +5820,13 @@ Shared via Weather Alert Pakistan
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        const Color(0xFF1E3A5F).withOpacity(0.95),
-                        const Color(0xFF0D2137).withOpacity(0.95),
+                        const Color(0xFF1E3A5F).withValues(alpha: 0.95),
+                        const Color(0xFF0D2137).withValues(alpha: 0.95),
                       ],
                     ),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: _orangeAccent.withOpacity(0.3),
+                      color: _orangeAccent.withValues(alpha: 0.3),
                       width: 1,
                     ),
                   ),
@@ -5838,7 +5849,7 @@ Shared via Weather Alert Pakistan
                                   ? '${_routePoints.last.point.name.substring(0, 15)}...'
                                   : _routePoints.last.point.name,
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.9),
+                                color: Colors.white.withValues(alpha: 0.9),
                                 fontSize: 11,
                                 fontWeight: FontWeight.w500,
                               ),
@@ -5856,7 +5867,7 @@ Shared via Weather Alert Pakistan
                       Text(
                         _formatDuration(Duration(seconds: remainingSeconds)),
                         style: TextStyle(
-                          color: _orangeAccent.withOpacity(0.9),
+                          color: _orangeAccent.withValues(alpha: 0.9),
                           fontSize: 13,
                         ),
                       ),
@@ -5894,7 +5905,7 @@ Shared via Weather Alert Pakistan
                   boxShadow: [
                     BoxShadow(
                       color: (_isFollowingUser ? Colors.green : _orangeAccent)
-                          .withOpacity(0.4),
+                          .withValues(alpha: 0.4),
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
@@ -5938,7 +5949,7 @@ Shared via Weather Alert Pakistan
                   borderRadius: BorderRadius.circular(28),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.green.withOpacity(0.4),
+                      color: Colors.green.withValues(alpha: 0.4),
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
@@ -5992,7 +6003,7 @@ Shared via Weather Alert Pakistan
                 borderRadius: BorderRadius.circular(28),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.green.withOpacity(0.4),
+                    color: Colors.green.withValues(alpha: 0.4),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   ),
@@ -6033,7 +6044,7 @@ Shared via Weather Alert Pakistan
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
+                      color: Colors.black.withValues(alpha: 0.3),
                       blurRadius: 8,
                       offset: const Offset(0, 4),
                     ),
@@ -6111,7 +6122,7 @@ Shared via Weather Alert Pakistan
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: _cardDark.withOpacity(0.98),
+        color: _cardDark.withValues(alpha: 0.98),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: _borderColor,
@@ -6119,7 +6130,7 @@ Shared via Weather Alert Pakistan
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.4),
+            color: Colors.black.withValues(alpha: 0.4),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -6131,7 +6142,7 @@ Shared via Weather Alert Pakistan
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: _orangeAccent.withOpacity(0.2),
+              color: _orangeAccent.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
@@ -6164,14 +6175,14 @@ Shared via Weather Alert Pakistan
                     // Distance
                     Icon(
                       Icons.straighten,
-                      color: Colors.white.withOpacity(0.7),
+                      color: Colors.white.withValues(alpha: 0.7),
                       size: 14,
                     ),
                     const SizedBox(width: 4),
                     Text(
                       distanceText,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.9),
+                        color: Colors.white.withValues(alpha: 0.9),
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
                       ),
@@ -6180,7 +6191,7 @@ Shared via Weather Alert Pakistan
                     // Duration
                     Icon(
                       Icons.timer_outlined,
-                      color: Colors.white.withOpacity(0.7),
+                      color: Colors.white.withValues(alpha: 0.7),
                       size: 14,
                     ),
                     const SizedBox(width: 4),
@@ -6196,14 +6207,14 @@ Shared via Weather Alert Pakistan
                     // Arrival time
                     Icon(
                       Icons.access_time,
-                      color: Colors.white.withOpacity(0.7),
+                      color: Colors.white.withValues(alpha: 0.7),
                       size: 14,
                     ),
                     const SizedBox(width: 4),
                     Text(
                       arrivalTimeText,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.9),
+                        color: Colors.white.withValues(alpha: 0.9),
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
                       ),
@@ -6224,7 +6235,7 @@ Shared via Weather Alert Pakistan
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.red.withOpacity(0.4),
+                    color: Colors.red.withValues(alpha: 0.4),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -6341,7 +6352,7 @@ Shared via Weather Alert Pakistan
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
+                    color: Colors.black.withValues(alpha: 0.3),
                     blurRadius: 8,
                   ),
                 ],
@@ -6361,8 +6372,8 @@ Shared via Weather Alert Pakistan
                 end: Alignment.bottomCenter,
                 colors: [
                   Colors.transparent,
-                  Colors.black.withOpacity(0.7),
-                  Colors.black.withOpacity(0.95),
+                  Colors.black.withValues(alpha: 0.7),
+                  Colors.black.withValues(alpha: 0.95),
                 ],
                 stops: const [0.0, 0.2, 1.0],
               ),
@@ -6400,25 +6411,29 @@ Shared via Weather Alert Pakistan
                                 Row(
                                   children: [
                                     Icon(Icons.access_time,
-                                        color: Colors.white.withOpacity(0.6),
+                                        color:
+                                            Colors.white.withValues(alpha: 0.6),
                                         size: 14),
                                     const SizedBox(width: 4),
                                     Text(
                                       'Arrival: $timeStr',
                                       style: TextStyle(
-                                        color: Colors.white.withOpacity(0.7),
+                                        color:
+                                            Colors.white.withValues(alpha: 0.7),
                                         fontSize: 13,
                                       ),
                                     ),
                                     const SizedBox(width: 12),
                                     Icon(Icons.straighten,
-                                        color: Colors.white.withOpacity(0.6),
+                                        color:
+                                            Colors.white.withValues(alpha: 0.6),
                                         size: 14),
                                     const SizedBox(width: 4),
                                     Text(
                                       '${currentPoint.distanceFromUser} km',
                                       style: TextStyle(
-                                        color: Colors.white.withOpacity(0.7),
+                                        color:
+                                            Colors.white.withValues(alpha: 0.7),
                                         fontSize: 13,
                                       ),
                                     ),
@@ -6447,7 +6462,8 @@ Shared via Weather Alert Pakistan
                                         ? '${condition.substring(0, 18)}...'
                                         : condition,
                                     style: TextStyle(
-                                      color: Colors.white.withOpacity(0.7),
+                                      color:
+                                          Colors.white.withValues(alpha: 0.7),
                                       fontSize: 12,
                                     ),
                                   ),
@@ -6457,7 +6473,8 @@ Shared via Weather Alert Pakistan
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 4, vertical: 1),
                                       decoration: BoxDecoration(
-                                        color: Colors.blue.withOpacity(0.3),
+                                        color:
+                                            Colors.blue.withValues(alpha: 0.3),
                                         borderRadius: BorderRadius.circular(4),
                                       ),
                                       child: const Text(
@@ -6479,13 +6496,15 @@ Shared via Weather Alert Pakistan
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Icon(Icons.visibility,
-                                        color: Colors.teal.withOpacity(0.7),
+                                        color:
+                                            Colors.teal.withValues(alpha: 0.7),
                                         size: 12),
                                     const SizedBox(width: 4),
                                     Text(
                                       'Vis: $metarVisibility',
                                       style: TextStyle(
-                                          color: Colors.teal.withOpacity(0.8),
+                                          color: Colors.teal
+                                              .withValues(alpha: 0.8),
                                           fontSize: 11),
                                     ),
                                   ],
@@ -6555,7 +6574,7 @@ Shared via Weather Alert Pakistan
                           thumbShape: const RoundSliderThumbShape(
                               enabledThumbRadius: 10),
                           trackHeight: 6,
-                          overlayColor: Colors.green.withOpacity(0.2),
+                          overlayColor: Colors.green.withValues(alpha: 0.2),
                         ),
                         child: Slider(
                           value: _sliderValue,
@@ -6588,7 +6607,7 @@ Shared via Weather Alert Pakistan
                               child: Text(
                                 _routePoints.first.point.name,
                                 style: TextStyle(
-                                  color: Colors.white.withOpacity(0.5),
+                                  color: Colors.white.withValues(alpha: 0.5),
                                   fontSize: 11,
                                 ),
                                 overflow: TextOverflow.ellipsis,
@@ -6610,7 +6629,7 @@ Shared via Weather Alert Pakistan
                                       color: (_isSliderPlaying
                                               ? Colors.red
                                               : Colors.green)
-                                          .withOpacity(0.4),
+                                          .withValues(alpha: 0.4),
                                       blurRadius: 12,
                                       offset: const Offset(0, 4),
                                     ),
@@ -6630,7 +6649,7 @@ Shared via Weather Alert Pakistan
                               child: Text(
                                 _routePoints.last.point.name,
                                 style: TextStyle(
-                                  color: Colors.white.withOpacity(0.5),
+                                  color: Colors.white.withValues(alpha: 0.5),
                                   fontSize: 11,
                                 ),
                                 textAlign: TextAlign.end,
@@ -6716,7 +6735,7 @@ Shared via Weather Alert Pakistan
   Widget _buildWeatherDetail(IconData icon, String value, String label) {
     return Column(
       children: [
-        Icon(icon, color: Colors.white.withOpacity(0.7), size: 20),
+        Icon(icon, color: Colors.white.withValues(alpha: 0.7), size: 20),
         const SizedBox(height: 4),
         Text(
           value,
@@ -6729,7 +6748,7 @@ Shared via Weather Alert Pakistan
         Text(
           label,
           style: TextStyle(
-            color: Colors.white.withOpacity(0.5),
+            color: Colors.white.withValues(alpha: 0.5),
             fontSize: 11,
           ),
         ),
@@ -6754,7 +6773,8 @@ Shared via Weather Alert Pakistan
         ),
         boxShadow: [
           BoxShadow(
-            color: (isOverSpeed ? Colors.red : _orangeAccent).withOpacity(0.3),
+            color: (isOverSpeed ? Colors.red : _orangeAccent)
+                .withValues(alpha: 0.3),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -6804,7 +6824,7 @@ Shared via Weather Alert Pakistan
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.green.withOpacity(0.2),
+          color: Colors.green.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.green, width: 2),
         ),
@@ -6941,9 +6961,9 @@ Shared via Weather Alert Pakistan
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: _cardDark.withOpacity(0.95),
+        color: _cardDark.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _orangeAccent.withOpacity(0.3)),
+        border: Border.all(color: _orangeAccent.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -6982,7 +7002,7 @@ Shared via Weather Alert Pakistan
               Text(
                 '${distanceToNext.toStringAsFixed(1)} km',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha: 0.7),
                   fontSize: 13,
                 ),
               ),
@@ -7021,7 +7041,7 @@ Shared via Weather Alert Pakistan
                             ? '${displayCondition.substring(0, 25)}...'
                             : displayCondition,
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.7),
+                          color: Colors.white.withValues(alpha: 0.7),
                           fontSize: 11,
                         ),
                       ),
@@ -7031,7 +7051,7 @@ Shared via Weather Alert Pakistan
                           padding: const EdgeInsets.symmetric(
                               horizontal: 4, vertical: 1),
                           decoration: BoxDecoration(
-                            color: Colors.blue.withOpacity(0.3),
+                            color: Colors.blue.withValues(alpha: 0.3),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: const Text(
@@ -7057,12 +7077,14 @@ Shared via Weather Alert Pakistan
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(Icons.thermostat,
-                          color: Colors.orange.withOpacity(0.7), size: 14),
+                          color: Colors.orange.withValues(alpha: 0.7),
+                          size: 14),
                       const SizedBox(width: 4),
                       Text(
                         'Feels $feelsLike°',
                         style: TextStyle(
-                            color: Colors.white.withOpacity(0.8), fontSize: 11),
+                            color: Colors.white.withValues(alpha: 0.8),
+                            fontSize: 11),
                       ),
                     ],
                   ),
@@ -7071,21 +7093,23 @@ Shared via Weather Alert Pakistan
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(Icons.water_drop,
-                          color: Colors.blue.withOpacity(0.7), size: 14),
+                          color: Colors.blue.withValues(alpha: 0.7), size: 14),
                       const SizedBox(width: 4),
                       Text(
                         '$humidity%',
                         style: TextStyle(
-                            color: Colors.white.withOpacity(0.8), fontSize: 11),
+                            color: Colors.white.withValues(alpha: 0.8),
+                            fontSize: 11),
                       ),
                       const SizedBox(width: 8),
                       Icon(Icons.air,
-                          color: Colors.cyan.withOpacity(0.7), size: 14),
+                          color: Colors.cyan.withValues(alpha: 0.7), size: 14),
                       const SizedBox(width: 4),
                       Text(
                         '$windKph km/h',
                         style: TextStyle(
-                            color: Colors.white.withOpacity(0.8), fontSize: 11),
+                            color: Colors.white.withValues(alpha: 0.8),
+                            fontSize: 11),
                       ),
                     ],
                   ),
@@ -7095,12 +7119,13 @@ Shared via Weather Alert Pakistan
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.visibility,
-                            color: Colors.teal.withOpacity(0.7), size: 14),
+                            color: Colors.teal.withValues(alpha: 0.7),
+                            size: 14),
                         const SizedBox(width: 4),
                         Text(
                           '$visibility km',
                           style: TextStyle(
-                              color: Colors.white.withOpacity(0.8),
+                              color: Colors.white.withValues(alpha: 0.8),
                               fontSize: 11),
                         ),
                         const SizedBox(width: 4),
@@ -7108,7 +7133,7 @@ Shared via Weather Alert Pakistan
                           padding: const EdgeInsets.symmetric(
                               horizontal: 4, vertical: 1),
                           decoration: BoxDecoration(
-                            color: Colors.green.withOpacity(0.3),
+                            color: Colors.green.withValues(alpha: 0.3),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: const Text(
@@ -7132,9 +7157,9 @@ Shared via Weather Alert Pakistan
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: _orangeAccent.withOpacity(0.15),
+                color: _orangeAccent.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: _orangeAccent.withOpacity(0.3)),
+                border: Border.all(color: _orangeAccent.withValues(alpha: 0.3)),
               ),
               child: Row(
                 children: [
@@ -7152,7 +7177,7 @@ Shared via Weather Alert Pakistan
                   Text(
                     _getPrayerCountdown(),
                     style: TextStyle(
-                      color: _orangeAccent.withOpacity(0.9),
+                      color: _orangeAccent.withValues(alpha: 0.9),
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                     ),
@@ -7203,7 +7228,7 @@ Shared via Weather Alert Pakistan
           rotation: _displayBearing != 0 ? _displayBearing : _smoothedBearing,
           anchor: const Offset(0.5, 0.5),
           flat: true,
-          zIndex: 100,
+          zIndexInt: 100,
         ),
       );
     }
@@ -7245,7 +7270,7 @@ Shared via Weather Alert Pakistan
       return Center(
         child: Text(
           'No route data available',
-          style: TextStyle(color: Colors.white.withOpacity(0.6)),
+          style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
         ),
       );
     }
@@ -7300,7 +7325,7 @@ Shared via Weather Alert Pakistan
                 Text(
                   'Tap section for more details',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.5),
+                    color: Colors.white.withValues(alpha: 0.5),
                     fontSize: 13,
                   ),
                 ),
@@ -7439,10 +7464,13 @@ Shared via Weather Alert Pakistan
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: isNext ? _orangeAccent.withOpacity(0.15) : Colors.transparent,
+          color: isNext
+              ? _orangeAccent.withValues(alpha: 0.15)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
           border: isNext
-              ? Border.all(color: _orangeAccent.withOpacity(0.5), width: 1)
+              ? Border.all(
+                  color: _orangeAccent.withValues(alpha: 0.5), width: 1)
               : null,
         ),
         child: Row(
@@ -7529,7 +7557,7 @@ Shared via Weather Alert Pakistan
                       Text(
                         time,
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.7),
+                          color: Colors.white.withValues(alpha: 0.7),
                           fontSize: 12,
                         ),
                       ),
@@ -7537,8 +7565,8 @@ Shared via Weather Alert Pakistan
                         ' • $distanceDisplay',
                         style: TextStyle(
                           color: isNext
-                              ? _orangeAccent.withOpacity(0.8)
-                              : Colors.white.withOpacity(0.5),
+                              ? _orangeAccent.withValues(alpha: 0.8)
+                              : Colors.white.withValues(alpha: 0.5),
                           fontSize: 12,
                           fontWeight:
                               isNext ? FontWeight.w600 : FontWeight.normal,
@@ -7578,7 +7606,7 @@ Shared via Weather Alert Pakistan
                 boxShadow: isNext
                     ? [
                         BoxShadow(
-                            color: _orangeAccent.withOpacity(0.5),
+                            color: _orangeAccent.withValues(alpha: 0.5),
                             blurRadius: 8)
                       ]
                     : null,
@@ -7603,7 +7631,7 @@ Shared via Weather Alert Pakistan
                         ? '${condition.substring(0, 20)}...'
                         : condition,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
+                      color: Colors.white.withValues(alpha: 0.6),
                       fontSize: 11,
                     ),
                   ),
@@ -7630,7 +7658,7 @@ Shared via Weather Alert Pakistan
                         padding: const EdgeInsets.symmetric(
                             horizontal: 4, vertical: 1),
                         decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(0.3),
+                          color: Colors.green.withValues(alpha: 0.3),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: const Text(
@@ -7676,12 +7704,14 @@ Shared via Weather Alert Pakistan
       return isDay ? Icons.wb_cloudy : Icons.nights_stay;
     }
 
-    if (lower.contains('cloud') || lower.contains('overcast'))
+    if (lower.contains('cloud') || lower.contains('overcast')) {
       return Icons.cloud;
+    }
     if (lower.contains('rain') || lower.contains('drizzle')) return Icons.grain;
     if (lower.contains('snow') || lower.contains('sleet')) return Icons.ac_unit;
-    if (lower.contains('thunder') || lower.contains('storm'))
+    if (lower.contains('thunder') || lower.contains('storm')) {
       return Icons.flash_on;
+    }
     if (lower.contains('fog') || lower.contains('mist')) return Icons.blur_on;
     if (lower.contains('wind')) return Icons.air;
 
@@ -7755,6 +7785,7 @@ Shared via Weather Alert Pakistan
               target: LatLng(centerLat, centerLon),
               zoom: 7,
             ),
+            style: _isDarkMode ? _darkMapStyle : _lightMapStyle,
             markers: _markers,
             polylines: _polylines,
             onMapCreated: (controller) {
@@ -7886,7 +7917,7 @@ Shared via Weather Alert Pakistan
                     boxShadow: [
                       BoxShadow(
                         color: (_isFollowingUser ? Colors.green : _orangeAccent)
-                            .withOpacity(0.4),
+                            .withValues(alpha: 0.4),
                         blurRadius: 12,
                         offset: const Offset(0, 4),
                       ),
@@ -8036,7 +8067,7 @@ Shared via Weather Alert Pakistan
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.2),
+              color: Colors.black.withValues(alpha: 0.2),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
@@ -8110,7 +8141,7 @@ Shared via Weather Alert Pakistan
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.orange.withOpacity(0.4),
+            color: Colors.orange.withValues(alpha: 0.4),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -8172,7 +8203,7 @@ Shared via Weather Alert Pakistan
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.2),
+              color: Colors.black.withValues(alpha: 0.2),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
@@ -8206,8 +8237,8 @@ Shared via Weather Alert Pakistan
           borderRadius: BorderRadius.circular(30),
           boxShadow: [
             BoxShadow(
-              color:
-                  (_isNavigating ? Colors.red : _orangeAccent).withOpacity(0.4),
+              color: (_isNavigating ? Colors.red : _orangeAccent)
+                  .withValues(alpha: 0.4),
               blurRadius: 16,
               offset: const Offset(0, 4),
             ),
@@ -8249,11 +8280,11 @@ Shared via Weather Alert Pakistan
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.9),
+            color: Colors.white.withValues(alpha: 0.9),
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.15),
+                color: Colors.black.withValues(alpha: 0.15),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
               ),
@@ -8427,15 +8458,15 @@ Shared via Weather Alert Pakistan
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                Colors.indigo.withOpacity(0.85),
-                Colors.blue.shade800.withOpacity(0.85),
+                Colors.indigo.withValues(alpha: 0.85),
+                Colors.blue.shade800.withValues(alpha: 0.85),
               ],
             ),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withOpacity(0.3)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.3),
+                color: Colors.black.withValues(alpha: 0.3),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
@@ -8452,7 +8483,7 @@ Shared via Weather Alert Pakistan
                     width: 56,
                     height: 56,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
+                      color: Colors.white.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Center(
@@ -8505,8 +8536,8 @@ Shared via Weather Alert Pakistan
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
                       color: _currentSpeed > 100
-                          ? Colors.red.withOpacity(0.3)
-                          : Colors.green.withOpacity(0.3),
+                          ? Colors.red.withValues(alpha: 0.3)
+                          : Colors.green.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Column(
@@ -8538,7 +8569,7 @@ Shared via Weather Alert Pakistan
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.1),
+                    color: Colors.white.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(
@@ -8604,15 +8635,15 @@ Shared via Weather Alert Pakistan
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            color: _cardDark.withOpacity(0.9),
+            color: _cardDark.withValues(alpha: 0.9),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withValues(alpha: 0.1),
               width: 1,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.3),
+                color: Colors.black.withValues(alpha: 0.3),
                 blurRadius: 20,
                 offset: const Offset(0, -4),
               ),
@@ -8661,7 +8692,7 @@ Shared via Weather Alert Pakistan
                                 Text(
                                   'Arriving at $arrivalTimeStr',
                                   style: TextStyle(
-                                    color: Colors.white.withOpacity(0.6),
+                                    color: Colors.white.withValues(alpha: 0.6),
                                     fontSize: 12,
                                   ),
                                 ),
@@ -8677,7 +8708,7 @@ Shared via Weather Alert Pakistan
                           horizontal: 10, vertical: 6),
                       margin: const EdgeInsets.only(right: 10),
                       decoration: BoxDecoration(
-                        color: _primaryBlue.withOpacity(0.25),
+                        color: _primaryBlue.withValues(alpha: 0.25),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Column(
@@ -8694,7 +8725,7 @@ Shared via Weather Alert Pakistan
                           Text(
                             totalEta,
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.7),
+                              color: Colors.white.withValues(alpha: 0.7),
                               fontSize: 11,
                             ),
                           ),
@@ -8712,7 +8743,7 @@ Shared via Weather Alert Pakistan
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.red.withOpacity(0.4),
+                              color: Colors.red.withValues(alpha: 0.4),
                               blurRadius: 8,
                               offset: const Offset(0, 2),
                             ),
@@ -8766,7 +8797,7 @@ Shared via Weather Alert Pakistan
                           Text(
                             'ETA: $totalEta',
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.7),
+                              color: Colors.white.withValues(alpha: 0.7),
                               fontSize: 13,
                             ),
                           ),
@@ -8778,10 +8809,10 @@ Shared via Weather Alert Pakistan
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 8),
                       decoration: BoxDecoration(
-                        color: _primaryBlue.withOpacity(0.3),
+                        color: _primaryBlue.withValues(alpha: 0.3),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: _accentBlue.withOpacity(0.4),
+                          color: _accentBlue.withValues(alpha: 0.4),
                           width: 1,
                         ),
                       ),
@@ -8798,37 +8829,6 @@ Shared via Weather Alert Pakistan
                 ),
         ),
       ),
-    );
-  }
-
-  Widget _buildRouteInfoStat(IconData icon, String value, String label) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: _accentBlue, size: 16),
-            const SizedBox(width: 4),
-            Text(
-              value,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: TextStyle(
-            color: Colors.white.withOpacity(0.6),
-            fontSize: 11,
-          ),
-        ),
-      ],
     );
   }
 
@@ -9029,9 +9029,10 @@ Shared via Weather Alert Pakistan
       height: 36,
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.8),
+        color: Colors.black.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.orange.withOpacity(0.5), width: 1),
+        border:
+            Border.all(color: Colors.orange.withValues(alpha: 0.5), width: 1),
       ),
       child: Row(
         children: [
@@ -9039,7 +9040,7 @@ Shared via Weather Alert Pakistan
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10),
             decoration: BoxDecoration(
-              color: Colors.orange.withOpacity(0.2),
+              color: Colors.orange.withValues(alpha: 0.2),
               borderRadius:
                   const BorderRadius.horizontal(left: Radius.circular(7)),
             ),
@@ -9078,7 +9079,7 @@ Shared via Weather Alert Pakistan
                             Text(
                               '• ${alert.location}',
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.7),
+                                color: Colors.white.withValues(alpha: 0.7),
                                 fontSize: 12,
                               ),
                             ),
