@@ -850,6 +850,7 @@
             <button class="mobile-nav-btn active" onclick="scrollToSection('map')">📍 Map & Area</button>
             <button class="mobile-nav-btn" onclick="scrollToSection('alertForm')">⚠️ Send Alert</button>
             <button class="mobile-nav-btn" onclick="scrollToSection('roadAlerts')">🚗 Road Alerts</button>
+            <button class="mobile-nav-btn" onclick="scrollToSection('users')">👥 Users</button>
             <button class="mobile-nav-btn" onclick="scrollToSection('historyList')">📋 History</button>
         </div>
 
@@ -1088,6 +1089,16 @@
                         <input type="text" id="roadAlertLocation" placeholder="e.g., Near Bhera Interchange">
                     </div>
 
+                    <div class="form-group">
+                        <label>📅 Active From</label>
+                        <input type="datetime-local" id="roadAlertActiveFrom" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: #fff; padding: 10px;">
+                    </div>
+
+                    <div class="form-group">
+                        <label>📅 Active Until (Auto-deactivate after this time)</label>
+                        <input type="datetime-local" id="roadAlertActiveTill" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: #fff; padding: 10px;">
+                    </div>
+
                     <button class="btn btn-primary" onclick="sendRoadAlert()" style="background: linear-gradient(135deg, #ff9500, #ff6b00);">
                         <span>📢</span>
                         Send Road Alert
@@ -1102,6 +1113,84 @@
                             <p style="color: #666; font-size: 0.85rem; text-align: center; padding: 15px;">Loading...</p>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <!-- USERS SECTION -->
+            <div class="card" id="users" style="grid-column: 1 / -1;">
+                <div class="card-title">
+                    <span class="icon">👥</span>
+                    Registered Users
+                    <button onclick="loadUsers()" style="margin-left: auto; padding: 6px 12px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: #fff; cursor: pointer; font-size: 0.8rem;">
+                        🔄 Refresh
+                    </button>
+                </div>
+                
+                <!-- User Stats -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                    <div style="background: rgba(0, 217, 255, 0.1); border-radius: 10px; padding: 15px; text-align: center;">
+                        <div style="font-size: 2rem; font-weight: bold; color: #00d9ff;" id="totalUsersCount">0</div>
+                        <div style="font-size: 0.8rem; color: #888;">Total Users</div>
+                    </div>
+                    <div style="background: rgba(0, 255, 136, 0.1); border-radius: 10px; padding: 15px; text-align: center;">
+                        <div style="font-size: 2rem; font-weight: bold; color: #00ff88;" id="namedUsersCount">0</div>
+                        <div style="font-size: 0.8rem; color: #888;">Named Users</div>
+                    </div>
+                    <div style="background: rgba(255, 152, 0, 0.1); border-radius: 10px; padding: 15px; text-align: center;">
+                        <div style="font-size: 2rem; font-weight: bold; color: #FF9800;" id="guestUsersCount">0</div>
+                        <div style="font-size: 0.8rem; color: #888;">Guest Users</div>
+                    </div>
+                    <div style="background: rgba(156, 39, 176, 0.1); border-radius: 10px; padding: 15px; text-align: center;">
+                        <div style="font-size: 2rem; font-weight: bold; color: #9C27B0;" id="activeUsersCount">0</div>
+                        <div style="font-size: 0.8rem; color: #888;">Active (24h)</div>
+                    </div>
+                </div>
+                
+                <!-- Users Table -->
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+                                <th style="text-align: left; padding: 10px; color: #888;">Name</th>
+                                <th style="text-align: left; padding: 10px; color: #888;">Device</th>
+                                <th style="text-align: left; padding: 10px; color: #888;">Type</th>
+                                <th style="text-align: left; padding: 10px; color: #888;">Registered</th>
+                                <th style="text-align: left; padding: 10px; color: #888;">Last Active</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersTableBody">
+                            <tr><td colspan="5" style="text-align: center; padding: 20px; color: #666;">Loading users...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ALERT RECEIPTS SECTION -->
+            <div class="card" id="alertReceipts" style="grid-column: 1 / -1;">
+                <div class="card-title">
+                    <span class="icon">📬</span>
+                    Alert Receipts
+                    <button onclick="loadAlertReceipts()" style="margin-left: auto; padding: 6px 12px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: #fff; cursor: pointer; font-size: 0.8rem;">
+                        🔄 Refresh
+                    </button>
+                </div>
+                
+                <!-- Receipts Table -->
+                <div style="overflow-x: auto; max-height: 400px; overflow-y: auto;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                        <thead style="position: sticky; top: 0; background: #1a1a2e;">
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+                                <th style="text-align: left; padding: 10px; color: #888;">User</th>
+                                <th style="text-align: left; padding: 10px; color: #888;">Alert</th>
+                                <th style="text-align: left; padding: 10px; color: #888;">Type</th>
+                                <th style="text-align: left; padding: 10px; color: #888;">Received</th>
+                                <th style="text-align: left; padding: 10px; color: #888;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="receiptsTableBody">
+                            <tr><td colspan="5" style="text-align: center; padding: 20px; color: #666;">Loading receipts...</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -1954,6 +2043,8 @@
             const type = document.getElementById('roadAlertType').value;
             const motorwayId = document.getElementById('roadAlertMotorway').value || null;
             const location = document.getElementById('roadAlertLocation').value.trim() || null;
+            const activeFromInput = document.getElementById('roadAlertActiveFrom').value;
+            const activeTillInput = document.getElementById('roadAlertActiveTill').value;
 
             if (!message) {
                 showToast('Please enter an alert message', 'error');
@@ -1970,6 +2061,14 @@
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 };
 
+                // Add active time range if provided
+                if (activeFromInput) {
+                    alertData.activeFrom = new Date(activeFromInput).toISOString();
+                }
+                if (activeTillInput) {
+                    alertData.activeTill = new Date(activeTillInput).toISOString();
+                }
+
                 // Add geo data if available
                 if (roadAlertGeoData) {
                     alertData.geoData = roadAlertGeoData;
@@ -1982,6 +2081,8 @@
                 // Clear form
                 document.getElementById('roadAlertMessage').value = '';
                 document.getElementById('roadAlertLocation').value = '';
+                document.getElementById('roadAlertActiveFrom').value = '';
+                document.getElementById('roadAlertActiveTill').value = '';
                 clearRoadAlertMap();
                 
                 // Reload list
@@ -2210,11 +2311,166 @@
             document.getElementById('roadMapInfo').textContent = 'Click map to mark location';
         }
 
+        // ============ USERS MANAGEMENT ============
+        
+        async function loadUsers() {
+            const tbody = document.getElementById('usersTableBody');
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: #666;">Loading...</td></tr>';
+            
+            try {
+                const snapshot = await db.collection('users').orderBy('lastActive', 'desc').limit(100).get();
+                
+                let totalUsers = 0;
+                let namedUsers = 0;
+                let guestUsers = 0;
+                let activeUsers = 0;
+                const now = new Date();
+                const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+                
+                if (snapshot.empty) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: #666;">No users registered yet</td></tr>';
+                    updateUserStats(0, 0, 0, 0);
+                    return;
+                }
+                
+                let html = '';
+                snapshot.forEach(doc => {
+                    const user = doc.data();
+                    totalUsers++;
+                    
+                    if (user.isGuest) {
+                        guestUsers++;
+                    } else {
+                        namedUsers++;
+                    }
+                    
+                    const lastActive = user.lastActive?.toDate?.() || null;
+                    if (lastActive && lastActive > oneDayAgo) {
+                        activeUsers++;
+                    }
+                    
+                    const createdAt = user.createdAt?.toDate?.();
+                    const createdStr = createdAt ? formatDate(createdAt) : 'Unknown';
+                    const lastActiveStr = lastActive ? formatTimeAgo(lastActive) : 'Never';
+                    
+                    const typeColor = user.isGuest ? '#FF9800' : '#00ff88';
+                    const typeBg = user.isGuest ? 'rgba(255, 152, 0, 0.2)' : 'rgba(0, 255, 136, 0.2)';
+                    const typeLabel = user.isGuest ? 'Guest' : 'Named';
+                    
+                    html += `
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <td style="padding: 10px;">
+                                <div style="font-weight: 500; color: #fff;">${user.name || 'Unknown'}</div>
+                                <div style="font-size: 0.7rem; color: #666; margin-top: 2px;">${doc.id.substring(0, 20)}...</div>
+                            </td>
+                            <td style="padding: 10px; color: #aaa;">${user.deviceInfo || 'Unknown'}</td>
+                            <td style="padding: 10px;">
+                                <span style="padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; background: ${typeBg}; color: ${typeColor};">
+                                    ${typeLabel}
+                                </span>
+                            </td>
+                            <td style="padding: 10px; color: #888; font-size: 0.8rem;">${createdStr}</td>
+                            <td style="padding: 10px; color: #888; font-size: 0.8rem;">${lastActiveStr}</td>
+                        </tr>
+                    `;
+                });
+                
+                tbody.innerHTML = html;
+                updateUserStats(totalUsers, namedUsers, guestUsers, activeUsers);
+                
+            } catch (error) {
+                console.error('Error loading users:', error);
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: #F44336;">Error loading users</td></tr>';
+            }
+        }
+        
+        function updateUserStats(total, named, guest, active) {
+            document.getElementById('totalUsersCount').textContent = total;
+            document.getElementById('namedUsersCount').textContent = named;
+            document.getElementById('guestUsersCount').textContent = guest;
+            document.getElementById('activeUsersCount').textContent = active;
+        }
+        
+        async function loadAlertReceipts() {
+            const tbody = document.getElementById('receiptsTableBody');
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: #666;">Loading...</td></tr>';
+            
+            try {
+                const snapshot = await db.collection('alert_receipts').orderBy('receivedAt', 'desc').limit(100).get();
+                
+                if (snapshot.empty) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: #666;">No alert receipts yet</td></tr>';
+                    return;
+                }
+                
+                let html = '';
+                snapshot.forEach(doc => {
+                    const receipt = doc.data();
+                    
+                    const receivedAt = receipt.receivedAt?.toDate?.();
+                    const receivedStr = receivedAt ? formatTimeAgo(receivedAt) : 'Unknown';
+                    
+                    const statusColor = receipt.acknowledged ? '#00ff88' : '#FFC107';
+                    const statusBg = receipt.acknowledged ? 'rgba(0, 255, 136, 0.2)' : 'rgba(255, 193, 7, 0.2)';
+                    const statusLabel = receipt.acknowledged ? 'Read' : 'Delivered';
+                    
+                    html += `
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <td style="padding: 10px;">
+                                <div style="font-weight: 500; color: #fff;">${receipt.userName || 'Unknown'}</div>
+                                <div style="font-size: 0.7rem; color: #666; margin-top: 2px;">${receipt.userId?.substring(0, 15) || ''}...</div>
+                            </td>
+                            <td style="padding: 10px; color: #aaa; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                ${receipt.alertTitle || 'Unknown Alert'}
+                            </td>
+                            <td style="padding: 10px; color: #888; font-size: 0.8rem;">${receipt.alertType || 'N/A'}</td>
+                            <td style="padding: 10px; color: #888; font-size: 0.8rem;">${receivedStr}</td>
+                            <td style="padding: 10px;">
+                                <span style="padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; background: ${statusBg}; color: ${statusColor};">
+                                    ${statusLabel}
+                                </span>
+                            </td>
+                        </tr>
+                    `;
+                });
+                
+                tbody.innerHTML = html;
+                
+            } catch (error) {
+                console.error('Error loading alert receipts:', error);
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: #F44336;">Error loading receipts</td></tr>';
+            }
+        }
+        
+        function formatDate(date) {
+            return date.toLocaleDateString('en-PK', { 
+                day: 'numeric', 
+                month: 'short', 
+                year: 'numeric' 
+            });
+        }
+        
+        function formatTimeAgo(date) {
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+            
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins}m ago`;
+            if (diffHours < 24) return `${diffHours}h ago`;
+            if (diffDays < 7) return `${diffDays}d ago`;
+            return formatDate(date);
+        }
+
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', () => {
             initMap();
             loadAlertHistory();
             loadRoadAlerts();
+            loadUsers();
+            loadAlertReceipts();
             
             // Initialize road alert map after a slight delay (for DOM to be ready)
             setTimeout(() => {

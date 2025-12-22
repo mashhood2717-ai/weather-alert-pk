@@ -8695,6 +8695,17 @@ Shared via Weather Alert Pakistan
         debugPrint('🚗 Road alerts received: ${snapshot.docs.length}');
         final allAlerts = snapshot.docs.map((doc) {
           final data = doc.data();
+          
+          // Parse activeFrom and activeTill
+          DateTime? activeFrom;
+          DateTime? activeTill;
+          if (data['activeFrom'] != null) {
+            activeFrom = DateTime.tryParse(data['activeFrom'] as String);
+          }
+          if (data['activeTill'] != null) {
+            activeTill = DateTime.tryParse(data['activeTill'] as String);
+          }
+          
           return RoadAlert(
             id: doc.id,
             message: data['message'] ?? '',
@@ -8704,11 +8715,16 @@ Shared via Weather Alert Pakistan
             geoData: data['geoData'] as Map<String, dynamic>?,
             createdAt:
                 (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+            activeFrom: activeFrom,
+            activeTill: activeTill,
           );
         }).toList();
 
+        // Filter alerts by time range (activeFrom/activeTill)
+        final timeFilteredAlerts = allAlerts.where((alert) => alert.isCurrentlyActive).toList();
+
         // Filter alerts for current motorway
-        final filteredAlerts = allAlerts.where((alert) {
+        final filteredAlerts = timeFilteredAlerts.where((alert) {
           // If alert has no motorway specified, show on all routes
           if (alert.motorwayId == null || alert.motorwayId!.isEmpty) {
             return true;
@@ -8972,6 +8988,8 @@ class RoadAlert {
   final String? location;
   final Map<String, dynamic>? geoData;
   final DateTime createdAt;
+  final DateTime? activeFrom;
+  final DateTime? activeTill;
 
   RoadAlert({
     required this.id,
@@ -8981,7 +8999,26 @@ class RoadAlert {
     this.location,
     this.geoData,
     required this.createdAt,
+    this.activeFrom,
+    this.activeTill,
   });
+
+  /// Check if the alert is currently active based on time range
+  bool get isCurrentlyActive {
+    final now = DateTime.now();
+    
+    // If activeFrom is set and we're before it, not active
+    if (activeFrom != null && now.isBefore(activeFrom!)) {
+      return false;
+    }
+    
+    // If activeTill is set and we're past it, not active
+    if (activeTill != null && now.isAfter(activeTill!)) {
+      return false;
+    }
+    
+    return true;
+  }
 }
 
 /// Alert types for road conditions

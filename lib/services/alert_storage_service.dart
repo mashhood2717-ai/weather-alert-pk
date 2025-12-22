@@ -3,6 +3,7 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/weather_alert.dart';
+import 'user_service.dart';
 
 class AlertStorageService {
   static const String _alertsKey = 'weather_alerts';
@@ -14,11 +15,33 @@ class AlertStorageService {
   factory AlertStorageService() => _instance;
   AlertStorageService._internal();
 
+  /// Get the user-specific alerts key
+  String get _userAlertsKey {
+    final userId = UserService().userId;
+    if (userId.isNotEmpty) {
+      return '${_alertsKey}_$userId';
+    }
+    return _alertsKey;
+  }
+
   // ==================== ALERTS ====================
 
   Future<List<WeatherAlert>> getAlerts() async {
     final prefs = await SharedPreferences.getInstance();
-    final String? alertsJson = prefs.getString(_alertsKey);
+    
+    // Try user-specific key first, fall back to generic key
+    String? alertsJson = prefs.getString(_userAlertsKey);
+    
+    // If no user-specific alerts, check generic key and migrate
+    if (alertsJson == null) {
+      alertsJson = prefs.getString(_alertsKey);
+      
+      // Migrate existing alerts to user-specific key
+      if (alertsJson != null && _userAlertsKey != _alertsKey) {
+        await prefs.setString(_userAlertsKey, alertsJson);
+        print('📦 Migrated alerts to user-specific storage');
+      }
+    }
 
     if (alertsJson == null) return [];
 
@@ -39,15 +62,16 @@ class AlertStorageService {
     final isDuplicate = alerts.any((existing) {
       // Exact ID match
       if (existing.id == alert.id) return true;
-      
+
       // Same title, city, and within 1 hour
-      if (existing.title == alert.title && 
+      if (existing.title == alert.title &&
           existing.city == alert.city &&
           existing.severity == alert.severity) {
-        final timeDiff = alert.receivedAt.difference(existing.receivedAt).inMinutes.abs();
+        final timeDiff =
+            alert.receivedAt.difference(existing.receivedAt).inMinutes.abs();
         if (timeDiff < 60) return true;
       }
-      
+
       return false;
     });
 
@@ -63,7 +87,14 @@ class AlertStorageService {
     final trimmedAlerts = alerts.take(_maxAlerts).toList();
 
     final encoded = jsonEncode(trimmedAlerts.map((e) => e.toJson()).toList());
-    await prefs.setString(_alertsKey, encoded);
+    await prefs.setString(_userAlertsKey, encoded);
+    
+    // Record alert receipt to Firestore
+    await UserService().recordAlertReceived(
+      alertId: alert.id,
+      alertTitle: alert.title,
+      alertType: alert.severity ?? 'unknown',
+    );
   }
 
   Future<void> markAlertAsRead(String alertId) async {
@@ -78,7 +109,7 @@ class AlertStorageService {
     }).toList();
 
     final encoded = jsonEncode(updatedAlerts.map((e) => e.toJson()).toList());
-    await prefs.setString(_alertsKey, encoded);
+    await prefs.setString(_userAlertsKey, encoded);
   }
 
   Future<void> markAllAsRead() async {
@@ -89,7 +120,7 @@ class AlertStorageService {
         alerts.map((alert) => alert.copyWith(isRead: true)).toList();
 
     final encoded = jsonEncode(updatedAlerts.map((e) => e.toJson()).toList());
-    await prefs.setString(_alertsKey, encoded);
+    await prefs.setString(_userAlertsKey, encoded);
   }
 
   Future<void> deleteAlert(String alertId) async {
@@ -99,37 +130,38 @@ class AlertStorageService {
     alerts.removeWhere((alert) => alert.id == alertId);
 
     final encoded = jsonEncode(alerts.map((e) => e.toJson()).toList());
-    await prefs.setString(_alertsKey, encoded);
+    await prefs.setString(_userAlertsKey, encoded);
   }
 
   Future<void> clearAllAlerts() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_alertsKey);
+    await prefs.remove(_userAlertsKey);
   }
 
   /// Remove duplicate alerts from storage
   Future<void> removeDuplicates() async {
     final prefs = await SharedPreferences.getInstance();
     final alerts = await getAlerts();
-    
+
     final seen = <String>{};
     final uniqueAlerts = <WeatherAlert>[];
-    
+
     for (final alert in alerts) {
       // Create a key based on title, city, severity, and hour
-      final hourKey = '${alert.receivedAt.year}-${alert.receivedAt.month}-${alert.receivedAt.day}-${alert.receivedAt.hour}';
+      final hourKey =
+          '${alert.receivedAt.year}-${alert.receivedAt.month}-${alert.receivedAt.day}-${alert.receivedAt.hour}';
       final key = '${alert.title}_${alert.city}_${alert.severity}_$hourKey';
-      
+
       if (!seen.contains(key)) {
         seen.add(key);
         uniqueAlerts.add(alert);
       }
     }
-    
+
     if (uniqueAlerts.length < alerts.length) {
       print('Removed ${alerts.length - uniqueAlerts.length} duplicate alerts');
       final encoded = jsonEncode(uniqueAlerts.map((e) => e.toJson()).toList());
-      await prefs.setString(_alertsKey, encoded);
+      await prefs.setString(_userAlertsKey, encoded);
     }
   }
 

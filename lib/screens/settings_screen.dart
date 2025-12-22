@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../services/settings_service.dart';
+import '../services/user_service.dart';
 import '../utils/background_utils.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -131,6 +132,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // User Profile Section
+                _buildUserProfileCard(fg, tint),
+                const SizedBox(height: 24),
+
                 // Units Section
                 _buildSectionHeader('Units', Icons.straighten, fg),
                 const SizedBox(height: 12),
@@ -203,6 +208,137 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           child: child,
         ),
+      ),
+    );
+  }
+
+  Widget _buildUserProfileCard(Color fg, Color tint) {
+    final userService = UserService();
+    final userName = userService.userName;
+    final isGuest = userService.isGuest;
+
+    return _buildGlassCard(
+      tint: tint,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                // Avatar
+                Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: isGuest
+                          ? [Colors.grey, Colors.grey.shade600]
+                          : [Colors.blue, Colors.purple],
+                    ),
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  child: Center(
+                    child: Text(
+                      isGuest ? '👤' : userName.isNotEmpty ? userName[0].toUpperCase() : '?',
+                      style: const TextStyle(fontSize: 24),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                // Name and status
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        userName,
+                        style: TextStyle(
+                          color: fg,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: isGuest
+                              ? Colors.orange.withValues(alpha: 0.2)
+                              : Colors.green.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          isGuest ? 'Guest User' : 'Registered',
+                          style: TextStyle(
+                            color: isGuest ? Colors.orange : Colors.green,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Edit button
+                IconButton(
+                  icon: Icon(Icons.edit, color: fg.withValues(alpha: 0.7)),
+                  onPressed: () => _showEditNameDialog(fg, tint),
+                ),
+              ],
+            ),
+
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEditNameDialog(Color fg, Color tint) {
+    final controller = TextEditingController(text: UserService().userName == 'Guest' ? '' : UserService().userName);
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: widget.isDay ? Colors.white : const Color(0xFF1a1a2e),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          'Edit Your Name',
+          style: TextStyle(color: fg),
+        ),
+        content: TextField(
+          controller: controller,
+          style: TextStyle(color: fg),
+          decoration: InputDecoration(
+            hintText: 'Enter your name',
+            hintStyle: TextStyle(color: fg.withValues(alpha: 0.4)),
+            filled: true,
+            fillColor: tint.withValues(alpha: 0.3),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel', style: TextStyle(color: fg.withValues(alpha: 0.6))),
+          ),
+          TextButton(
+            onPressed: () async {
+              final name = controller.text.trim();
+              if (name.isNotEmpty && name.length >= 2) {
+                await UserService().setUserName(name);
+                if (mounted) {
+                  Navigator.pop(context);
+                  setState(() {}); // Refresh UI
+                }
+              }
+            },
+            child: const Text('Save', style: TextStyle(color: Colors.blue)),
+          ),
+        ],
       ),
     );
   }

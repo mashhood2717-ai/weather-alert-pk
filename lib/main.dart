@@ -9,6 +9,7 @@ import 'screens/admin_portal_screen.dart';
 import 'services/notification_service.dart';
 import 'services/weather_monitor_service.dart';
 import 'services/manual_alert_service.dart';
+import 'services/user_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,6 +18,9 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // Initialize user service (generates unique user ID)
+  await UserService().initialize();
 
   // Set up background message handler
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);

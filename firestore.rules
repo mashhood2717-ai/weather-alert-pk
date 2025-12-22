@@ -38,5 +38,15 @@ service cloud.firestore {
       // Only admin portal can write (for now allow all, add auth later)
       allow write: if true;
     }
+
+    // Users collection for user tracking
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+
+    // Alert receipts for tracking alert delivery
+    match /alert_receipts/{receiptId} {
+      allow read, write: if true;
+    }
   }
 }

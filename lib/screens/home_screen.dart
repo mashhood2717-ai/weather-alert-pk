@@ -18,6 +18,7 @@ import '../services/persistent_notification_service.dart';
 import '../services/prayer_service.dart';
 import '../services/widget_service.dart';
 import '../services/manual_alert_service.dart';
+import '../services/user_service.dart';
 import '../utils/background_utils.dart';
 import '../utils/wind_utils.dart';
 import '../widgets/current_weather_tile.dart';
@@ -768,6 +769,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final token = await NotificationService().getToken();
     final prefs = await SharedPreferences.getInstance();
     final deviceId = prefs.getString('device_id') ?? 'Not set';
+    final userService = UserService();
+    final userId = userService.userId;
+    final userName = userService.userName;
     final c = controller.current.value;
     final coords = controller.getCurrentCoordinates();
 
@@ -785,26 +789,31 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                    _debugSection('Device Info', [
+                    _debugSectionWithCopy('User Info', [
+                      'Name: $userName',
+                      'User ID: $userId',
+                    ], ctx),
+                    _debugSectionWithCopy('Device Info', [
                       'Device ID: $deviceId',
                       'Is GPS Location: ${controller.isFromCurrentLocation}',
-                    ]),
-                    _debugSection(
+                    ], ctx),
+                    _debugSectionWithCopy(
                         'FCM Token',
                         [
                           token ?? 'No token',
                         ],
+                        ctx,
                         isMonospace: true),
-                    _debugSection('Location Data', [
+                    _debugSectionWithCopy('Location Data', [
                       'City: ${c?.city ?? "--"}',
                       'Lat: ${coords?.$1 ?? "--"}',
                       'Lon: ${coords?.$2 ?? "--"}',
                       'Street: ${c?.streetAddress ?? "--"}',
-                    ]),
-                    _debugSection('Weather Source', [
+                    ], ctx),
+                    _debugSectionWithCopy('Weather Source', [
                       'METAR Applied: ${controller.metarApplied}',
                       'Last City Searched: ${controller.lastCitySearched ?? "--"}',
-                    ]),
+                    ], ctx),
                     const Divider(),
                     const Text('📍 Motorway Testing Tips:',
                         style: TextStyle(
@@ -823,6 +832,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 TextButton(
                     onPressed: () {
                       final debugText = '''
+User: $userName
+User ID: $userId
 Device ID: $deviceId
 FCM Token: $token
 City: ${c?.city}
@@ -843,16 +854,43 @@ Is GPS: ${controller.isFromCurrentLocation}
             ));
   }
 
-  Widget _debugSection(String title, List<String> lines,
+  Widget _debugSectionWithCopy(String title, List<String> lines, BuildContext ctx,
       {bool isMonospace = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title,
-              style:
-                  const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(title,
+                  style:
+                      const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              InkWell(
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: lines.join('\n')));
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                      SnackBar(content: Text('$title copied!'), duration: const Duration(seconds: 1)));
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.deepPurple.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.copy, size: 12, color: Colors.deepPurple),
+                      SizedBox(width: 4),
+                      Text('Copy', style: TextStyle(fontSize: 10, color: Colors.deepPurple)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 4),
           Container(
             width: double.infinity,
