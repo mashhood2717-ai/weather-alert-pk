@@ -5,6 +5,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -416,7 +417,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   void _onWeatherDataLoaded() {
-    _updateWindy();
+    if (!kIsWeb) _updateWindy();
     _checkIfFavorite();
     // Fetch AQI data for current location
     final coords = controller.getCurrentCoordinates();
@@ -993,6 +994,7 @@ Is GPS: ${controller.isFromCurrentLocation}
   }
 
   void _updateWindy() {
+    if (kIsWeb) return; // WebView not supported on web
     double lat = 30.0, lon = 70.0;
     final coords = controller.getCurrentCoordinates();
     if (coords != null) {
@@ -1991,6 +1993,18 @@ Is GPS: ${controller.isFromCurrentLocation}
   }
 
   Widget _buildWindyTab() {
+    if (kIsWeb) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32.0),
+          child: Text(
+            'Windy map is not available on web.\nPlease use the mobile app.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 16, color: Colors.grey),
+          ),
+        ),
+      );
+    }
     if (windy == null) _updateWindy();
     if (windy == null) return const Center(child: CircularProgressIndicator());
     return WebViewWidget(controller: windy!);
