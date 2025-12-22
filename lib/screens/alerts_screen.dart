@@ -81,6 +81,10 @@ class _AlertsScreenState extends State<AlertsScreen>
 
   Future<void> _loadData() async {
     setState(() => _loading = true);
+    
+    // Clean up any existing duplicates first
+    await _storage.removeDuplicates();
+    
     final alerts = await _storage.getAlerts();
     final cities = await _storage.getSubscribedCities();
     final prefs = await SharedPreferences.getInstance();

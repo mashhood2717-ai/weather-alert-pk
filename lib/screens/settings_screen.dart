@@ -433,7 +433,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             icon: Icons.apps,
             iconColor: Colors.purple,
             title: 'App Version',
-            subtitle: '1.1.17',
+            subtitle: '1.1.18',
             fg: fg,
             showArrow: false,
           ),

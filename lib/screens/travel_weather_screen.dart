@@ -5728,8 +5728,26 @@ Shared via Weather Alert Pakistan
           ),
         ),
 
-        // Road alerts ticker at top
-        if (_roadAlerts.isNotEmpty)
+        // Next toll plaza weather card at TOP (when navigating)
+        if (_isNavigating)
+          Positioned(
+            top: 8,
+            right: 16,
+            left: 16,
+            child: _buildNextTollPlazaCard(),
+          ),
+
+        // Road alerts ticker below the main card (when navigating)
+        if (_roadAlerts.isNotEmpty && _isNavigating)
+          Positioned(
+            top: 165,
+            left: 0,
+            right: 0,
+            child: _buildRoadAlertsTicker(),
+          ),
+
+        // Road alerts ticker at top (when NOT navigating)
+        if (_roadAlerts.isNotEmpty && !_isNavigating)
           Positioned(
             top: 8,
             left: 0,
@@ -5737,95 +5755,223 @@ Shared via Weather Alert Pakistan
             child: _buildRoadAlertsTicker(),
           ),
 
-        // Top right - Distance, time, and destination badge (DYNAMIC GPS-based)
-        Positioned(
-          top: _roadAlerts.isNotEmpty ? 56 : 16,
-          right: 16,
-          child: Builder(
-            builder: (context) {
-              // Calculate REMAINING distance from current position to destination
-              // Uses: GPS to next point + road distance from next point to destination
-              double remainingDistanceKm = _routeDistanceMeters / 1000;
-              int remainingSeconds = _routeDurationSeconds;
+        // Destination tile - Bottom Left above speedometer (when navigating)
+        if (_isNavigating)
+          Positioned(
+            bottom: 210, // Above speedometer
+            left: 16,
+            child: Builder(
+              builder: (context) {
+                // Calculate REMAINING distance from current position to destination
+                double remainingDistanceKm = _routeDistanceMeters / 1000;
+                int remainingSeconds = _routeDurationSeconds;
 
-              if (_routePoints.isNotEmpty && _currentPosition != null) {
-                // Get the next point we're heading towards
-                final nextIdx =
-                    _confirmedPointIndex.clamp(0, _routePoints.length - 1);
-                final nextPoint = _routePoints[nextIdx];
-                final lastPoint = _routePoints.last;
+                if (_routePoints.isNotEmpty && _currentPosition != null) {
+                  final nextIdx =
+                      _confirmedPointIndex.clamp(0, _routePoints.length - 1);
+                  final nextPoint = _routePoints[nextIdx];
+                  final lastPoint = _routePoints.last;
 
-                // GPS distance from current position to the NEXT point
-                final distToNextPoint = Geolocator.distanceBetween(
-                  _currentPosition!.latitude,
-                  _currentPosition!.longitude,
-                  nextPoint.point.lat,
-                  nextPoint.point.lon,
-                );
-                final distToNextKm = distToNextPoint / 1000;
+                  final distToNextPoint = Geolocator.distanceBetween(
+                    _currentPosition!.latitude,
+                    _currentPosition!.longitude,
+                    nextPoint.point.lat,
+                    nextPoint.point.lon,
+                  );
+                  final distToNextKm = distToNextPoint / 1000;
+                  final roadDistToDestKm = (lastPoint.point.distanceFromStart -
+                          nextPoint.point.distanceFromStart)
+                      .abs();
+                  remainingDistanceKm = distToNextKm + roadDistToDestKm;
+                  final speedKmh = _currentSpeed > 5 ? _currentSpeed : 80;
+                  remainingSeconds =
+                      ((remainingDistanceKm / speedKmh) * 3600).round();
+                }
 
-                // Road distance from next point to destination
-                final roadDistToDestKm =
-                    (lastPoint.point.distanceFromStart -
-                            nextPoint.point.distanceFromStart)
-                        .abs();
+                final distanceText = remainingDistanceKm >= 1
+                    ? '${remainingDistanceKm.toStringAsFixed(0)} km'
+                    : '${(remainingDistanceKm * 1000).toStringAsFixed(0)} m';
 
-                // Total remaining = GPS to next + road to destination
-                remainingDistanceKm = distToNextKm + roadDistToDestKm;
-
-                // Estimate time based on current speed or average 80 km/h
-                final speedKmh = _currentSpeed > 5 ? _currentSpeed : 80;
-                remainingSeconds =
-                    ((remainingDistanceKm / speedKmh) * 3600).round();
-              }
-
-              final distanceText = remainingDistanceKm >= 1
-                  ? '${remainingDistanceKm.toStringAsFixed(0)} km'
-                  : '${(remainingDistanceKm * 1000).toStringAsFixed(0)} m';
-
-              return Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.7),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    // Destination name
-                    if (_routePoints.isNotEmpty)
+                return Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        const Color(0xFF1E3A5F).withOpacity(0.95),
+                        const Color(0xFF0D2137).withOpacity(0.95),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _orangeAccent.withOpacity(0.4),
+                      width: 1,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Destination icon and name
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.flag_rounded,
+                            color: _orangeAccent,
+                            size: 14,
+                          ),
+                          const SizedBox(width: 6),
+                          if (_routePoints.isNotEmpty)
+                            Text(
+                              _routePoints.last.point.name.length > 12
+                                  ? '${_routePoints.last.point.name.substring(0, 12)}...'
+                                  : _routePoints.last.point.name,
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.85),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      // Distance
                       Text(
-                        _routePoints.last.point.name.length > 15
-                            ? '${_routePoints.last.point.name.substring(0, 15)}...'
-                            : _routePoints.last.point.name,
+                        distanceText,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      // Time
+                      Text(
+                        _formatDuration(Duration(seconds: remainingSeconds)),
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.9),
-                          fontSize: 11,
+                          color: _orangeAccent.withOpacity(0.9),
+                          fontSize: 12,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
-                    Text(
-                      distanceText,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      _formatDuration(Duration(seconds: remainingSeconds)),
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.8),
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
+                    ],
+                  ),
+                );
+              },
+            ),
           ),
-        ),
+
+        // Top right - Distance, time, and destination badge (when NOT navigating)
+        if (!_isNavigating)
+          Positioned(
+            top: _roadAlerts.isNotEmpty ? 56 : 16,
+            right: 16,
+            child: Builder(
+              builder: (context) {
+                // Calculate REMAINING distance from current position to destination
+                double remainingDistanceKm = _routeDistanceMeters / 1000;
+                int remainingSeconds = _routeDurationSeconds;
+
+                if (_routePoints.isNotEmpty && _currentPosition != null) {
+                  final nextIdx =
+                      _confirmedPointIndex.clamp(0, _routePoints.length - 1);
+                  final nextPoint = _routePoints[nextIdx];
+                  final lastPoint = _routePoints.last;
+
+                  final distToNextPoint = Geolocator.distanceBetween(
+                    _currentPosition!.latitude,
+                    _currentPosition!.longitude,
+                    nextPoint.point.lat,
+                    nextPoint.point.lon,
+                  );
+                  final distToNextKm = distToNextPoint / 1000;
+                  final roadDistToDestKm = (lastPoint.point.distanceFromStart -
+                          nextPoint.point.distanceFromStart)
+                      .abs();
+                  remainingDistanceKm = distToNextKm + roadDistToDestKm;
+                  final speedKmh = _currentSpeed > 5 ? _currentSpeed : 80;
+                  remainingSeconds =
+                      ((remainingDistanceKm / speedKmh) * 3600).round();
+                }
+
+                final distanceText = remainingDistanceKm >= 1
+                    ? '${remainingDistanceKm.toStringAsFixed(0)} km'
+                    : '${(remainingDistanceKm * 1000).toStringAsFixed(0)} m';
+
+                return Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        const Color(0xFF1E3A5F).withOpacity(0.95),
+                        const Color(0xFF0D2137).withOpacity(0.95),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: _orangeAccent.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      // Destination name
+                      if (_routePoints.isNotEmpty)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.flag_rounded,
+                              color: _orangeAccent,
+                              size: 12,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              _routePoints.last.point.name.length > 15
+                                  ? '${_routePoints.last.point.name.substring(0, 15)}...'
+                                  : _routePoints.last.point.name,
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.9),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      Text(
+                        distanceText,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        _formatDuration(Duration(seconds: remainingSeconds)),
+                        style: TextStyle(
+                          color: _orangeAccent.withOpacity(0.9),
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
 
         // Layer picker removed - not usable in current implementation
         // Left side space now empty for cleaner UI
@@ -5836,15 +5982,6 @@ Shared via Weather Alert Pakistan
             bottom: 100, // Just above the green slider button
             left: 16,
             child: _buildSpeedometerWidget(),
-          ),
-
-        // Next toll plaza weather card (when navigating)
-        if (_isNavigating)
-          Positioned(
-            top: _roadAlerts.isNotEmpty ? 130 : 100,
-            right: 16,
-            left: 16,
-            child: _buildNextTollPlazaCard(),
           ),
 
         // Recenter Button - Always visible above Start/Stop button
@@ -8565,10 +8702,11 @@ Shared via Weather Alert Pakistan
             motorwayId: data['motorwayId'],
             location: data['location'],
             geoData: data['geoData'] as Map<String, dynamic>?,
-            createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+            createdAt:
+                (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
           );
         }).toList();
-        
+
         // Filter alerts for current motorway
         final filteredAlerts = allAlerts.where((alert) {
           // If alert has no motorway specified, show on all routes
@@ -8578,7 +8716,7 @@ Shared via Weather Alert Pakistan
           // Show alert only if it matches current selected motorway
           return alert.motorwayId == _selectedMotorwayId;
         }).toList();
-        
+
         // Further filter by geo intersection if route is loaded
         final routeFilteredAlerts = filteredAlerts.where((alert) {
           // If no geo data, show the alert
@@ -8586,16 +8724,17 @@ Shared via Weather Alert Pakistan
           // Check if alert intersects with current route
           return _alertIntersectsRoute(alert);
         }).toList();
-        
+
         // Sort by createdAt descending
         routeFilteredAlerts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-        
+
         setState(() {
           _roadAlerts = routeFilteredAlerts.take(10).toList();
         });
-        
-        debugPrint('🚗 Filtered alerts for $_selectedMotorwayId: ${_roadAlerts.length}');
-        
+
+        debugPrint(
+            '🚗 Filtered alerts for $_selectedMotorwayId: ${_roadAlerts.length}');
+
         // Start auto-scroll if we have alerts
         if (_roadAlerts.isNotEmpty) {
           _startTickerAutoScroll();
@@ -8615,18 +8754,21 @@ Shared via Weather Alert Pakistan
   /// Check if alert geo data intersects with current route
   bool _alertIntersectsRoute(RoadAlert alert) {
     if (alert.geoData == null || _routePoints.isEmpty) return true;
-    
+
     final geoType = alert.geoData!['type'] as String?;
-    
+
     if (geoType == 'point') {
       // Check if point is near any route point
       final lat = (alert.geoData!['lat'] as num?)?.toDouble();
       final lng = (alert.geoData!['lng'] as num?)?.toDouble();
       if (lat == null || lng == null) return true;
-      
+
       for (final tp in _routePoints) {
         final distance = Geolocator.distanceBetween(
-          lat, lng, tp.point.lat, tp.point.lon,
+          lat,
+          lng,
+          tp.point.lat,
+          tp.point.lon,
         );
         // Within 10km of any route point
         if (distance < 10000) return true;
@@ -8636,14 +8778,17 @@ Shared via Weather Alert Pakistan
       // Check if any line/polygon point is near route
       final points = alert.geoData!['points'] as List<dynamic>?;
       if (points == null || points.isEmpty) return true;
-      
+
       for (final point in points) {
         final lat = (point as List<dynamic>)[0] as double;
         final lng = point[1] as double;
-        
+
         for (final tp in _routePoints) {
           final distance = Geolocator.distanceBetween(
-            lat, lng, tp.point.lat, tp.point.lon,
+            lat,
+            lng,
+            tp.point.lat,
+            tp.point.lon,
           );
           // Within 10km of any route point
           if (distance < 10000) return true;
@@ -8651,7 +8796,7 @@ Shared via Weather Alert Pakistan
       }
       return false;
     }
-    
+
     return true; // Default show if unknown type
   }
 
@@ -8673,7 +8818,7 @@ Shared via Weather Alert Pakistan
   }
 
   bool _tickerScrollingForward = true;
-  
+
   /// Start auto-scrolling ticker animation - smooth right to left loop
   void _startTickerAutoScroll() {
     _tickerScrollTimer?.cancel();
@@ -8685,7 +8830,7 @@ Shared via Weather Alert Pakistan
 
       final maxScroll = _tickerScrollController.position.maxScrollExtent;
       final currentScroll = _tickerScrollController.offset;
-      
+
       if (maxScroll <= 0) return; // Nothing to scroll
 
       if (_tickerScrollingForward) {
@@ -8727,7 +8872,8 @@ Shared via Weather Alert Pakistan
             padding: const EdgeInsets.symmetric(horizontal: 10),
             decoration: BoxDecoration(
               color: Colors.orange.withOpacity(0.2),
-              borderRadius: const BorderRadius.horizontal(left: Radius.circular(7)),
+              borderRadius:
+                  const BorderRadius.horizontal(left: Radius.circular(7)),
             ),
             child: const Icon(Icons.campaign, color: Colors.orange, size: 18),
           ),

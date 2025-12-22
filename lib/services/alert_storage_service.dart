@@ -35,6 +35,27 @@ class AlertStorageService {
     final prefs = await SharedPreferences.getInstance();
     final alerts = await getAlerts();
 
+    // Check for duplicates - same id, or same title+city within last hour
+    final isDuplicate = alerts.any((existing) {
+      // Exact ID match
+      if (existing.id == alert.id) return true;
+      
+      // Same title, city, and within 1 hour
+      if (existing.title == alert.title && 
+          existing.city == alert.city &&
+          existing.severity == alert.severity) {
+        final timeDiff = alert.receivedAt.difference(existing.receivedAt).inMinutes.abs();
+        if (timeDiff < 60) return true;
+      }
+      
+      return false;
+    });
+
+    if (isDuplicate) {
+      print('Alert skipped (duplicate): ${alert.title} - ${alert.city}');
+      return;
+    }
+
     // Add new alert at the beginning
     alerts.insert(0, alert);
 
@@ -84,6 +105,32 @@ class AlertStorageService {
   Future<void> clearAllAlerts() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_alertsKey);
+  }
+
+  /// Remove duplicate alerts from storage
+  Future<void> removeDuplicates() async {
+    final prefs = await SharedPreferences.getInstance();
+    final alerts = await getAlerts();
+    
+    final seen = <String>{};
+    final uniqueAlerts = <WeatherAlert>[];
+    
+    for (final alert in alerts) {
+      // Create a key based on title, city, severity, and hour
+      final hourKey = '${alert.receivedAt.year}-${alert.receivedAt.month}-${alert.receivedAt.day}-${alert.receivedAt.hour}';
+      final key = '${alert.title}_${alert.city}_${alert.severity}_$hourKey';
+      
+      if (!seen.contains(key)) {
+        seen.add(key);
+        uniqueAlerts.add(alert);
+      }
+    }
+    
+    if (uniqueAlerts.length < alerts.length) {
+      print('Removed ${alerts.length - uniqueAlerts.length} duplicate alerts');
+      final encoded = jsonEncode(uniqueAlerts.map((e) => e.toJson()).toList());
+      await prefs.setString(_alertsKey, encoded);
+    }
   }
 
   Future<int> getUnreadCount() async {
