@@ -14,7 +14,7 @@ class DailyWeather {
   final int? precipitationProbability;
   final double? windGustsMax;
   final int? windDirectionDominant;
-  
+
   // Day/Night specific weather data
   final String? dayIcon;
   final String? dayCondition;

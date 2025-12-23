@@ -15,7 +15,12 @@ class WuWidget extends StatefulWidget {
   final double? userLon; // User's current longitude
 
   const WuWidget(
-      {super.key, required this.isDay, this.onDataLoaded, this.city, this.userLat, this.userLon});
+      {super.key,
+      required this.isDay,
+      this.onDataLoaded,
+      this.city,
+      this.userLat,
+      this.userLon});
 
   @override
   State<WuWidget> createState() => _WuWidgetState();
@@ -31,6 +36,7 @@ class _WuWidgetState extends State<WuWidget> {
   Map<String, Map<String, dynamic>> _stationInfo = {};
   // Track if user is within 5km radius of a station
   bool _isWithinRadius = false;
+  // ignore: unused_field
   String? _nearbyStationId;
   double? _nearbyStationDistance;
   // Track if we're scanning for nearby stations
@@ -55,8 +61,10 @@ class _WuWidgetState extends State<WuWidget> {
       _syncCityFromProp();
     }
     // If user location changed (e.g., current location button pressed), rescan
-    if ((oldWidget.userLat != widget.userLat || oldWidget.userLon != widget.userLon) &&
-        widget.userLat != null && widget.userLon != null) {
+    if ((oldWidget.userLat != widget.userLat ||
+            oldWidget.userLon != widget.userLon) &&
+        widget.userLat != null &&
+        widget.userLon != null) {
       _hasScannedForLocation = false;
       _scanForNearbyStation();
     }
@@ -106,7 +114,7 @@ class _WuWidgetState extends State<WuWidget> {
   Future<void> _autoLoadFirstStation(String city) async {
     final stations = wuStationsByCity[city];
     if (stations == null || stations.isEmpty) return;
-    
+
     final firstStationId = stations.first['id'];
     if (firstStationId != null) {
       setState(() {
@@ -143,19 +151,22 @@ class _WuWidgetState extends State<WuWidget> {
     if (widget.onDataLoaded != null) {
       widget.onDataLoaded!(res);
     }
-    
+
     // Check if user is within 5km radius of this station
     _checkProximityToStation(id, res);
   }
 
   /// Calculate distance between two coordinates using Haversine formula
-  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+  double _calculateDistance(
+      double lat1, double lon1, double lat2, double lon2) {
     const double earthRadius = 6371; // km
     final dLat = _toRadians(lat2 - lat1);
     final dLon = _toRadians(lon2 - lon1);
     final a = sin(dLat / 2) * sin(dLat / 2) +
-        cos(_toRadians(lat1)) * cos(_toRadians(lat2)) *
-        sin(dLon / 2) * sin(dLon / 2);
+        cos(_toRadians(lat1)) *
+            cos(_toRadians(lat2)) *
+            sin(dLon / 2) *
+            sin(dLon / 2);
     final c = 2 * atan2(sqrt(a), sqrt(1 - a));
     return earthRadius * c;
   }
@@ -163,21 +174,23 @@ class _WuWidgetState extends State<WuWidget> {
   double _toRadians(double deg) => deg * pi / 180;
 
   /// Check if user is within 5km of any loaded station
-  void _checkProximityToStation(String stationId, Map<String, dynamic>? stationData) {
-    if (widget.userLat == null || widget.userLon == null || stationData == null) return;
-    
+  void _checkProximityToStation(
+      String stationId, Map<String, dynamic>? stationData) {
+    if (widget.userLat == null || widget.userLon == null || stationData == null)
+      return;
+
     final stationLat = stationData['lat'] as num?;
     final stationLon = stationData['lon'] as num?;
-    
+
     if (stationLat == null || stationLon == null) return;
-    
+
     final distance = _calculateDistance(
       widget.userLat!,
       widget.userLon!,
       stationLat.toDouble(),
       stationLon.toDouble(),
     );
-    
+
     if (distance <= 5.0) {
       setState(() {
         _isWithinRadius = true;
@@ -193,18 +206,18 @@ class _WuWidgetState extends State<WuWidget> {
     if (widget.userLat == null || widget.userLon == null) return;
     if (_hasScannedForLocation) return;
     if (_scanningForNearby) return;
-    
+
     setState(() {
       _scanningForNearby = true;
       _loading = true;
     });
     _hasScannedForLocation = true;
-    
+
     double? minDistance;
     String? nearestStationId;
     String? nearestCity;
     Map<String, dynamic>? nearestStationData;
-    
+
     // First, check if we have a matching city
     String? matchedCity;
     if (widget.city != null) {
@@ -218,25 +231,25 @@ class _WuWidgetState extends State<WuWidget> {
         }
       }
     }
-    
+
     // If no matched city, scan all cities
-    final citiesToScan = matchedCity != null 
-        ? {matchedCity: wuStationsByCity[matchedCity]!} 
+    final citiesToScan = matchedCity != null
+        ? {matchedCity: wuStationsByCity[matchedCity]!}
         : wuStationsByCity;
-    
+
     // Iterate through cities and stations
     for (final cityEntry in citiesToScan.entries) {
       final city = cityEntry.key;
       final stations = cityEntry.value;
-      
+
       for (final station in stations) {
         final stationId = station['id'];
         if (stationId == null) continue;
-        
+
         // Fetch station data to get coordinates
         final stationData = await fetchWUCurrentByStation(stationId);
         if (!mounted) return;
-        
+
         if (stationData != null) {
           // Store station info for later use
           _stationInfo[stationId] = {
@@ -244,10 +257,10 @@ class _WuWidgetState extends State<WuWidget> {
             'lon': stationData['lon'],
             'neighborhood': stationData['neighborhood'],
           };
-          
+
           final stationLat = stationData['lat'] as num?;
           final stationLon = stationData['lon'] as num?;
-          
+
           if (stationLat != null && stationLon != null) {
             final distance = _calculateDistance(
               widget.userLat!,
@@ -255,8 +268,9 @@ class _WuWidgetState extends State<WuWidget> {
               stationLat.toDouble(),
               stationLon.toDouble(),
             );
-            
-            if (distance <= 5.0 && (minDistance == null || distance < minDistance)) {
+
+            if (distance <= 5.0 &&
+                (minDistance == null || distance < minDistance)) {
               minDistance = distance;
               nearestStationId = stationId;
               nearestCity = city;
@@ -265,14 +279,16 @@ class _WuWidgetState extends State<WuWidget> {
           }
         }
       }
-      
+
       // If we found a nearby station in matched city, stop scanning
       if (matchedCity != null && nearestStationId != null) break;
     }
-    
+
     if (!mounted) return;
-    
-    if (nearestStationId != null && nearestCity != null && nearestStationData != null) {
+
+    if (nearestStationId != null &&
+        nearestCity != null &&
+        nearestStationData != null) {
       setState(() {
         _isWithinRadius = true;
         _nearbyStationId = nearestStationId;
@@ -283,7 +299,7 @@ class _WuWidgetState extends State<WuWidget> {
         _scanningForNearby = false;
         _loading = false;
       });
-      
+
       if (widget.onDataLoaded != null) {
         widget.onDataLoaded!(nearestStationData);
       }
@@ -293,54 +309,6 @@ class _WuWidgetState extends State<WuWidget> {
         _scanningForNearby = false;
         _loading = false;
       });
-    }
-  }
-
-  /// Scan all stations to find nearest one within 5km (legacy - uses cached info only)
-  Future<void> _findNearbyStation() async {
-    if (widget.userLat == null || widget.userLon == null) return;
-    
-    double? minDistance;
-    String? nearestStationId;
-    String? nearestCity;
-    
-    // Iterate through all cities and stations
-    for (final cityEntry in wuStationsByCity.entries) {
-      final city = cityEntry.key;
-      final stations = cityEntry.value;
-      
-      for (final station in stations) {
-        final stationId = station['id'];
-        if (stationId == null) continue;
-        
-        // Check if we already have info for this station
-        final info = _stationInfo[stationId];
-        if (info != null && info['lat'] != null && info['lon'] != null) {
-          final distance = _calculateDistance(
-            widget.userLat!,
-            widget.userLon!,
-            (info['lat'] as num).toDouble(),
-            (info['lon'] as num).toDouble(),
-          );
-          
-          if (distance <= 5.0 && (minDistance == null || distance < minDistance)) {
-            minDistance = distance;
-            nearestStationId = stationId;
-            nearestCity = city;
-          }
-        }
-      }
-    }
-    
-    if (nearestStationId != null && nearestCity != null) {
-      setState(() {
-        _isWithinRadius = true;
-        _nearbyStationId = nearestStationId;
-        _nearbyStationDistance = minDistance;
-        _selectedCity = nearestCity;
-        _selectedStationId = nearestStationId;
-      });
-      await _loadStation(nearestStationId);
     }
   }
 
@@ -381,21 +349,22 @@ class _WuWidgetState extends State<WuWidget> {
     final temp = "${c['temp_c'] ?? '--'}°C";
     final feelsLike =
         "Feels like ${c['temp_c'] ?? '--'}°C"; // Using same temp as feels like since WU doesn't provide it
-    
+
     // Determine weather icon - show rain if rain rate > 0, otherwise borrow from main card
     final rainRate = c['rain_rate'];
     final hasRain = rainRate != null && rainRate is num && rainRate > 0;
-    final weatherIcon = hasRain 
-        ? Icons.water_drop_rounded 
+    final weatherIcon = hasRain
+        ? Icons.water_drop_rounded
         : (isDay ? Icons.wb_sunny_rounded : Icons.nightlight_round);
-    final iconColor = hasRain 
-        ? Colors.blue[400]! 
+    final iconColor = hasRain
+        ? Colors.blue[400]!
         : (isDay ? Colors.orange[400]! : Colors.amber[300]!);
 
     // Build proximity info text if within radius
-    final String? proximityText = _isWithinRadius && _nearbyStationDistance != null
-        ? '${_nearbyStationDistance!.toStringAsFixed(1)} km away'
-        : null;
+    final String? proximityText =
+        _isWithinRadius && _nearbyStationDistance != null
+            ? '${_nearbyStationDistance!.toStringAsFixed(1)} km away'
+            : null;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -448,7 +417,8 @@ class _WuWidgetState extends State<WuWidget> {
                       if (_isWithinRadius) ...[
                         const SizedBox(width: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: Colors.green.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(8),
@@ -456,7 +426,8 @@ class _WuWidgetState extends State<WuWidget> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.near_me, size: 10, color: Colors.green[400]),
+                              Icon(Icons.near_me,
+                                  size: 10, color: Colors.green[400]),
                               const SizedBox(width: 3),
                               Text(
                                 'Nearby',
@@ -474,7 +445,9 @@ class _WuWidgetState extends State<WuWidget> {
                   ),
                   const SizedBox(height: 1),
                   Text(
-                    proximityText != null ? '$stationId • $proximityText' : stationId,
+                    proximityText != null
+                        ? '$stationId • $proximityText'
+                        : stationId,
                     style: TextStyle(
                       fontSize: 11,
                       color: fg.withValues(alpha: 0.6),
@@ -518,23 +491,55 @@ class _WuWidgetState extends State<WuWidget> {
     final tileRows = [
       // Row 1: Humidity | Dew Point
       [
-        {"label": "Humidity", "value": "${c['humidity'] ?? '--'}%", "icon": Icons.water_drop_outlined},
-        {"label": "Dew Point", "value": "${c['dewpoint_c'] ?? '--'}°C", "icon": Icons.thermostat_outlined},
+        {
+          "label": "Humidity",
+          "value": "${c['humidity'] ?? '--'}%",
+          "icon": Icons.water_drop_outlined
+        },
+        {
+          "label": "Dew Point",
+          "value": "${c['dewpoint_c'] ?? '--'}°C",
+          "icon": Icons.thermostat_outlined
+        },
       ],
       // Row 2: Rain Total | Rain Rate
       [
-        {"label": "Rain Total", "value": "${c['rain_total'] ?? '--'} mm", "icon": Icons.umbrella_outlined},
-        {"label": "Rain Rate", "value": "${c['rain_rate'] ?? '--'} mm/hr", "icon": Icons.grain_outlined},
+        {
+          "label": "Rain Total",
+          "value": "${c['rain_total'] ?? '--'} mm",
+          "icon": Icons.umbrella_outlined
+        },
+        {
+          "label": "Rain Rate",
+          "value": "${c['rain_rate'] ?? '--'} mm/hr",
+          "icon": Icons.grain_outlined
+        },
       ],
       // Row 3: Wind Speed | Wind Gust
       [
-        {"label": "Wind Speed", "value": "${c['wind_kph'] ?? '--'} km/h", "icon": Icons.air_outlined},
-        {"label": "Wind Gust", "value": "${c['wind_kph'] ?? '--'} km/h", "icon": Icons.storm_outlined},
+        {
+          "label": "Wind Speed",
+          "value": "${c['wind_kph'] ?? '--'} km/h",
+          "icon": Icons.air_outlined
+        },
+        {
+          "label": "Wind Gust",
+          "value": "${c['wind_kph'] ?? '--'} km/h",
+          "icon": Icons.storm_outlined
+        },
       ],
       // Row 4: Wind Dir | Pressure
       [
-        {"label": "Wind Dir", "value": "${c['wind_degrees'] ?? '--'}°", "icon": Icons.explore_outlined},
-        {"label": "Pressure", "value": "${c['pressure_hpa'] ?? '--'} hPa", "icon": Icons.speed_outlined},
+        {
+          "label": "Wind Dir",
+          "value": "${c['wind_degrees'] ?? '--'}°",
+          "icon": Icons.explore_outlined
+        },
+        {
+          "label": "Pressure",
+          "value": "${c['pressure_hpa'] ?? '--'} hPa",
+          "icon": Icons.speed_outlined
+        },
       ],
     ];
 
@@ -668,11 +673,15 @@ class _WuWidgetState extends State<WuWidget> {
                     _nearbyStationDistance = null;
                   });
                 },
-                icon: Icon(Icons.swap_horiz, size: 18, color: foregroundForCard(widget.isDay).withValues(alpha: 0.7)),
+                icon: Icon(Icons.swap_horiz,
+                    size: 18,
+                    color:
+                        foregroundForCard(widget.isDay).withValues(alpha: 0.7)),
                 label: Text(
                   'Switch Station',
                   style: TextStyle(
-                    color: foregroundForCard(widget.isDay).withValues(alpha: 0.7),
+                    color:
+                        foregroundForCard(widget.isDay).withValues(alpha: 0.7),
                     fontSize: 13,
                   ),
                 ),
@@ -690,7 +699,8 @@ class _WuWidgetState extends State<WuWidget> {
                     Text(
                       'Scanning for nearby stations...',
                       style: TextStyle(
-                        color: foregroundForCard(widget.isDay).withValues(alpha: 0.7),
+                        color: foregroundForCard(widget.isDay)
+                            .withValues(alpha: 0.7),
                         fontSize: 13,
                       ),
                     ),

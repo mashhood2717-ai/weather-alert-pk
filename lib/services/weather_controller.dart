@@ -516,7 +516,7 @@ class WeatherController {
         final sunriseStr = sunrises.length > i ? sunrises[i] : null;
         final sunsetStr = sunsets.length > i ? sunsets[i] : null;
         final dateStr = times[i] ?? "--";
-        
+
         // Calculate day/night dominant icons from hourly data
         final dayNightData = _calculateDayNightIcons(
           dateStr: dateStr,
@@ -526,13 +526,14 @@ class WeatherController {
           hourlyCodes: hourlyCodes,
           hourlyTemps: hourlyTemps,
         );
-        
+
         // Use precipitation-priority icon for main daily display
-        final dominantIcon = dayNightData['dominantIcon'] as String? ?? 
+        final dominantIcon = dayNightData['dominantIcon'] as String? ??
             OpenMeteoService.getWeatherIcon(code, true);
-        final dominantCondition = dayNightData['dominantCondition'] as String? ??
-            OpenMeteoService.getWeatherDescription(code);
-        
+        final dominantCondition =
+            dayNightData['dominantCondition'] as String? ??
+                OpenMeteoService.getWeatherDescription(code);
+
         daily.add(DailyWeather(
           date: dateStr,
           maxTemp: maxT,
@@ -595,7 +596,7 @@ class WeatherController {
       }
     }
   }
-  
+
   /// Calculate day/night dominant icons from hourly data
   /// Precipitation (rain, snow, thunderstorm) takes priority
   /// Otherwise, the most frequently occurring condition wins
@@ -610,49 +611,49 @@ class WeatherController {
     if (dateStr == "--" || sunriseStr == null || sunsetStr == null) {
       return {};
     }
-    
+
     final date = DateTime.tryParse(dateStr);
     final sunrise = DateTime.tryParse(sunriseStr);
     final sunset = DateTime.tryParse(sunsetStr);
-    
+
     if (date == null || sunrise == null || sunset == null) {
       return {};
     }
-    
+
     // Precipitation weather codes (priority conditions)
     // 51-67: Drizzle/Rain, 71-77: Snow, 80-82: Rain showers, 85-86: Snow showers, 95-99: Thunderstorm
     bool _isPrecipitation(int code) {
-      return (code >= 51 && code <= 67) || 
-             (code >= 71 && code <= 77) || 
-             (code >= 80 && code <= 86) || 
-             (code >= 95 && code <= 99);
+      return (code >= 51 && code <= 67) ||
+          (code >= 71 && code <= 77) ||
+          (code >= 80 && code <= 86) ||
+          (code >= 95 && code <= 99);
     }
-    
+
     // Day hours: sunrise to sunset
     List<int> dayCodes = [];
     List<double> dayTemps = [];
-    
+
     // Night hours: before sunrise and after sunset (same day)
     List<int> nightCodes = [];
     List<double> nightTemps = [];
-    
+
     for (int i = 0; i < hourlyTimes.length; i++) {
       final timeStr = hourlyTimes[i];
       if (timeStr == null) continue;
-      
+
       final hourTime = DateTime.tryParse(timeStr);
       if (hourTime == null) continue;
-      
+
       // Check if this hour belongs to this date
-      if (hourTime.year != date.year || 
-          hourTime.month != date.month || 
+      if (hourTime.year != date.year ||
+          hourTime.month != date.month ||
           hourTime.day != date.day) {
         continue;
       }
-      
+
       final code = hourlyCodes.length > i ? _toI(hourlyCodes[i]) : 0;
       final temp = hourlyTemps.length > i ? _toD(hourlyTemps[i]) : 0.0;
-      
+
       // Determine if day or night based on sunrise/sunset
       if (hourTime.isAfter(sunrise) && hourTime.isBefore(sunset)) {
         dayCodes.add(code);
@@ -662,7 +663,7 @@ class WeatherController {
         nightTemps.add(temp);
       }
     }
-    
+
     // Calculate dominant icon for day (with precipitation priority)
     String? dayIcon;
     String? dayCondition;
@@ -671,22 +672,24 @@ class WeatherController {
       dayIcon = OpenMeteoService.getWeatherIcon(dominantDayCode, true);
       dayCondition = OpenMeteoService.getWeatherDescription(dominantDayCode);
     }
-    
+
     // Calculate dominant icon for night (with precipitation priority)
     String? nightIcon;
     String? nightCondition;
     if (nightCodes.isNotEmpty) {
       final dominantNightCode = _getDominantCode(nightCodes, _isPrecipitation);
       nightIcon = OpenMeteoService.getWeatherIcon(dominantNightCode, false);
-      nightCondition = OpenMeteoService.getWeatherDescription(dominantNightCode);
+      nightCondition =
+          OpenMeteoService.getWeatherDescription(dominantNightCode);
     }
-    
+
     // Calculate high/low for day and night
-    double? dayHighTemp = dayTemps.isNotEmpty ? 
-        dayTemps.reduce((a, b) => a > b ? a : b) : null;
-    double? nightLowTemp = nightTemps.isNotEmpty ? 
-        nightTemps.reduce((a, b) => a < b ? a : b) : null;
-    
+    double? dayHighTemp =
+        dayTemps.isNotEmpty ? dayTemps.reduce((a, b) => a > b ? a : b) : null;
+    double? nightLowTemp = nightTemps.isNotEmpty
+        ? nightTemps.reduce((a, b) => a < b ? a : b)
+        : null;
+
     // Calculate overall dominant icon for the main 7-day forecast display
     final allCodes = [...dayCodes, ...nightCodes];
     String? dominantIcon;
@@ -696,7 +699,7 @@ class WeatherController {
       dominantIcon = OpenMeteoService.getWeatherIcon(dominantCode, true);
       dominantCondition = OpenMeteoService.getWeatherDescription(dominantCode);
     }
-    
+
     return {
       'dayIcon': dayIcon,
       'dayCondition': dayCondition,
@@ -708,34 +711,34 @@ class WeatherController {
       'dominantCondition': dominantCondition,
     };
   }
-  
+
   /// Get the dominant weather code with precipitation priority
   /// If any precipitation code exists, return the most common precipitation
   /// Otherwise return the most common code overall
   int _getDominantCode(List<int> codes, bool Function(int) isPrecipitation) {
     if (codes.isEmpty) return 0;
-    
+
     // Separate precipitation and non-precipitation codes
     final precipCodes = codes.where(isPrecipitation).toList();
-    
+
     // If there's any precipitation, prioritize it
     if (precipCodes.isNotEmpty) {
       return _getMostFrequent(precipCodes);
     }
-    
+
     // Otherwise return most frequent code
     return _getMostFrequent(codes);
   }
-  
+
   /// Get the most frequently occurring value in a list
   int _getMostFrequent(List<int> codes) {
     if (codes.isEmpty) return 0;
-    
+
     final frequency = <int, int>{};
     for (final code in codes) {
       frequency[code] = (frequency[code] ?? 0) + 1;
     }
-    
+
     int maxCount = 0;
     int mostFrequent = codes.first;
     frequency.forEach((code, count) {
@@ -744,7 +747,7 @@ class WeatherController {
         mostFrequent = code;
       }
     });
-    
+
     return mostFrequent;
   }
 

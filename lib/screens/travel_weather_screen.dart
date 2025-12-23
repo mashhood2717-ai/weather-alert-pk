@@ -38,6 +38,10 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   bool _isNavigating = false; // NEW: Real-time navigation mode
   double _currentSpeed = 0.0; // Current speed in km/h
 
+  // Smoothed ETA tracking - prevents jumpy ETA display
+  double _smoothedRemainingDistanceKm = 0.0;
+  int _lastSmoothETASeconds = 0;
+
   // Departure time selection
   DateTime? _departureTime; // null means "Now"
 
@@ -297,6 +301,10 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     _lastPointChangeTime =
         DateTime.now(); // Set to NOW - enables grace period on start
     _currentStepIndex = 0;
+
+    // Reset ETA smoothing values for new navigation session
+    _smoothedRemainingDistanceKm = _routeDistanceMeters / 1000;
+    _lastSmoothETASeconds = _routeDurationSeconds;
 
     // Initialize smoothed values to current position/heading immediately
     if (_currentPosition != null) {
@@ -1410,7 +1418,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
 
       // Calculate ETAs using distance-based estimation (100 km/h average)
       final etas = distancesFromUser.map((distKm) {
-        final minutes = (distKm / 100 * 60).round();
+        final minutes = (distKm / 80 * 60).round();
         return Duration(minutes: minutes);
       }).toList();
 
@@ -3432,7 +3440,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
             .abs()
         : 0;
     final estimatedTime =
-        (totalDistance / 100 * 60).round(); // Rough estimate at 100km/h
+        (totalDistance / 80 * 60).round(); // Rough estimate at 80km/h
 
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -5764,31 +5772,14 @@ Shared via Weather Alert Pakistan
             right: 16,
             child: Builder(
               builder: (context) {
-                // Calculate REMAINING distance from current position to destination
-                double remainingDistanceKm = _routeDistanceMeters / 1000;
-                int remainingSeconds = _routeDurationSeconds;
-
-                if (_routePoints.isNotEmpty && _currentPosition != null) {
-                  final nextIdx =
-                      _confirmedPointIndex.clamp(0, _routePoints.length - 1);
-                  final nextPoint = _routePoints[nextIdx];
-                  final lastPoint = _routePoints.last;
-
-                  final distToNextPoint = Geolocator.distanceBetween(
-                    _currentPosition!.latitude,
-                    _currentPosition!.longitude,
-                    nextPoint.point.lat,
-                    nextPoint.point.lon,
-                  );
-                  final distToNextKm = distToNextPoint / 1000;
-                  final roadDistToDestKm = (lastPoint.point.distanceFromStart -
-                          nextPoint.point.distanceFromStart)
-                      .abs();
-                  remainingDistanceKm = distToNextKm + roadDistToDestKm;
-                  final speedKmh = _currentSpeed > 5 ? _currentSpeed : 80;
-                  remainingSeconds =
-                      ((remainingDistanceKm / speedKmh) * 3600).round();
-                }
+                // Use the smoothed values calculated in _buildNavigationBottomBar
+                // for consistent ETA display across UI
+                final remainingDistanceKm = _smoothedRemainingDistanceKm > 0
+                    ? _smoothedRemainingDistanceKm
+                    : _routeDistanceMeters / 1000;
+                final remainingSeconds = _lastSmoothETASeconds > 0
+                    ? _lastSmoothETASeconds
+                    : _routeDurationSeconds;
 
                 final distanceText = remainingDistanceKm >= 1
                     ? '${remainingDistanceKm.toStringAsFixed(0)} km'
@@ -6059,28 +6050,56 @@ Shared via Weather Alert Pakistan
 
   /// Build the navigation bottom bar with destination, ETA, distance, and stop button
   Widget _buildNavigationBottomBar() {
-    // Calculate REMAINING distance from current position to destination
+    // Calculate REMAINING distance and ETA using Google's duration proportionally
     double remainingDistanceKm = _routeDistanceMeters / 1000;
     int remainingSeconds = _routeDurationSeconds;
 
-    if (_routePoints.isNotEmpty && _currentPosition != null) {
-      final nextIdx = _confirmedPointIndex.clamp(0, _routePoints.length - 1);
-      final nextPoint = _routePoints[nextIdx];
-      final lastPoint = _routePoints.last;
+    if (_roadRoutePoints.isNotEmpty &&
+        _currentPosition != null &&
+        _routeDistanceMeters > 0) {
+      // Calculate distance traveled along polyline (sum of segments up to current index)
+      double distanceTraveledMeters = 0;
+      for (int i = 0;
+          i < _closestPolylineIndex && i < _roadRoutePoints.length - 1;
+          i++) {
+        distanceTraveledMeters += Geolocator.distanceBetween(
+          _roadRoutePoints[i].latitude,
+          _roadRoutePoints[i].longitude,
+          _roadRoutePoints[i + 1].latitude,
+          _roadRoutePoints[i + 1].longitude,
+        );
+      }
 
-      final distToNextPoint = Geolocator.distanceBetween(
-        _currentPosition!.latitude,
-        _currentPosition!.longitude,
-        nextPoint.point.lat,
-        nextPoint.point.lon,
-      );
-      final distToNextKm = distToNextPoint / 1000;
-      final roadDistToDestKm = (lastPoint.point.distanceFromStart -
-              nextPoint.point.distanceFromStart)
-          .abs();
-      remainingDistanceKm = distToNextKm + roadDistToDestKm;
-      final speedKmh = _currentSpeed > 5 ? _currentSpeed : 80;
-      remainingSeconds = ((remainingDistanceKm / speedKmh) * 3600).round();
+      // Calculate progress as ratio (0.0 to 1.0)
+      final progress =
+          (distanceTraveledMeters / _routeDistanceMeters).clamp(0.0, 1.0);
+
+      // Remaining distance = total - traveled
+      remainingDistanceKm =
+          ((_routeDistanceMeters - distanceTraveledMeters) / 1000)
+              .clamp(0.0, _routeDistanceMeters / 1000);
+
+      // ETA = Google's total duration × remaining proportion
+      // This uses Google's speed estimates per road segment (more accurate than fixed speed)
+      remainingSeconds = (_routeDurationSeconds * (1 - progress)).round();
+
+      // Light smoothing to prevent minor GPS jitter from causing jumps
+      if (_smoothedRemainingDistanceKm == 0) {
+        _smoothedRemainingDistanceKm = remainingDistanceKm;
+        _lastSmoothETASeconds = remainingSeconds;
+      } else {
+        // Only allow distance to decrease (we're moving forward)
+        if (remainingDistanceKm < _smoothedRemainingDistanceKm) {
+          _smoothedRemainingDistanceKm =
+              _smoothedRemainingDistanceKm * 0.7 + remainingDistanceKm * 0.3;
+        }
+        // Smooth ETA changes - 70% old, 30% new
+        _lastSmoothETASeconds =
+            (_lastSmoothETASeconds * 0.7 + remainingSeconds * 0.3).round();
+      }
+
+      remainingDistanceKm = _smoothedRemainingDistanceKm;
+      remainingSeconds = _lastSmoothETASeconds;
     }
 
     // Format distance

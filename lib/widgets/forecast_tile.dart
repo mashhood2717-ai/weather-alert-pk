@@ -70,9 +70,7 @@ class ForecastTile extends StatelessWidget {
               children: [
                 Text(_formatDateDisplay(d.date),
                     style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: fg)),
+                        fontSize: 20, fontWeight: FontWeight.bold, color: fg)),
                 Row(
                   children: [
                     Text("${d.maxTemp.toStringAsFixed(0)}°",
@@ -82,14 +80,14 @@ class ForecastTile extends StatelessWidget {
                             color: Colors.orange[700])),
                     const SizedBox(width: 8),
                     Text("${d.minTemp.toStringAsFixed(0)}°",
-                        style: TextStyle(
-                            fontSize: 20, color: Colors.blue[600])),
+                        style:
+                            TextStyle(fontSize: 20, color: Colors.blue[600])),
                   ],
                 ),
               ],
             ),
             const SizedBox(height: 16),
-            
+
             // Day/Night Weather Cards
             Row(
               children: [
@@ -191,7 +189,7 @@ class ForecastTile extends StatelessWidget {
       ),
     );
   }
-  
+
   /// Build a card for day or night weather
   Widget _buildDayNightCard({
     required String title,
@@ -204,9 +202,15 @@ class ForecastTile extends StatelessWidget {
   }) {
     final accentColor = isHigh ? Colors.orange[700]! : Colors.blue[600]!;
     final bgGradient = isHigh
-        ? [Colors.orange.withValues(alpha: 0.1), Colors.yellow.withValues(alpha: 0.05)]
-        : [Colors.indigo.withValues(alpha: 0.1), Colors.blue.withValues(alpha: 0.05)];
-    
+        ? [
+            Colors.orange.withValues(alpha: 0.1),
+            Colors.yellow.withValues(alpha: 0.05)
+          ]
+        : [
+            Colors.indigo.withValues(alpha: 0.1),
+            Colors.blue.withValues(alpha: 0.05)
+          ];
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -250,9 +254,10 @@ class ForecastTile extends StatelessWidget {
                 icon,
                 width: 40,
                 height: 40,
-                errorBuilder: (_, __, ___) =>
-                    Icon(isHigh ? Icons.wb_sunny : Icons.nightlight_round,
-                        size: 40, color: accentColor),
+                errorBuilder: (_, __, ___) => Icon(
+                    isHigh ? Icons.wb_sunny : Icons.nightlight_round,
+                    size: 40,
+                    color: accentColor),
               ),
               const SizedBox(width: 10),
               Text(

@@ -635,7 +635,8 @@ class NotificationService {
     for (final entry in prayerTimes.entries) {
       final prayerName = entry.key;
       final prayerTime = entry.value;
-      final mode = prayerModes[prayerName] ?? PrayerNotificationMode.vibrationOnly;
+      final mode =
+          prayerModes[prayerName] ?? PrayerNotificationMode.vibrationOnly;
 
       // Skip if this prayer notification is off
       if (mode == PrayerNotificationMode.off) {
@@ -690,7 +691,8 @@ class NotificationService {
       final fullName = entry.key;
       final prayerName = fullName.replaceAll('_tomorrow', '');
       final prayerTime = entry.value;
-      final mode = prayerModes[prayerName] ?? PrayerNotificationMode.vibrationOnly;
+      final mode =
+          prayerModes[prayerName] ?? PrayerNotificationMode.vibrationOnly;
 
       // Skip if this prayer notification is off
       if (mode == PrayerNotificationMode.off) {
