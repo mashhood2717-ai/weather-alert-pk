@@ -55,17 +55,11 @@ final Map<String, List<Map<String, String>>> wuStationsByCity = {
   'Larkana': [
     {'name': 'ISINDH20', 'id': 'ISINDH20'},
   ],
-  'Karachi DHA': [
-    {'name': 'IKARAC90', 'id': 'IKARAC90'},
-  ],
-  'Karachi Saadi Town': [
-    {'name': 'IKARAC25', 'id': 'IKARAC25'},
-  ],
-  'Karachi Port Qasim': [
-    {'name': 'IKARAC95', 'id': 'IKARAC95'},
-  ],
-  'Karachi Clifton': [
-    {'name': 'IKARAC56', 'id': 'IKARAC56'},
-    {'name': 'IKARAC52', 'id': 'IKARAC52'},
+  'Karachi': [
+    {'name': 'DHA - IKARAC90', 'id': 'IKARAC90'},
+    {'name': 'Saadi Town - IKARAC25', 'id': 'IKARAC25'},
+    {'name': 'Port Qasim - IKARAC95', 'id': 'IKARAC95'},
+    {'name': 'Clifton - IKARAC56', 'id': 'IKARAC56'},
+    {'name': 'Clifton - IKARAC52', 'id': 'IKARAC52'},
   ],
 };

@@ -1379,6 +1379,8 @@ Is GPS: ${controller.isFromCurrentLocation}
                                 WuWidget(
                                   isDay: isDay,
                                   city: c?.city ?? controller.lastCitySearched,
+                                  userLat: c?.lat,
+                                  userLon: c?.lon,
                                   onDataLoaded: (data) {},
                                 ),
                                 _buildPrayerTab(c, isDay),

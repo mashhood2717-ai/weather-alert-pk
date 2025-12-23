@@ -14,6 +14,14 @@ class DailyWeather {
   final int? precipitationProbability;
   final double? windGustsMax;
   final int? windDirectionDominant;
+  
+  // Day/Night specific weather data
+  final String? dayIcon;
+  final String? dayCondition;
+  final double? dayHighTemp;
+  final String? nightIcon;
+  final String? nightCondition;
+  final double? nightLowTemp;
 
   DailyWeather({
     required this.date,
@@ -28,5 +36,11 @@ class DailyWeather {
     this.precipitationProbability,
     this.windGustsMax,
     this.windDirectionDominant,
+    this.dayIcon,
+    this.dayCondition,
+    this.dayHighTemp,
+    this.nightIcon,
+    this.nightCondition,
+    this.nightLowTemp,
   });
 }

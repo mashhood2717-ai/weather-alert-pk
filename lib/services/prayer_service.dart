@@ -116,11 +116,12 @@ class PrayerService {
     final prayers = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
     final Map<String, PrayerNotificationMode> result = {};
     for (final prayer in prayers) {
+      // Default is vibrationOnly - user can enable azan from menu if desired
       final value =
-          prefs.getString('${_notificationsKey}_${prayer}_mode') ?? 'azan';
+          prefs.getString('${_notificationsKey}_${prayer}_mode') ?? 'vibrationOnly';
       result[prayer] = PrayerNotificationMode.values.firstWhere(
         (m) => m.name == value,
-        orElse: () => PrayerNotificationMode.azan,
+        orElse: () => PrayerNotificationMode.vibrationOnly,
       );
     }
     return result;

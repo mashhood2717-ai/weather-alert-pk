@@ -131,7 +131,7 @@ class _PrayerWidgetState extends State<PrayerWidget> {
   /// Cycle notification mode for a prayer: Off -> Vibration -> Azan -> Off
   Future<void> _cycleNotificationMode(String prayer) async {
     final currentMode =
-        _notificationModes[prayer] ?? PrayerNotificationMode.azan;
+        _notificationModes[prayer] ?? PrayerNotificationMode.vibrationOnly;
     final newMode = PrayerService.cycleNotificationMode(currentMode);
     await PrayerService.saveNotificationMode(prayer, newMode);
     setState(() => _notificationModes[prayer] = newMode);
@@ -421,13 +421,13 @@ class _PrayerWidgetState extends State<PrayerWidget> {
                 decoration: BoxDecoration(
                   color: PrayerService.getNotificationModeColor(
                     _notificationModes[prayer.name] ??
-                        PrayerNotificationMode.azan,
+                        PrayerNotificationMode.vibrationOnly,
                   ).withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
                     color: PrayerService.getNotificationModeColor(
                       _notificationModes[prayer.name] ??
-                          PrayerNotificationMode.azan,
+                          PrayerNotificationMode.vibrationOnly,
                     ).withValues(alpha: 0.5),
                   ),
                 ),
@@ -437,11 +437,11 @@ class _PrayerWidgetState extends State<PrayerWidget> {
                     Icon(
                       PrayerService.getNotificationModeIcon(
                         _notificationModes[prayer.name] ??
-                            PrayerNotificationMode.azan,
+                            PrayerNotificationMode.vibrationOnly,
                       ),
                       color: PrayerService.getNotificationModeColor(
                         _notificationModes[prayer.name] ??
-                            PrayerNotificationMode.azan,
+                            PrayerNotificationMode.vibrationOnly,
                       ),
                       size: 16,
                     ),
@@ -449,12 +449,12 @@ class _PrayerWidgetState extends State<PrayerWidget> {
                     Text(
                       PrayerService.getNotificationModeLabel(
                         _notificationModes[prayer.name] ??
-                            PrayerNotificationMode.azan,
+                            PrayerNotificationMode.vibrationOnly,
                       ),
                       style: TextStyle(
                         color: PrayerService.getNotificationModeColor(
                           _notificationModes[prayer.name] ??
-                              PrayerNotificationMode.azan,
+                              PrayerNotificationMode.vibrationOnly,
                         ),
                         fontSize: 11,
                         fontWeight: FontWeight.w600,

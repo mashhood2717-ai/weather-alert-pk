@@ -1,6 +1,6 @@
 // lib/widgets/wu_widget.dart
 
-import 'dart:ui';
+import 'dart:math' show cos, sqrt, atan2, sin, pi;
 import 'package:flutter/material.dart';
 import '../wu_stations.dart';
 import '../services/wu_service.dart';
@@ -11,9 +11,11 @@ class WuWidget extends StatefulWidget {
   final bool isDay;
   final Function(Map<String, dynamic>? data)? onDataLoaded;
   final String? city; // City from main app to sync with
+  final double? userLat; // User's current latitude
+  final double? userLon; // User's current longitude
 
   const WuWidget(
-      {super.key, required this.isDay, this.onDataLoaded, this.city});
+      {super.key, required this.isDay, this.onDataLoaded, this.city, this.userLat, this.userLon});
 
   @override
   State<WuWidget> createState() => _WuWidgetState();
@@ -27,11 +29,22 @@ class _WuWidgetState extends State<WuWidget> {
   String? _error;
   // Store station info with location for dropdown display
   Map<String, Map<String, dynamic>> _stationInfo = {};
+  // Track if user is within 5km radius of a station
+  bool _isWithinRadius = false;
+  String? _nearbyStationId;
+  double? _nearbyStationDistance;
+  // Track if we're scanning for nearby stations
+  bool _scanningForNearby = false;
+  bool _hasScannedForLocation = false;
 
   @override
   void initState() {
     super.initState();
     _initializeCity();
+    // Auto-scan for nearby station if user location is available
+    if (widget.userLat != null && widget.userLon != null) {
+      _scanForNearbyStation();
+    }
   }
 
   @override
@@ -40,6 +53,12 @@ class _WuWidgetState extends State<WuWidget> {
     // If city prop changed, update selection
     if (oldWidget.city != widget.city && widget.city != null) {
       _syncCityFromProp();
+    }
+    // If user location changed (e.g., current location button pressed), rescan
+    if ((oldWidget.userLat != widget.userLat || oldWidget.userLon != widget.userLon) &&
+        widget.userLat != null && widget.userLon != null) {
+      _hasScannedForLocation = false;
+      _scanForNearbyStation();
     }
   }
 
@@ -70,6 +89,8 @@ class _WuWidgetState extends State<WuWidget> {
             _selectedStationId = null; // Reset station selection
             _currentData = null;
           });
+          // Auto-load the first station for this city
+          _autoLoadFirstStation(availableCity);
         }
         return;
       }
@@ -78,6 +99,20 @@ class _WuWidgetState extends State<WuWidget> {
     // If no match found, keep current selection or use first available
     if (_selectedCity == null && wuStationsByCity.isNotEmpty) {
       _selectedCity = wuStationsByCity.keys.first;
+    }
+  }
+
+  /// Auto-load the first station for a given city
+  Future<void> _autoLoadFirstStation(String city) async {
+    final stations = wuStationsByCity[city];
+    if (stations == null || stations.isEmpty) return;
+    
+    final firstStationId = stations.first['id'];
+    if (firstStationId != null) {
+      setState(() {
+        _selectedStationId = firstStationId;
+      });
+      await _loadStation(firstStationId);
     }
   }
 
@@ -108,6 +143,205 @@ class _WuWidgetState extends State<WuWidget> {
     if (widget.onDataLoaded != null) {
       widget.onDataLoaded!(res);
     }
+    
+    // Check if user is within 5km radius of this station
+    _checkProximityToStation(id, res);
+  }
+
+  /// Calculate distance between two coordinates using Haversine formula
+  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+    const double earthRadius = 6371; // km
+    final dLat = _toRadians(lat2 - lat1);
+    final dLon = _toRadians(lon2 - lon1);
+    final a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(_toRadians(lat1)) * cos(_toRadians(lat2)) *
+        sin(dLon / 2) * sin(dLon / 2);
+    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return earthRadius * c;
+  }
+
+  double _toRadians(double deg) => deg * pi / 180;
+
+  /// Check if user is within 5km of any loaded station
+  void _checkProximityToStation(String stationId, Map<String, dynamic>? stationData) {
+    if (widget.userLat == null || widget.userLon == null || stationData == null) return;
+    
+    final stationLat = stationData['lat'] as num?;
+    final stationLon = stationData['lon'] as num?;
+    
+    if (stationLat == null || stationLon == null) return;
+    
+    final distance = _calculateDistance(
+      widget.userLat!,
+      widget.userLon!,
+      stationLat.toDouble(),
+      stationLon.toDouble(),
+    );
+    
+    if (distance <= 5.0) {
+      setState(() {
+        _isWithinRadius = true;
+        _nearbyStationId = stationId;
+        _nearbyStationDistance = distance;
+      });
+    }
+  }
+
+  /// Scan all stations in the matched city to find nearest one within 5km
+  /// This fetches data from each station to get coordinates
+  Future<void> _scanForNearbyStation() async {
+    if (widget.userLat == null || widget.userLon == null) return;
+    if (_hasScannedForLocation) return;
+    if (_scanningForNearby) return;
+    
+    setState(() {
+      _scanningForNearby = true;
+      _loading = true;
+    });
+    _hasScannedForLocation = true;
+    
+    double? minDistance;
+    String? nearestStationId;
+    String? nearestCity;
+    Map<String, dynamic>? nearestStationData;
+    
+    // First, check if we have a matching city
+    String? matchedCity;
+    if (widget.city != null) {
+      final cityLower = widget.city!.toLowerCase();
+      for (final availableCity in wuStationsByCity.keys) {
+        if (availableCity.toLowerCase() == cityLower ||
+            cityLower.contains(availableCity.toLowerCase()) ||
+            availableCity.toLowerCase().contains(cityLower)) {
+          matchedCity = availableCity;
+          break;
+        }
+      }
+    }
+    
+    // If no matched city, scan all cities
+    final citiesToScan = matchedCity != null 
+        ? {matchedCity: wuStationsByCity[matchedCity]!} 
+        : wuStationsByCity;
+    
+    // Iterate through cities and stations
+    for (final cityEntry in citiesToScan.entries) {
+      final city = cityEntry.key;
+      final stations = cityEntry.value;
+      
+      for (final station in stations) {
+        final stationId = station['id'];
+        if (stationId == null) continue;
+        
+        // Fetch station data to get coordinates
+        final stationData = await fetchWUCurrentByStation(stationId);
+        if (!mounted) return;
+        
+        if (stationData != null) {
+          // Store station info for later use
+          _stationInfo[stationId] = {
+            'lat': stationData['lat'],
+            'lon': stationData['lon'],
+            'neighborhood': stationData['neighborhood'],
+          };
+          
+          final stationLat = stationData['lat'] as num?;
+          final stationLon = stationData['lon'] as num?;
+          
+          if (stationLat != null && stationLon != null) {
+            final distance = _calculateDistance(
+              widget.userLat!,
+              widget.userLon!,
+              stationLat.toDouble(),
+              stationLon.toDouble(),
+            );
+            
+            if (distance <= 5.0 && (minDistance == null || distance < minDistance)) {
+              minDistance = distance;
+              nearestStationId = stationId;
+              nearestCity = city;
+              nearestStationData = stationData;
+            }
+          }
+        }
+      }
+      
+      // If we found a nearby station in matched city, stop scanning
+      if (matchedCity != null && nearestStationId != null) break;
+    }
+    
+    if (!mounted) return;
+    
+    if (nearestStationId != null && nearestCity != null && nearestStationData != null) {
+      setState(() {
+        _isWithinRadius = true;
+        _nearbyStationId = nearestStationId;
+        _nearbyStationDistance = minDistance;
+        _selectedCity = nearestCity;
+        _selectedStationId = nearestStationId;
+        _currentData = nearestStationData;
+        _scanningForNearby = false;
+        _loading = false;
+      });
+      
+      if (widget.onDataLoaded != null) {
+        widget.onDataLoaded!(nearestStationData);
+      }
+    } else {
+      // No nearby station found, just show dropdowns
+      setState(() {
+        _scanningForNearby = false;
+        _loading = false;
+      });
+    }
+  }
+
+  /// Scan all stations to find nearest one within 5km (legacy - uses cached info only)
+  Future<void> _findNearbyStation() async {
+    if (widget.userLat == null || widget.userLon == null) return;
+    
+    double? minDistance;
+    String? nearestStationId;
+    String? nearestCity;
+    
+    // Iterate through all cities and stations
+    for (final cityEntry in wuStationsByCity.entries) {
+      final city = cityEntry.key;
+      final stations = cityEntry.value;
+      
+      for (final station in stations) {
+        final stationId = station['id'];
+        if (stationId == null) continue;
+        
+        // Check if we already have info for this station
+        final info = _stationInfo[stationId];
+        if (info != null && info['lat'] != null && info['lon'] != null) {
+          final distance = _calculateDistance(
+            widget.userLat!,
+            widget.userLon!,
+            (info['lat'] as num).toDouble(),
+            (info['lon'] as num).toDouble(),
+          );
+          
+          if (distance <= 5.0 && (minDistance == null || distance < minDistance)) {
+            minDistance = distance;
+            nearestStationId = stationId;
+            nearestCity = city;
+          }
+        }
+      }
+    }
+    
+    if (nearestStationId != null && nearestCity != null) {
+      setState(() {
+        _isWithinRadius = true;
+        _nearbyStationId = nearestStationId;
+        _nearbyStationDistance = minDistance;
+        _selectedCity = nearestCity;
+        _selectedStationId = nearestStationId;
+      });
+      await _loadStation(nearestStationId);
+    }
   }
 
   Widget _buildDropdown(
@@ -121,7 +355,9 @@ class _WuWidgetState extends State<WuWidget> {
       value: value,
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: TextStyle(color: fg),
+        labelStyle: TextStyle(color: fg, fontSize: 14),
+        floatingLabelBehavior: FloatingLabelBehavior.always,
+        contentPadding: const EdgeInsets.fromLTRB(16, 20, 12, 12),
         filled: true,
         fillColor: cardTint(isDay).withValues(alpha: 0.7),
         border: OutlineInputBorder(
@@ -145,59 +381,130 @@ class _WuWidgetState extends State<WuWidget> {
     final temp = "${c['temp_c'] ?? '--'}°C";
     final feelsLike =
         "Feels like ${c['temp_c'] ?? '--'}°C"; // Using same temp as feels like since WU doesn't provide it
+    
+    // Determine weather icon - show rain if rain rate > 0, otherwise borrow from main card
+    final rainRate = c['rain_rate'];
+    final hasRain = rainRate != null && rainRate is num && rainRate > 0;
+    final weatherIcon = hasRain 
+        ? Icons.water_drop_rounded 
+        : (isDay ? Icons.wb_sunny_rounded : Icons.nightlight_round);
+    final iconColor = hasRain 
+        ? Colors.blue[400]! 
+        : (isDay ? Colors.orange[400]! : Colors.amber[300]!);
+
+    // Build proximity info text if within radius
+    final String? proximityText = _isWithinRadius && _nearbyStationDistance != null
+        ? '${_nearbyStationDistance!.toStringAsFixed(1)} km away'
+        : null;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: tint,
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: tint,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDay ? 0.05 : 0.2),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          ],
+        ),
+        child: Row(
+          children: [
+            // Weather Icon
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                weatherIcon,
+                size: 32,
+                color: iconColor,
+              ),
+            ),
+            const SizedBox(width: 14),
+            // City and Station Info
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        cityName,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: fg,
+                        ),
+                      ),
+                      if (_isWithinRadius) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.near_me, size: 10, color: Colors.green[400]),
+                              const SizedBox(width: 3),
+                              Text(
+                                'Nearby',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.green[400],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    proximityText != null ? '$stationId • $proximityText' : stationId,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: fg.withValues(alpha: 0.6),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Temperature and Feels Like
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(
-                  cityName,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: fg,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  "Station: $stationId",
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: fg.withValues(alpha: 0.7),
-                  ),
-                ),
-                const SizedBox(height: 16),
                 Text(
                   temp,
                   style: TextStyle(
-                    fontSize: 46,
+                    fontSize: 28,
                     fontWeight: FontWeight.w800,
                     color: fg,
                   ),
                 ),
-                const SizedBox(height: 4),
                 Text(
                   feelsLike,
                   style: TextStyle(
-                    fontSize: 13,
-                    color: fg.withValues(alpha: 0.8),
+                    fontSize: 11,
+                    color: fg.withValues(alpha: 0.6),
                   ),
                 ),
               ],
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -207,27 +514,27 @@ class _WuWidgetState extends State<WuWidget> {
     if (_currentData == null) return const SizedBox.shrink();
     final c = _currentData!;
 
-    // Custom tile order as requested
+    // Custom tile order with icons
     final tileRows = [
       // Row 1: Humidity | Dew Point
       [
-        {"label": "Humidity", "value": "${c['humidity'] ?? '--'}%"},
-        {"label": "Dew Point", "value": "${c['dewpoint_c'] ?? '--'}°C"},
+        {"label": "Humidity", "value": "${c['humidity'] ?? '--'}%", "icon": Icons.water_drop_outlined},
+        {"label": "Dew Point", "value": "${c['dewpoint_c'] ?? '--'}°C", "icon": Icons.thermostat_outlined},
       ],
       // Row 2: Rain Total | Rain Rate
       [
-        {"label": "Rain Total", "value": "${c['rain_total'] ?? '--'} mm"},
-        {"label": "Rain Rate", "value": "${c['rain_rate'] ?? '--'} mm/hr"},
+        {"label": "Rain Total", "value": "${c['rain_total'] ?? '--'} mm", "icon": Icons.umbrella_outlined},
+        {"label": "Rain Rate", "value": "${c['rain_rate'] ?? '--'} mm/hr", "icon": Icons.grain_outlined},
       ],
-      // Row 3: Wind Speed | Wind Gust (using wind speed for gust as WU doesn't provide gust separately)
+      // Row 3: Wind Speed | Wind Gust
       [
-        {"label": "Wind Speed", "value": "${c['wind_kph'] ?? '--'} km/h"},
-        {"label": "Wind Gust", "value": "${c['wind_kph'] ?? '--'} km/h"},
+        {"label": "Wind Speed", "value": "${c['wind_kph'] ?? '--'} km/h", "icon": Icons.air_outlined},
+        {"label": "Wind Gust", "value": "${c['wind_kph'] ?? '--'} km/h", "icon": Icons.storm_outlined},
       ],
       // Row 4: Wind Dir | Pressure
       [
-        {"label": "Wind Dir", "value": "${c['wind_degrees'] ?? '--'}°"},
-        {"label": "Pressure", "value": "${c['pressure_hpa'] ?? '--'} hPa"},
+        {"label": "Wind Dir", "value": "${c['wind_degrees'] ?? '--'}°", "icon": Icons.explore_outlined},
+        {"label": "Pressure", "value": "${c['pressure_hpa'] ?? '--'} hPa", "icon": Icons.speed_outlined},
       ],
     ];
 
@@ -239,17 +546,19 @@ class _WuWidgetState extends State<WuWidget> {
           children: [
             Expanded(
               child: ParamTile(
-                label: tileRow[0]["label"]!,
-                value: tileRow[0]["value"]!,
+                label: tileRow[0]["label"] as String,
+                value: tileRow[0]["value"] as String,
                 isDay: isDay,
+                icon: tileRow[0]["icon"] as IconData,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: ParamTile(
-                label: tileRow[1]["label"]!,
-                value: tileRow[1]["value"]!,
+                label: tileRow[1]["label"] as String,
+                value: tileRow[1]["value"] as String,
                 isDay: isDay,
+                icon: tileRow[1]["icon"] as IconData,
               ),
             ),
           ],
@@ -270,7 +579,7 @@ class _WuWidgetState extends State<WuWidget> {
         _selectedCity == null ? [] : wuStationsByCity[_selectedCity] ?? [];
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 20),
+      padding: const EdgeInsets.fromLTRB(12, 24, 12, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -282,30 +591,33 @@ class _WuWidgetState extends State<WuWidget> {
                     fontWeight: FontWeight.bold,
                     color: foregroundForCard(widget.isDay))),
           ),
-          const SizedBox(height: 14),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12.0),
-            child: _buildDropdown(
-                "City",
-                _selectedCity,
-                wuStationsByCity.keys
-                    .map<DropdownMenuItem<String>>((c) =>
-                        DropdownMenuItem<String>(
-                            value: c,
-                            child: Text(c,
-                                style: TextStyle(
-                                    color: foregroundForCard(widget.isDay)))))
-                    .toList(), (v) {
-              setState(() {
-                _selectedCity = v;
-                _selectedStationId = null;
-                _currentData = null;
-                _error = null;
-              });
-            }, widget.isDay),
-          ),
-          const SizedBox(height: 14),
-          if (_selectedCity != null)
+          const SizedBox(height: 22),
+          // Hide City dropdown when within radius
+          if (!_isWithinRadius)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12.0),
+              child: _buildDropdown(
+                  "City",
+                  _selectedCity,
+                  wuStationsByCity.keys
+                      .map<DropdownMenuItem<String>>((c) =>
+                          DropdownMenuItem<String>(
+                              value: c,
+                              child: Text(c,
+                                  style: TextStyle(
+                                      color: foregroundForCard(widget.isDay)))))
+                      .toList(), (v) {
+                setState(() {
+                  _selectedCity = v;
+                  _selectedStationId = null;
+                  _currentData = null;
+                  _error = null;
+                });
+              }, widget.isDay),
+            ),
+          if (!_isWithinRadius) const SizedBox(height: 22),
+          // Hide Station ID dropdown when within radius
+          if (_selectedCity != null && !_isWithinRadius)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12.0),
               child: _buildDropdown(
@@ -344,15 +656,54 @@ class _WuWidgetState extends State<WuWidget> {
                 if (v != null) _loadStation(v);
               }, widget.isDay),
             ),
-          const SizedBox(height: 20),
+          // Show "Switch Station" button when within radius to allow manual selection
+          if (_isWithinRadius)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12.0),
+              child: TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _isWithinRadius = false;
+                    _nearbyStationId = null;
+                    _nearbyStationDistance = null;
+                  });
+                },
+                icon: Icon(Icons.swap_horiz, size: 18, color: foregroundForCard(widget.isDay).withValues(alpha: 0.7)),
+                label: Text(
+                  'Switch Station',
+                  style: TextStyle(
+                    color: foregroundForCard(widget.isDay).withValues(alpha: 0.7),
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ),
+          const SizedBox(height: 28),
           if (_loading)
-            const Center(child: CircularProgressIndicator())
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(),
+                  if (_scanningForNearby) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      'Scanning for nearby stations...',
+                      style: TextStyle(
+                        color: foregroundForCard(widget.isDay).withValues(alpha: 0.7),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            )
           else if (_error != null)
             Center(
                 child: Text(_error!, style: const TextStyle(color: Colors.red)))
           else if (_currentData != null) ...[
             _buildMainCard(widget.isDay),
-            const SizedBox(height: 16),
+            const SizedBox(height: 24),
             _buildTilesArea(widget.isDay),
           ],
         ],

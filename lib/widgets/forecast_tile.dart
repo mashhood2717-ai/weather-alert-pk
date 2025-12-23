@@ -64,42 +64,59 @@ class ForecastTile extends StatelessWidget {
                 ),
               ),
             ),
-            // Header
+            // Header with date and temps
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Image.network(icon,
-                    width: 56,
-                    height: 56,
-                    errorBuilder: (_, __, ___) =>
-                        Icon(Icons.cloud, size: 56, color: fg)),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(_formatDateDisplay(d.date),
-                          style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: fg)),
-                      Text(d.condition,
-                          style: TextStyle(
-                              fontSize: 14, color: fg.withValues(alpha: 0.7))),
-                    ],
-                  ),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                Text(_formatDateDisplay(d.date),
+                    style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: fg)),
+                Row(
                   children: [
                     Text("${d.maxTemp.toStringAsFixed(0)}°",
                         style: TextStyle(
-                            fontSize: 26,
+                            fontSize: 24,
                             fontWeight: FontWeight.bold,
                             color: Colors.orange[700])),
+                    const SizedBox(width: 8),
                     Text("${d.minTemp.toStringAsFixed(0)}°",
-                        style:
-                            TextStyle(fontSize: 20, color: Colors.blue[600])),
+                        style: TextStyle(
+                            fontSize: 20, color: Colors.blue[600])),
                   ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            
+            // Day/Night Weather Cards
+            Row(
+              children: [
+                // Daytime Card
+                Expanded(
+                  child: _buildDayNightCard(
+                    title: "Day",
+                    icon: d.dayIcon ?? icon,
+                    condition: d.dayCondition ?? d.condition,
+                    temp: d.dayHighTemp ?? d.maxTemp,
+                    isHigh: true,
+                    sunTime: "☀️ ${d.sunrise}",
+                    fg: fg,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Nighttime Card
+                Expanded(
+                  child: _buildDayNightCard(
+                    title: "Night",
+                    icon: d.nightIcon ?? icon,
+                    condition: d.nightCondition ?? d.condition,
+                    temp: d.nightLowTemp ?? d.minTemp,
+                    isHigh: false,
+                    sunTime: "🌙 ${d.sunset}",
+                    fg: fg,
+                  ),
                 ),
               ],
             ),
@@ -107,7 +124,7 @@ class ForecastTile extends StatelessWidget {
             const Divider(),
             const SizedBox(height: 12),
 
-            // Feels Like Section - NEW
+            // Feels Like Section
             if (feelsLikeHigh != null || feelsLikeLow != null) ...[
               Text(
                 "Feels Like",
@@ -151,9 +168,6 @@ class ForecastTile extends StatelessWidget {
               spacing: 10,
               runSpacing: 10,
               children: [
-                _buildDetailItem(Icons.wb_sunny, "Sunrise", d.sunrise, fg),
-                _buildDetailItem(
-                    Icons.nightlight_round, "Sunset", d.sunset, fg),
                 if (d.uvIndexMax != null)
                   _buildDetailItem(Icons.wb_sunny_outlined, "UV Index",
                       d.uvIndexMax!.toStringAsFixed(1), fg),
@@ -174,6 +188,95 @@ class ForecastTile extends StatelessWidget {
             const SizedBox(height: 20),
           ],
         ),
+      ),
+    );
+  }
+  
+  /// Build a card for day or night weather
+  Widget _buildDayNightCard({
+    required String title,
+    required String icon,
+    required String condition,
+    required double temp,
+    required bool isHigh,
+    required String sunTime,
+    required Color fg,
+  }) {
+    final accentColor = isHigh ? Colors.orange[700]! : Colors.blue[600]!;
+    final bgGradient = isHigh
+        ? [Colors.orange.withValues(alpha: 0.1), Colors.yellow.withValues(alpha: 0.05)]
+        : [Colors.indigo.withValues(alpha: 0.1), Colors.blue.withValues(alpha: 0.05)];
+    
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: bgGradient,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: accentColor.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Title
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: accentColor,
+                ),
+              ),
+              Text(
+                sunTime,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: fg.withValues(alpha: 0.6),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Icon and Temp
+          Row(
+            children: [
+              Image.network(
+                icon,
+                width: 40,
+                height: 40,
+                errorBuilder: (_, __, ___) =>
+                    Icon(isHigh ? Icons.wb_sunny : Icons.nightlight_round,
+                        size: 40, color: accentColor),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                "${temp.toStringAsFixed(0)}°",
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: accentColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Condition
+          Text(
+            condition,
+            style: TextStyle(
+              fontSize: 12,
+              color: fg.withValues(alpha: 0.7),
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
       ),
     );
   }
