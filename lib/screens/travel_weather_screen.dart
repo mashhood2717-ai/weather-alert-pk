@@ -1501,9 +1501,42 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       );
 
       if (routeData != null && mounted) {
-        _roadRoutePoints = routeData.polylinePoints
+        var polylinePoints = routeData.polylinePoints
             .map((p) => LatLng(p.latitude, p.longitude))
             .toList();
+
+        // Trim polyline at destination latitude to prevent loop-back on opposite lane
+        // This is needed because toll plazas may be mapped on opposite lane
+        if (polylinePoints.length > 2) {
+          final destLat = endLat;
+          final isGoingSouth = startLat > endLat; // ISB to LHR
+          
+          int trimIndex = -1;
+          for (int i = 0; i < polylinePoints.length; i++) {
+            final pLat = polylinePoints[i].latitude;
+            // Check if we've reached or passed destination latitude
+            if (isGoingSouth) {
+              // Going south: stop when we reach or go below destination lat
+              if (pLat <= destLat) {
+                trimIndex = i;
+                break;
+              }
+            } else {
+              // Going north: stop when we reach or go above destination lat
+              if (pLat >= destLat) {
+                trimIndex = i;
+                break;
+              }
+            }
+          }
+          
+          if (trimIndex > 0 && trimIndex < polylinePoints.length - 1) {
+            debugPrint('✂️ Trimming polyline at index $trimIndex (lat ${polylinePoints[trimIndex].latitude}) to match destination lat $destLat');
+            polylinePoints = polylinePoints.sublist(0, trimIndex + 1);
+          }
+        }
+
+        _roadRoutePoints = polylinePoints;
         _routeDistanceMeters = routeData.distanceMeters;
         _routeDurationSeconds = routeData.durationSeconds;
         _navigationSteps = routeData.steps;
@@ -1807,14 +1840,25 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       }
 
       // CHECK FOR DESTINATION ARRIVAL
-      // If this is the last point (destination) and we're within 100m, show arrived
+      // Use LATITUDE-BASED arrival for motorway toll plazas
+      // Since both lanes are at the same latitude (just different longitude),
+      // we consider arrived when user reaches the same latitude as destination
       final isDestination = _confirmedPointIndex == _routePoints.length - 1;
-      if (isDestination && distToCurrent < 100 && !_hasArrived) {
-        _hasArrived = true;
-        _showArrivedDialog();
-        debugPrint('🎉 ARRIVED at destination: ${currentPoint.name}');
-        if (mounted) setState(() {});
-        return; // Don't process further - we've arrived
+      if (isDestination && !_hasArrived) {
+        // Calculate latitude difference in meters (111,320 meters per degree)
+        final latDiffMeters = (position.latitude - currentPoint.lat).abs() * 111320;
+        
+        // Also check regular distance as fallback
+        final isAtLatitude = latDiffMeters < 150; // Within 150m of destination latitude
+        final isNearby = distToCurrent < 200; // Or within 200m of exact point
+        
+        if (isAtLatitude || isNearby) {
+          _hasArrived = true;
+          _showArrivedDialog();
+          debugPrint('🎉 ARRIVED at destination: ${currentPoint.name} (latDiff: ${latDiffMeters.round()}m, dist: ${distToCurrent.round()}m)');
+          if (mounted) setState(() {});
+          return; // Don't process further - we've arrived
+        }
       }
 
       // BEARING-BASED LOGIC: Switch immediately when you've PASSED the toll plaza
