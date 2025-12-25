@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -239,6 +240,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     // Cancel navigation notification when leaving screen
     if (_isNavigating) {
       NotificationService().cancelNavigationNotification();
+      WakelockPlus.disable(); // Ensure screen can sleep when leaving
     }
 
     super.dispose();
@@ -283,6 +285,10 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   /// Start real-time navigation tracking
   void _startNavigation() {
     if (_isNavigating) return;
+
+    // Keep screen awake during navigation
+    WakelockPlus.enable();
+    debugPrint('🔆 Screen wakelock enabled for navigation');
 
     // DON'T recalculate distances here - they're already correct from initial load
     // Just set the throttle timestamp to prevent immediate recalculation
@@ -381,6 +387,10 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
 
   /// Stop navigation
   void _stopNavigation() {
+    // Allow screen to sleep again
+    WakelockPlus.disable();
+    debugPrint('🔅 Screen wakelock disabled');
+
     _positionStream?.cancel();
     _positionStream = null;
 
