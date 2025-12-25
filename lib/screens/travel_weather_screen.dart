@@ -774,14 +774,20 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       if (bearingDiff > 180) bearingDiff -= 360;
       if (bearingDiff < -180) bearingDiff += 360;
 
-      // Fast bearing change
-      _displayBearing += bearingDiff * 6.0 * dt;
+      // Dead zone: ignore bearing changes < 3 degrees to prevent micro-jitter
+      if (bearingDiff.abs() < 3.0) {
+        bearingDiff = 0;
+      }
+
+      // Smooth bearing using exponential smoothing
+      // Factor 4.0 gives responsive but smooth ~250ms transition
+      _displayBearing += bearingDiff * 4.0 * dt;
 
       // Keep bearing in 0-360 range
       _displayBearing = _displayBearing % 360;
       if (_displayBearing < 0) _displayBearing += 360;
 
-      // Update camera - ALWAYS update when navigating for smooth continuous motion
+      // Update camera - use moveCamera for 60fps updates (animateCamera causes queue conflicts)
       _isProgrammaticCameraMove = true;
       _mapController!.moveCamera(
         CameraUpdate.newCameraPosition(
@@ -1501,13 +1507,14 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     List<MotorwayPoint> points,
     List<Duration> etas,
   ) async {
+    debugPrint('🛣️ Fetching directions: ${points.first.name} → ${points.last.name} (${points.length} waypoints)');
     try {
       final routeData = await TravelWeatherService.instance.getRoutePolyline(
         startLat: startLat,
         startLon: startLon,
         endLat: endLat,
         endLon: endLon,
-        waypoints: null,
+        waypoints: points, // Pass points for smart motorway caching
       );
 
       if (routeData != null && mounted) {
@@ -3799,6 +3806,81 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
               icon: const Icon(Icons.refresh, color: Colors.white),
               onPressed: _loadRoute,
             ),
+          // Debug menu for cache management
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Colors.white),
+            onSelected: (value) async {
+              if (value == 'clear_cache') {
+                await TravelWeatherService.instance.clearRouteCache();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('🗑️ Route cache cleared! New routes will be fetched fresh.'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } else if (value == 'refresh_directions') {
+                // Force refresh directions from Google API
+                if (_routePoints.isNotEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('🔄 Refreshing route from Google...'),
+                      backgroundColor: Colors.blue,
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                  // Fetch fresh directions bypassing cache
+                  final start = _routePoints.first.point;
+                  final end = _routePoints.last.point;
+                  final routeData = await TravelWeatherService.instance.getRoutePolyline(
+                    startLat: start.lat,
+                    startLon: start.lon,
+                    endLat: end.lat,
+                    endLon: end.lon,
+                    waypoints: _routePoints.map((rp) => rp.point).toList(),
+                    forceRefresh: true,
+                  );
+                  if (routeData != null && mounted) {
+                    final polylinePoints = routeData.polylinePoints
+                        .map((p) => LatLng(p.latitude, p.longitude))
+                        .toList();
+                    setState(() {
+                      _roadRoutePoints = polylinePoints;
+                    });
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('✅ Route refreshed successfully!'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                }
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'refresh_directions',
+                child: Row(
+                  children: [
+                    Icon(Icons.route, color: Colors.blue),
+                    SizedBox(width: 8),
+                    Text('Refresh Directions'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'clear_cache',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_outline, color: Colors.red),
+                    SizedBox(width: 8),
+                    Text('Clear Route Cache'),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -7068,11 +7150,11 @@ Shared via Weather Alert Pakistan
           // Weather row
           Row(
             children: [
-              // Temperature and condition
+              // Temperature and condition - use estimated arrival time to determine day/night
               Icon(
                 _getWeatherIconFromCondition(displayCondition,
-                    isDay: weather?.isDay ?? true),
-                color: (weather?.isDay ?? true)
+                    isDay: _isDayAtTime(nextPoint.estimatedArrival)),
+                color: _isDayAtTime(nextPoint.estimatedArrival)
                     ? Colors.amber
                     : Colors.blueGrey.shade200,
                 size: 32,
