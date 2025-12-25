@@ -275,6 +275,14 @@ class M2Motorway {
       distanceFromStart: 335,
     ),
     MotorwayPoint(
+      id: 'm2_18b',
+      name: 'Kot Abdul Malik',
+      lat: 31.638294,
+      lon: 74.208116,
+      type: PointType.tollPlaza,
+      distanceFromStart: 343,
+    ),
+    MotorwayPoint(
       id: 'm2_19',
       name: 'Faizpur',
       lat: 31.592222,
