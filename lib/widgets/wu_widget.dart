@@ -60,16 +60,18 @@ class _WuWidgetState extends State<WuWidget> {
   @override
   void didUpdateWidget(WuWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    
+
     // If tab became active and hasn't loaded yet, load now
     if (widget.isActive && !oldWidget.isActive && !_hasLoadedOnce) {
-      if (widget.userLat != null && widget.userLon != null && !_hasScannedForLocation) {
+      if (widget.userLat != null &&
+          widget.userLon != null &&
+          !_hasScannedForLocation) {
         _scanForNearbyStation();
       } else if (_selectedCity != null && _currentData == null) {
         _autoLoadFirstStation(_selectedCity!);
       }
     }
-    
+
     // If city prop changed, update selection
     if (oldWidget.city != widget.city && widget.city != null) {
       _syncCityFromProp();
@@ -128,7 +130,7 @@ class _WuWidgetState extends State<WuWidget> {
   Future<void> _autoLoadFirstStation(String city) async {
     // Only load if tab is active (lazy loading)
     if (!widget.isActive) return;
-    
+
     final stations = wuStationsByCity[city];
     if (stations == null || stations.isEmpty) return;
 
@@ -306,7 +308,7 @@ class _WuWidgetState extends State<WuWidget> {
           }
         }
       }
-      
+
       // If we found a station within 5km, stop scanning
       if (nearestStationId != null) break;
     }

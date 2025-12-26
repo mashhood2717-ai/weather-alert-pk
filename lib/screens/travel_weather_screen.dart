@@ -152,6 +152,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
 
   // Smoothing for motion (low-pass filter)
   double _smoothMotionSpeed = 0;
+  // ignore: unused_field
   double _smoothMotionBearing = 0;
 
   // Animation
@@ -842,44 +843,62 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
         // Calculate how far to move this frame (distance = speed * time)
         final distanceMeters = _smoothMotionSpeed * dt;
 
-        // Convert meters to lat/lon delta
-        final latDelta =
-            (distanceMeters / 111000.0) * cos(_smoothMotionBearing);
+        // Convert meters to lat/lon delta along bearing direction
+        final bearingRad = _displayBearing * (3.14159 / 180);
+        final latDelta = (distanceMeters / 111000.0) * cos(bearingRad);
         final lonDelta =
             (distanceMeters / (111000.0 * cos(_displayLat * 3.14159 / 180))) *
-                sin(_smoothMotionBearing);
+                sin(bearingRad);
 
-        // Move display position forward
+        // Move display position forward along bearing
         _displayLat += latDelta;
         _displayLon += lonDelta;
-
-        // Also move target forward to keep the offset consistent
-        _targetLat += latDelta;
-        _targetLon += lonDelta;
       }
 
-      // === SMOOTHER CORRECTION TOWARDS GPS TARGET ===
-      // Use lower correction strength for butter-smooth movement like Google Maps
+      // === ROAD-LOCKED CORRECTION (NO LATERAL DRIFT) ===
+      // Project GPS error ONLY along the bearing direction (forward/backward)
+      // This prevents the car from drifting left/right like Google Maps
       final latDiff = _targetLat - _displayLat;
       final lonDiff = _targetLon - _displayLon;
 
-      // Smoother correction - 3.0 gives ~330ms blend time (less jittery)
-      const correctionStrength = 3.0;
-      _displayLat += latDiff * correctionStrength * dt;
-      _displayLon += lonDiff * correctionStrength * dt;
+      // Convert bearing to radians
+      final bearingRad = _displayBearing * (3.14159 / 180);
+
+      // Calculate forward component of error (dot product with bearing direction)
+      // This projects the GPS error onto the travel direction
+      final forwardError = latDiff * cos(bearingRad) * 111000 +
+          lonDiff * sin(bearingRad) * 111000 * cos(_displayLat * 3.14159 / 180);
+
+      // Only correct forward/backward, ignore lateral error (this locks to road)
+      // Adaptive correction: stronger when far behind, gentler when close
+      double correctionStrength;
+      if (forwardError.abs() > 15) {
+        correctionStrength = 3.0; // Fast correction when far (>15m)
+      } else if (forwardError.abs() > 5) {
+        correctionStrength = 1.5; // Medium when 5-15m
+      } else {
+        correctionStrength = 0.8; // Gentle when close (<5m) - ultra smooth
+      }
+
+      // Apply correction ONLY along bearing direction
+      final correctionMeters = forwardError * correctionStrength * dt;
+      _displayLat += (correctionMeters / 111000.0) * cos(bearingRad);
+      _displayLon +=
+          (correctionMeters / (111000.0 * cos(_displayLat * 3.14159 / 180))) *
+              sin(bearingRad);
 
       // Smooth bearing interpolation with wraparound handling
       double bearingDiff = _targetBearing - _displayBearing;
       if (bearingDiff > 180) bearingDiff -= 360;
       if (bearingDiff < -180) bearingDiff += 360;
 
-      // Dead zone: ignore bearing changes < 5 degrees to prevent micro-jitter
-      if (bearingDiff.abs() < 5.0) {
+      // Dead zone: ignore bearing changes < 10 degrees to prevent micro-jitter
+      if (bearingDiff.abs() < 10.0) {
         bearingDiff = 0;
       }
 
-      // Smoother bearing - 2.5 gives ~400ms transition for buttery rotation
-      _displayBearing += bearingDiff * 2.5 * dt;
+      // Ultra-smooth bearing - 1.5 gives ~670ms transition for buttery rotation
+      _displayBearing += bearingDiff * 1.5 * dt;
 
       // Keep bearing in 0-360 range
       _displayBearing = _displayBearing % 360;
@@ -1560,6 +1579,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       }
 
       _routePoints = travelPoints;
+      _weatherMarkerIcons.clear(); // Clear marker cache for new route
 
       // Show UI immediately
       _updateMapMarkers();
@@ -1983,43 +2003,56 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
 
       // BEARING-BASED LOGIC: Switch immediately when you've PASSED the toll plaza
       // The toll plaza is "behind you" when the bearing from you to it points backward
+      // IMPORTANT: Only consider passed if you were close enough to actually pass it
 
       bool shouldAdvance = false;
 
       if (nextPoint != null) {
-        // Calculate bearing from USER to CURRENT point
-        double bearingToCurrentPoint = Geolocator.bearingBetween(
-          position.latitude,
-          position.longitude,
-          currentPoint.lat,
-          currentPoint.lon,
-        );
+        // PROXIMITY CHECK: Only consider passing if within reasonable distance of the point
+        // This prevents marking points as "passed" when you're far away at same latitude
+        // Must be within 1km of the point to consider bearing-based passing
+        final withinProximity = distToCurrent < 1000; // 1km
 
-        // Calculate bearing from USER to NEXT point (travel direction)
-        double bearingToNextPoint = Geolocator.bearingBetween(
-          position.latitude,
-          position.longitude,
-          nextPoint.lat,
-          nextPoint.lon,
-        );
+        if (!withinProximity) {
+          // Too far from point - skip bearing check entirely
+          // This keeps the point visible until you actually approach it
+          shouldAdvance = false;
+        } else {
+          // Calculate bearing from USER to CURRENT point
+          double bearingToCurrentPoint = Geolocator.bearingBetween(
+            position.latitude,
+            position.longitude,
+            currentPoint.lat,
+            currentPoint.lon,
+          );
 
-        // Normalize bearings to 0-360
-        if (bearingToCurrentPoint < 0) bearingToCurrentPoint += 360;
-        if (bearingToNextPoint < 0) bearingToNextPoint += 360;
+          // Calculate bearing from USER to NEXT point (travel direction)
+          double bearingToNextPoint = Geolocator.bearingBetween(
+            position.latitude,
+            position.longitude,
+            nextPoint.lat,
+            nextPoint.lon,
+          );
 
-        // Calculate the difference - if current point is roughly OPPOSITE to travel direction, we've passed it
-        double bearingDiff = (bearingToCurrentPoint - bearingToNextPoint).abs();
-        if (bearingDiff > 180) bearingDiff = 360 - bearingDiff;
+          // Normalize bearings to 0-360
+          if (bearingToCurrentPoint < 0) bearingToCurrentPoint += 360;
+          if (bearingToNextPoint < 0) bearingToNextPoint += 360;
 
-        // If bearing difference > 90°, current point is behind us (we've passed it)
-        // Current point is to our back, next point is ahead
-        // Also require minimum 200m past the point to prevent GPS jitter flip-flop
-        final currentPointIsBehind = bearingDiff > 90 && distToCurrent > 200;
+          // Calculate the difference - if current point is roughly OPPOSITE to travel direction, we've passed it
+          double bearingDiff =
+              (bearingToCurrentPoint - bearingToNextPoint).abs();
+          if (bearingDiff > 180) bearingDiff = 360 - bearingDiff;
 
-        if (currentPointIsBehind) {
-          shouldAdvance = true;
-          debugPrint(
-              '📍 PASSED ${currentPoint.name}: It\'s behind us (bearing diff: ${bearingDiff.toStringAsFixed(0)}°) → Next: ${nextPoint.name}');
+          // If bearing difference > 90°, current point is behind us (we've passed it)
+          // Current point is to our back, next point is ahead
+          // Also require minimum 200m past the point to prevent GPS jitter flip-flop
+          final currentPointIsBehind = bearingDiff > 90 && distToCurrent > 200;
+
+          if (currentPointIsBehind) {
+            shouldAdvance = true;
+            debugPrint(
+                '📍 PASSED ${currentPoint.name}: It\'s behind us (bearing diff: ${bearingDiff.toStringAsFixed(0)}°, dist: ${distToCurrent.round()}m) → Next: ${nextPoint.name}');
+          }
         }
       }
 
@@ -2286,6 +2319,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   BitmapDescriptor? _navigationArrowIcon;
   BitmapDescriptor? _carIcon;
   BitmapDescriptor? _blueDotIcon;
+  // Cache for weather card markers (key: pointId_temp_isPassed_isNext)
+  final Map<String, BitmapDescriptor> _weatherMarkerIcons = {};
 
   /// Create custom navigation icons programmatically
   Future<void> _createCustomMarkerIcons() async {
@@ -2468,18 +2503,20 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
   }
 
-  /// Create weather card marker with icon, temperature, and visibility
+  /// Create weather card marker with icon, temperature, name, and visibility
   Future<BitmapDescriptor> _createWeatherCardMarker({
     required int temp,
     required String condition,
+    required String name,
+    required bool isDay,
     String? visibility,
     bool isNext = false,
     bool isPassed = false,
   }) async {
     final pictureRecorder = PictureRecorder();
     final canvas = Canvas(pictureRecorder);
-    const width = 80.0;
-    const height = 50.0;
+    const width = 90.0;
+    const height = 60.0;
 
     // Card background
     final bgPaint = Paint()
@@ -2507,61 +2544,131 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     final iconPaint = Paint()
       ..color = _getWeatherColor(condition)
       ..style = PaintingStyle.fill;
-    canvas.drawCircle(const Offset(18, height / 2), 12, iconPaint);
+    canvas.drawCircle(const Offset(18, 28), 12, iconPaint);
 
-    // Draw a simple sun/cloud/rain symbol
+    // Draw weather symbol based on condition AND time of day
     final iconSymbolPaint = Paint()
       ..color = Colors.white
       ..style = PaintingStyle.fill;
-    if (condition.toLowerCase().contains('sun') ||
-        condition.toLowerCase().contains('clear')) {
-      // Sun rays
-      for (int i = 0; i < 8; i++) {
-        final angle = i * pi / 4;
-        canvas.drawLine(
-          Offset(18 + cos(angle) * 6, height / 2 + sin(angle) * 6),
-          Offset(18 + cos(angle) * 10, height / 2 + sin(angle) * 10),
-          iconSymbolPaint..strokeWidth = 2,
-        );
-      }
-      canvas.drawCircle(const Offset(18, height / 2), 5, iconSymbolPaint);
-    } else if (condition.toLowerCase().contains('rain')) {
+    final lowerCondition = condition.toLowerCase();
+
+    if (lowerCondition.contains('rain') || lowerCondition.contains('drizzle')) {
       // Rain drops
-      canvas.drawCircle(const Offset(18, height / 2 - 3), 6, iconSymbolPaint);
+      canvas.drawCircle(const Offset(18, 25), 6, iconSymbolPaint);
       for (int i = 0; i < 3; i++) {
         canvas.drawLine(
-          Offset(14.0 + i * 4, height / 2 + 4),
-          Offset(12.0 + i * 4, height / 2 + 9),
+          Offset(14.0 + i * 4, 32),
+          Offset(12.0 + i * 4, 37),
           iconSymbolPaint..strokeWidth = 2,
         );
       }
-    } else {
+    } else if (lowerCondition.contains('cloud') ||
+        lowerCondition.contains('overcast')) {
       // Cloud
-      canvas.drawCircle(const Offset(15, height / 2), 5, iconSymbolPaint);
-      canvas.drawCircle(const Offset(21, height / 2), 6, iconSymbolPaint);
-      canvas.drawCircle(const Offset(18, height / 2 - 3), 4, iconSymbolPaint);
+      canvas.drawCircle(const Offset(15, 28), 5, iconSymbolPaint);
+      canvas.drawCircle(const Offset(21, 28), 6, iconSymbolPaint);
+      canvas.drawCircle(const Offset(18, 25), 4, iconSymbolPaint);
+    } else if (lowerCondition.contains('fog') ||
+        lowerCondition.contains('mist') ||
+        lowerCondition.contains('haze')) {
+      // Fog lines
+      for (int i = 0; i < 3; i++) {
+        canvas.drawLine(
+          Offset(10, 24.0 + i * 5),
+          Offset(26, 24.0 + i * 5),
+          iconSymbolPaint..strokeWidth = 2,
+        );
+      }
+    } else if (lowerCondition.contains('sun') ||
+        lowerCondition.contains('clear') ||
+        lowerCondition.contains('sunny')) {
+      if (isDay) {
+        // Sun with rays
+        for (int i = 0; i < 8; i++) {
+          final angle = i * pi / 4;
+          canvas.drawLine(
+            Offset(18 + cos(angle) * 6, 28 + sin(angle) * 6),
+            Offset(18 + cos(angle) * 10, 28 + sin(angle) * 10),
+            iconSymbolPaint..strokeWidth = 2,
+          );
+        }
+        canvas.drawCircle(const Offset(18, 28), 5, iconSymbolPaint);
+      } else {
+        // Crescent moon - draw as a proper crescent shape
+        final moonPaint = Paint()
+          ..color = const Color(0xFFFFF9C4) // Warm moon yellow
+          ..style = PaintingStyle.fill;
+        
+        // Create crescent using path with arc
+        final moonPath = Path();
+        // Outer circle (full moon shape)
+        moonPath.addOval(Rect.fromCircle(center: const Offset(18, 28), radius: 7));
+        // Subtract inner circle offset to create crescent
+        final cutoutPath = Path()
+          ..addOval(Rect.fromCircle(center: const Offset(22, 27), radius: 6));
+        final crescentPath = Path.combine(PathOperation.difference, moonPath, cutoutPath);
+        canvas.drawPath(crescentPath, moonPaint);
+        
+        // Add a small star near the moon
+        final starPaint = Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.fill;
+        canvas.drawCircle(const Offset(26, 22), 1.5, starPaint);
+      }
+    } else {
+      // Default: partly cloudy (sun/moon + cloud)
+      if (isDay) {
+        // Small sun
+        canvas.drawCircle(const Offset(14, 24), 4, iconSymbolPaint);
+      } else {
+        // Small crescent moon
+        final moonPaint = Paint()
+          ..color = const Color(0xFFFFF9C4)
+          ..style = PaintingStyle.fill;
+        final moonPath = Path()
+          ..addOval(Rect.fromCircle(center: const Offset(14, 24), radius: 4));
+        final cutoutPath = Path()
+          ..addOval(Rect.fromCircle(center: const Offset(17, 23), radius: 3.5));
+        final crescentPath =
+            Path.combine(PathOperation.difference, moonPath, cutoutPath);
+        canvas.drawPath(crescentPath, moonPaint);
+      }
+      // Cloud in front
+      canvas.drawCircle(const Offset(18, 30), 5, iconSymbolPaint);
+      canvas.drawCircle(const Offset(23, 30), 4, iconSymbolPaint);
     }
+
+    // Plaza name at top (truncated)
+    final displayName = name.length > 10 ? '${name.substring(0, 8)}..' : name;
+    final nameParagraph = _createTextParagraph(
+      displayName,
+      9,
+      FontWeight.w500,
+      const Color(0xFFAEAEB2),
+      55,
+    );
+    canvas.drawParagraph(nameParagraph, const Offset(35, 4));
 
     // Temperature text
     final tempParagraph = _createTextParagraph(
       '$temp°',
-      18,
+      16,
       FontWeight.bold,
       Colors.white,
       30,
     );
-    canvas.drawParagraph(tempParagraph, const Offset(35, 6));
+    canvas.drawParagraph(tempParagraph, const Offset(35, 18));
 
     // Visibility text (if available)
     if (visibility != null) {
       final visParagraph = _createTextParagraph(
         visibility,
-        10,
+        9,
         FontWeight.w500,
         const Color(0xFF8E8E93),
         40,
       );
-      canvas.drawParagraph(visParagraph, const Offset(35, 30));
+      canvas.drawParagraph(visParagraph, const Offset(35, 38));
     }
 
     // Pointer at bottom
@@ -2641,17 +2748,22 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   Future<BitmapDescriptor> _getWeatherCardMarker({
     required int temp,
     required String condition,
+    required String name,
+    required bool isDay,
     String? visibility,
     bool isNext = false,
     bool isPassed = false,
   }) async {
-    final key = '${temp}_${condition}_${visibility ?? ''}_${isNext}_$isPassed';
+    final key =
+        '${temp}_${condition}_${name}_${isDay}_${visibility ?? ''}_${isNext}_$isPassed';
     if (_weatherCardMarkerCache.containsKey(key)) {
       return _weatherCardMarkerCache[key]!;
     }
     final marker = await _createWeatherCardMarker(
       temp: temp,
       condition: condition,
+      name: name,
+      isDay: isDay,
       visibility: visibility,
       isNext: isNext,
       isPassed: isPassed,
@@ -2711,6 +2823,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       final markerIcon = await _getWeatherCardMarker(
         temp: temp,
         condition: condition,
+        name: tp.point.name,
+        isDay: _isDayAtTime(tp.estimatedArrival),
         visibility: visibility,
         isNext: isNext,
         isPassed: isPassed,
@@ -6135,10 +6249,10 @@ Shared via Weather Alert Pakistan
             child: _buildAnimatedCompass(),
           ),
 
-        // Recenter/Follow Button - Always visible above Timeline button
+        // Recenter/Follow Button - Always visible above Route button
         if (!_showTimelineSlider)
           Positioned(
-            bottom: _isNavigating ? 210 : 80,
+            bottom: _isNavigating ? 210 : 135,
             right: 16,
             child: GestureDetector(
               onTap: () => _recenterOnUser(true),
@@ -6180,10 +6294,10 @@ Shared via Weather Alert Pakistan
             ),
           ),
 
-        // Route Tracker button (only when navigating) - Shows entire route on map
-        if (_isNavigating && !_showTimelineSlider)
+        // Route Tracker button (when route is confirmed) - Shows entire route on map
+        if (_routeConfirmed && !_showTimelineSlider)
           Positioned(
-            bottom: 155,
+            bottom: _isNavigating ? 155 : 80,
             right: 16,
             child: GestureDetector(
               onTap: _showEntireRoute,
@@ -6224,10 +6338,10 @@ Shared via Weather Alert Pakistan
             ),
           ),
 
-        // Bottom left - Timeline slider button (GREEN) - Only show when navigating
-        if (_isNavigating)
+        // Bottom left - Timeline slider button (GREEN) - Show when route is confirmed
+        if (_routeConfirmed)
           Positioned(
-            bottom: _showTimelineSlider ? 200 : 185,
+            bottom: _showTimelineSlider ? 200 : (_isNavigating ? 185 : 80),
             left: 26,
             child: GestureDetector(
               onTap: () {
@@ -6276,10 +6390,11 @@ Shared via Weather Alert Pakistan
             ),
           ),
 
-        // Bottom right - Timeline list view button (visible during navigation too)
-        if (!_showTimelineSlider)
+        // Bottom right - Timeline list view button (only visible during navigation)
+        // Before navigation, Timeline is already in the bottom bar
+        if (_isNavigating && !_showTimelineSlider)
           Positioned(
-            bottom: _isNavigating ? 100 : 16,
+            bottom: 100,
             right: 16,
             child: GestureDetector(
               onTap: () => setState(() => _currentView = 1),
@@ -7043,6 +7158,152 @@ Shared via Weather Alert Pakistan
     );
   }
 
+  /// Horizontal scrollable weather strip showing upcoming points
+  // ignore: unused_element
+  Widget _buildWeatherStrip() {
+    // Get upcoming points (skip current/passed ones during navigation)
+    final upcomingPoints = _routePoints
+        .asMap()
+        .entries
+        .where((e) => e.key >= _currentPointIndex)
+        .take(6) // Show max 6 upcoming points
+        .toList();
+
+    if (upcomingPoints.isEmpty) return const SizedBox.shrink();
+
+    return ListView.builder(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      itemCount: upcomingPoints.length,
+      itemBuilder: (context, index) {
+        final tp = upcomingPoints[index].value;
+        final weather = tp.weather;
+        final metar = _getMetarIfInRange(tp.point.id);
+
+        // Get temperature
+        final temp = weather?.tempC.round() ?? 0;
+
+        // Get visibility from METAR if available
+        String? visibility;
+        if (metar != null && metar['visibility_km'] != null) {
+          final visKm = _toDouble(metar['visibility_km']);
+          if (visKm != null) {
+            visibility = '${visKm.toStringAsFixed(0)}km';
+          }
+        }
+
+        // Get condition
+        String condition = weather?.condition ?? 'N/A';
+        if (metar != null && metar['raw_text'] != null) {
+          final code = _extractMetarCode(metar['raw_text'].toString());
+          if (code.isNotEmpty) {
+            condition = mapMetarCodeToDescription(code);
+          }
+        }
+
+        // Check for any alerts for this point
+        final hasAlert = _roadAlerts.any((alert) => (alert.location ?? '')
+            .toLowerCase()
+            .contains(tp.point.name.toLowerCase().split(' ').first));
+
+        // Short name (first word or abbreviated)
+        final shortName = tp.point.name.split(' ').first;
+
+        return Container(
+          width: 85,
+          margin: const EdgeInsets.only(right: 8),
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: hasAlert
+                ? Colors.red.withValues(alpha: 0.9)
+                : _cardDark.withValues(alpha: 0.9),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: hasAlert
+                  ? Colors.red
+                  : (metar != null
+                      ? Colors.blue.withValues(alpha: 0.5)
+                      : Colors.white.withValues(alpha: 0.1)),
+              width: metar != null ? 1.5 : 1,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Point name
+              Text(
+                shortName.length > 8
+                    ? shortName.substring(0, 8)
+                    : shortName,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w600,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              // Temperature + Icon row
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    _getWeatherIconFromCondition(condition,
+                        isDay: _isDayAtTime(tp.estimatedArrival)),
+                    color: Colors.amber,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 2),
+                  Text(
+                    '$temp°',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              // Visibility or alert indicator
+              if (visibility != null)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.visibility,
+                        color: Colors.teal.shade300, size: 10),
+                    const SizedBox(width: 2),
+                    Text(
+                      visibility,
+                      style: TextStyle(
+                        color: Colors.teal.shade200,
+                        fontSize: 9,
+                      ),
+                    ),
+                  ],
+                )
+              else if (hasAlert)
+                const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.warning_amber, color: Colors.yellow, size: 10),
+                    SizedBox(width: 2),
+                    Text(
+                      'Alert',
+                      style: TextStyle(
+                        color: Colors.yellow,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   /// Speedometer widget - circular style
   Widget _buildSpeedometerWidget() {
     final speed = _currentSpeed.round();
@@ -7388,7 +7649,7 @@ Shared via Weather Alert Pakistan
                 size: 28,
               ),
               const SizedBox(width: 8),
-              Flexible(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -7439,7 +7700,7 @@ Shared via Weather Alert Pakistan
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 12),
               // Weather details
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -7616,12 +7877,52 @@ Shared via Weather Alert Pakistan
           ? '${(metar!['visibility']['meters'] / 1000).toStringAsFixed(0)}km'
           : null;
 
+      // Determine marker state
+      final isPassed = _isNavigating && i < _confirmedPointIndex;
+      final isNext = _isNavigating &&
+          i == _confirmedPointIndex &&
+          i < _routePoints.length - 1;
+
+      // Determine if it's day or night at estimated arrival time (not current API time)
+      final isDay = _isDayAtTime(tp.estimatedArrival);
+
+      // Create cache key (include isDay for proper icon)
+      final cacheKey = '${tp.point.id}_${temp}_${isPassed}_${isNext}_$isDay';
+
+      // Get or create weather marker icon
+      BitmapDescriptor markerIcon;
+      if (_weatherMarkerIcons.containsKey(cacheKey)) {
+        markerIcon = _weatherMarkerIcons[cacheKey]!;
+      } else {
+        // Use default marker while async icon is being created
+        markerIcon =
+            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
+
+        // Async create and cache the weather marker
+        _createWeatherCardMarker(
+          temp: temp,
+          condition: weather.condition,
+          name: tp.point.name,
+          isDay: isDay,
+          visibility: visibility,
+          isNext: isNext,
+          isPassed: isPassed,
+        ).then((icon) {
+          _weatherMarkerIcons[cacheKey] = icon;
+          // Trigger marker rebuild
+          if (mounted) {
+            setState(() {});
+          }
+        });
+      }
+
       markers.add(
         Marker(
           markerId: MarkerId('point_$i'),
           position: LatLng(tp.point.lat, tp.point.lon),
-          icon:
-              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+          icon: markerIcon,
+          anchor:
+              const Offset(0.5, 1.0), // Anchor at bottom center (pointer tip)
           infoWindow: InfoWindow(
             title: '${tp.point.name} - $temp°',
             snippet:
@@ -8067,14 +8368,78 @@ Shared via Weather Alert Pakistan
     );
   }
 
-  /// Check if a given time is during daytime (6 AM to 6 PM roughly)
-  /// Used for weather icon display based on estimated arrival time
+  /// Check if a given time is during daytime based on calculated sunrise/sunset
+  /// Uses astronomical calculation for Pakistan latitude
   /// If no time provided, uses current time
   bool _isDayAtTime([DateTime? time]) {
     final checkTime = time ?? DateTime.now();
-    final hour = checkTime.hour;
-    // Day time is roughly 6 AM to 6 PM in Pakistan
-    return hour >= 6 && hour < 18;
+
+    // Calculate actual sunrise/sunset using astronomical formula
+    // Default to Lahore/central Pakistan latitude
+    final sunTimes = _calculateSunTimes(checkTime, 31.5, 74.3);
+
+    final checkMinutes = checkTime.hour * 60 + checkTime.minute;
+    final sunriseMinutes = sunTimes['sunrise']!;
+    final sunsetMinutes = sunTimes['sunset']!;
+
+    return checkMinutes >= sunriseMinutes && checkMinutes < sunsetMinutes;
+  }
+
+  /// Calculate sunrise/sunset times using simplified astronomical formula
+  /// Based on NOAA Solar Calculator equations
+  /// Returns minutes from midnight for both sunrise and sunset
+  Map<String, int> _calculateSunTimes(
+      DateTime date, double latitude, double longitude) {
+    // Day of year (1-365)
+    final dayOfYear = date.difference(DateTime(date.year, 1, 1)).inDays + 1;
+
+    // Convert latitude to radians
+    final latRad = latitude * pi / 180;
+
+    // Fractional year (gamma) in radians
+    final gamma = 2 * pi / 365 * (dayOfYear - 1);
+
+    // Equation of time (in minutes)
+    final eqTime = 229.18 *
+        (0.000075 +
+            0.001868 * cos(gamma) -
+            0.032077 * sin(gamma) -
+            0.014615 * cos(2 * gamma) -
+            0.040849 * sin(2 * gamma));
+
+    // Solar declination (in radians)
+    final decl = 0.006918 -
+        0.399912 * cos(gamma) +
+        0.070257 * sin(gamma) -
+        0.006758 * cos(2 * gamma) +
+        0.000907 * sin(2 * gamma) -
+        0.002697 * cos(3 * gamma) +
+        0.00148 * sin(3 * gamma);
+
+    // Hour angle for sunrise/sunset (degrees)
+    // Using -0.833 degrees for atmospheric refraction
+    final zenith = 90.833 * pi / 180; // 90.833 degrees in radians
+
+    var cosHa =
+        (cos(zenith) / (cos(latRad) * cos(decl))) - tan(latRad) * tan(decl);
+
+    // Clamp to valid range (handles polar day/night)
+    cosHa = cosHa.clamp(-1.0, 1.0);
+
+    final ha = acos(cosHa) * 180 / pi; // Hour angle in degrees
+
+    // Solar noon (in minutes from midnight, local standard time)
+    // Pakistan is UTC+5, longitude 74°E
+    final solarNoon = 720 - 4 * longitude - eqTime + 5 * 60; // +5 hours for PKT
+
+    // Sunrise and sunset times (in minutes from midnight)
+    final sunriseMinutes = (solarNoon - 4 * ha).round();
+    final sunsetMinutes = (solarNoon + 4 * ha).round();
+
+    return {
+      'sunrise': sunriseMinutes,
+      'sunset': sunsetMinutes,
+    };
   }
 
   IconData _getWeatherIconFromCondition(String condition, {bool isDay = true}) {
@@ -9289,9 +9654,11 @@ Shared via Weather Alert Pakistan
         debugPrint(
             '🚗 Filtered alerts for $_selectedMotorwayId: ${_roadAlerts.length}');
 
-        // Start auto-scroll if we have alerts
+        // Start auto-scroll if we have alerts (use post-frame callback to ensure widget is built)
         if (_roadAlerts.isNotEmpty) {
-          _startTickerAutoScroll();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _startTickerAutoScroll();
+          });
         }
       }
     }, onError: (e) {
@@ -9372,15 +9739,28 @@ Shared via Weather Alert Pakistan
   }
 
   bool _tickerScrollingForward = true;
+  int _tickerRetryCount = 0;
 
   /// Start auto-scrolling ticker animation - smooth right to left loop
   void _startTickerAutoScroll() {
     _tickerScrollTimer?.cancel();
+    _tickerRetryCount = 0;
     if (_roadAlerts.isEmpty) return;
 
     // Auto-scroll every 50ms for smooth scrolling
     _tickerScrollTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
-      if (!mounted || !_tickerScrollController.hasClients) return;
+      if (!mounted) return;
+
+      // Retry if scroll controller doesn't have clients yet
+      if (!_tickerScrollController.hasClients) {
+        _tickerRetryCount++;
+        // Stop retrying after 100 attempts (5 seconds)
+        if (_tickerRetryCount > 100) {
+          _tickerScrollTimer?.cancel();
+          debugPrint('🚗 Ticker: giving up, no scroll clients after 5s');
+        }
+        return;
+      }
 
       final maxScroll = _tickerScrollController.position.maxScrollExtent;
       final currentScroll = _tickerScrollController.offset;

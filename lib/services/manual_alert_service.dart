@@ -138,11 +138,12 @@ class ManualAlertService {
         } else if (timestamp is int) {
           alertTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
         }
-        
+
         final ageInHours = DateTime.now().difference(alertTime).inHours;
         if (ageInHours > 24) {
           isOldAlert = true;
-          print('⏰ Old alert detected (${ageInHours}h old): $alertId - will save but skip notification');
+          print(
+              '⏰ Old alert detected (${ageInHours}h old): $alertId - will save but skip notification');
         }
       }
 
@@ -248,7 +249,8 @@ class ManualAlertService {
         city: cityName,
         severity: data['severity'] ?? 'medium',
         receivedAt: alertTime, // Use actual alert time, not current time
-        isRead: isOldAlert, // Mark old alerts as read so they don't show as unread
+        isRead:
+            isOldAlert, // Mark old alerts as read so they don't show as unread
         data: {
           'type': data['type'] ?? 'other',
           'mode': mode,
