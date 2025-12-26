@@ -382,7 +382,8 @@ class _PrayerWidgetState extends State<PrayerWidget> {
                         style: TextStyle(
                           color: isNext ? Colors.green : fg,
                           fontSize: 16,
-                          fontWeight: isNext ? FontWeight.bold : FontWeight.w500,
+                          fontWeight:
+                              isNext ? FontWeight.bold : FontWeight.w500,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),

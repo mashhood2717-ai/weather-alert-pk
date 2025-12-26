@@ -286,8 +286,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       final savedAt = DateTime.tryParse(state['savedAt'] ?? '');
 
       // Only restore if saved within last 6 hours (navigation still relevant)
-      if (savedAt == null ||
-          DateTime.now().difference(savedAt).inHours > 6) {
+      if (savedAt == null || DateTime.now().difference(savedAt).inHours > 6) {
         await prefs.remove('active_navigation_state');
         debugPrint('🗑️ Navigation state expired, cleared');
         return;
@@ -4862,7 +4861,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                                   Wrap(
                                     spacing: 4,
                                     runSpacing: 2,
-                                    crossAxisAlignment: WrapCrossAlignment.center,
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
                                     children: [
                                       Row(
                                         mainAxisSize: MainAxisSize.min,
@@ -4885,7 +4885,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
                                             Icon(Icons.schedule,
-                                                size: 12, color: Colors.white54),
+                                                size: 12,
+                                                color: Colors.white54),
                                             const SizedBox(width: 4),
                                             Text(
                                               _formatDuration(tp.etaFromStart!),
@@ -6691,15 +6692,15 @@ Shared via Weather Alert Pakistan
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Icon(Icons.access_time,
-                                            color:
-                                                Colors.white.withValues(alpha: 0.6),
+                                            color: Colors.white
+                                                .withValues(alpha: 0.6),
                                             size: 14),
                                         const SizedBox(width: 4),
                                         Text(
                                           'Arrival: $timeStr',
                                           style: TextStyle(
-                                            color:
-                                                Colors.white.withValues(alpha: 0.7),
+                                            color: Colors.white
+                                                .withValues(alpha: 0.7),
                                             fontSize: 13,
                                           ),
                                         ),
@@ -6709,15 +6710,15 @@ Shared via Weather Alert Pakistan
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Icon(Icons.straighten,
-                                            color:
-                                                Colors.white.withValues(alpha: 0.6),
+                                            color: Colors.white
+                                                .withValues(alpha: 0.6),
                                             size: 14),
                                         const SizedBox(width: 4),
                                         Text(
                                           '${currentPoint.distanceFromUser} km',
                                           style: TextStyle(
-                                            color:
-                                                Colors.white.withValues(alpha: 0.7),
+                                            color: Colors.white
+                                                .withValues(alpha: 0.7),
                                             fontSize: 13,
                                           ),
                                         ),
@@ -7094,7 +7095,7 @@ Shared via Weather Alert Pakistan
   Widget _buildAnimatedCompass() {
     // Use the current bearing to rotate the compass
     final bearing = _roadBearing != 0 ? _roadBearing : _currentHeading;
-    
+
     return GestureDetector(
       onTap: () {
         // Tap to align map to north
@@ -7102,7 +7103,8 @@ Shared via Weather Alert Pakistan
           _mapController!.animateCamera(
             CameraUpdate.newCameraPosition(
               CameraPosition(
-                target: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+                target: LatLng(
+                    _currentPosition!.latitude, _currentPosition!.longitude),
                 zoom: 18,
                 bearing: 0, // North
                 tilt: 55,
@@ -7134,7 +7136,8 @@ Shared via Weather Alert Pakistan
           children: [
             // Rotating compass needle
             Transform.rotate(
-              angle: -bearing * (3.14159 / 180), // Negative to show correct direction
+              angle: -bearing *
+                  (3.14159 / 180), // Negative to show correct direction
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -7413,28 +7416,28 @@ Shared via Weather Alert Pakistan
                           ),
                         ),
                         if (hasMetar) ...[
-                        const SizedBox(width: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 4, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: Colors.blue.withValues(alpha: 0.3),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Text(
-                            'METAR',
-                            style: TextStyle(
-                              color: Colors.blue,
-                              fontSize: 8,
-                              fontWeight: FontWeight.bold,
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 4, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withValues(alpha: 0.3),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              'METAR',
+                              style: TextStyle(
+                                color: Colors.blue,
+                                fontSize: 8,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ],
-                    ],
-                  ),
-                ],
-              ),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(width: 8),
               // Weather details
@@ -7707,7 +7710,8 @@ Shared via Weather Alert Pakistan
                   height: 36,
                   child: IconButton(
                     padding: EdgeInsets.zero,
-                    icon: const Icon(Icons.ios_share, color: Colors.white, size: 20),
+                    icon: const Icon(Icons.ios_share,
+                        color: Colors.white, size: 20),
                     onPressed: _shareRoute,
                   ),
                 ),
@@ -7716,7 +7720,8 @@ Shared via Weather Alert Pakistan
                   height: 36,
                   child: IconButton(
                     padding: EdgeInsets.zero,
-                    icon: const Icon(Icons.close, color: Colors.white, size: 20),
+                    icon:
+                        const Icon(Icons.close, color: Colors.white, size: 20),
                     onPressed: () {
                       setState(() => _currentView = 0);
                       // The ticker and recenter will be handled in onMapCreated
@@ -9568,15 +9573,15 @@ enum AlertType {
 /// Custom painter for compass needle (N/S indicator)
 class _CompassNeedlePainter extends CustomPainter {
   final bool isNorth;
-  
+
   _CompassNeedlePainter({required this.isNorth});
-  
+
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..color = isNorth ? const Color(0xFFE53935) : Colors.white
       ..style = PaintingStyle.fill;
-    
+
     final path = Path();
     if (isNorth) {
       // Triangle pointing up (North)
@@ -9590,10 +9595,10 @@ class _CompassNeedlePainter extends CustomPainter {
       path.lineTo(size.width / 2, size.height);
     }
     path.close();
-    
+
     canvas.drawPath(path, paint);
   }
-  
+
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

@@ -1463,7 +1463,8 @@ Is GPS: ${controller.isFromCurrentLocation}
                 onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(
-                        builder: (context) => TravelWeatherScreen(isDay: isDay)))),
+                        builder: (context) =>
+                            TravelWeatherScreen(isDay: isDay)))),
             const SizedBox(width: 4),
             _buildAppBarButton(
                 icon: Icons.admin_panel_settings,

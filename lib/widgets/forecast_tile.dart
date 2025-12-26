@@ -38,7 +38,7 @@ class ForecastTile extends StatelessWidget {
     final screenHeight = MediaQuery.of(context).size.height;
     final isSmallScreen = screenWidth < 360;
     final padding = isSmallScreen ? 14.0 : 20.0;
-    
+
     // Consistent app theme colors (blue-based like rest of app)
     const fg = Colors.white;
     final cardBg = isDay
@@ -86,8 +86,8 @@ class ForecastTile extends StatelessWidget {
               Center(
                 child: Text(_formatDateDisplay(d.date),
                     style: TextStyle(
-                        fontSize: isSmallScreen ? 18 : 22, 
-                        fontWeight: FontWeight.bold, 
+                        fontSize: isSmallScreen ? 18 : 22,
+                        fontWeight: FontWeight.bold,
                         color: fg)),
               ),
               const SizedBox(height: 12),
@@ -179,7 +179,7 @@ class ForecastTile extends StatelessWidget {
                   final itemWidth = constraints.maxWidth / 3 - 8;
                   final itemCount = _getDetailItems(d, fg, cardBg).length;
                   if (itemCount == 0) return const SizedBox.shrink();
-                  
+
                   return Wrap(
                     spacing: 8,
                     runSpacing: 8,
@@ -205,16 +205,19 @@ class ForecastTile extends StatelessWidget {
     final items = <Widget>[];
     if (d.uvIndexMax != null) {
       items.add(_buildDetailItem(Icons.wb_sunny_outlined, "UV",
-          d.uvIndexMax!.toStringAsFixed(1), fg, cardBg, iconColor: Colors.amber));
+          d.uvIndexMax!.toStringAsFixed(1), fg, cardBg,
+          iconColor: Colors.amber));
     }
     if (d.precipitationProbability != null) {
       // Use cyan color for rain drop icon - visible on blue background
       items.add(_buildDetailItem(Icons.water_drop, "Rain",
-          "${d.precipitationProbability}%", fg, cardBg, iconColor: Colors.cyan[200]));
+          "${d.precipitationProbability}%", fg, cardBg,
+          iconColor: Colors.cyan[200]));
     }
     if (d.precipitationSum != null) {
       items.add(_buildDetailItem(Icons.grain, "Precip",
-          "${d.precipitationSum!.toStringAsFixed(1)}mm", fg, cardBg, iconColor: Colors.lightBlue[200]));
+          "${d.precipitationSum!.toStringAsFixed(1)}mm", fg, cardBg,
+          iconColor: Colors.lightBlue[200]));
     }
     if (d.windGustsMax != null) {
       items.add(_buildDetailItem(Icons.air, "Gusts",
@@ -332,19 +335,19 @@ class ForecastTile extends StatelessWidget {
     );
   }
 
-  Widget _buildFeelsLikeTile({
-      required BuildContext context,
-      required String label, 
-      required String value, 
-      required Color accentColor, 
-      required Color fg, 
+  Widget _buildFeelsLikeTile(
+      {required BuildContext context,
+      required String label,
+      required String value,
+      required Color accentColor,
+      required Color fg,
       required Color cardBg}) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 360;
-    
+
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: isSmallScreen ? 8 : 12, 
+        horizontal: isSmallScreen ? 8 : 12,
         vertical: isSmallScreen ? 8 : 10,
       ),
       decoration: BoxDecoration(
@@ -359,7 +362,8 @@ class ForecastTile extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.thermostat, size: isSmallScreen ? 14 : 16, color: accentColor),
+                Icon(Icons.thermostat,
+                    size: isSmallScreen ? 14 : 16, color: accentColor),
                 const SizedBox(width: 4),
                 Text(
                   label,
@@ -385,7 +389,9 @@ class ForecastTile extends StatelessWidget {
     );
   }
 
-  Widget _buildDetailItem(IconData icon, String label, String value, Color fg, Color cardBg, {Color? iconColor}) {
+  Widget _buildDetailItem(
+      IconData icon, String label, String value, Color fg, Color cardBg,
+      {Color? iconColor}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
       decoration: BoxDecoration(
@@ -408,7 +414,8 @@ class ForecastTile extends StatelessWidget {
           FittedBox(
             fit: BoxFit.scaleDown,
             child: Text(label,
-                style: TextStyle(fontSize: 9, color: fg.withValues(alpha: 0.7))),
+                style:
+                    TextStyle(fontSize: 9, color: fg.withValues(alpha: 0.7))),
           ),
         ],
       ),
