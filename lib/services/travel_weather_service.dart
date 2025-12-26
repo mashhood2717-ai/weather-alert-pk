@@ -172,11 +172,12 @@ class TravelWeatherService {
 
   // Cache version - increment to invalidate old caches with U-turn issues
   static const String _routeCachePrefix = 'route_cache_v2_';
-  
+
   // Full motorway endpoint coordinates are now dynamically fetched from motorway points data
 
   /// Generate a cache key for a route
-  String _getRouteCacheKey(double startLat, double startLon, double endLat, double endLon) {
+  String _getRouteCacheKey(
+      double startLat, double startLon, double endLat, double endLon) {
     // Round to 3 decimal places (~100m precision) for cache key matching
     final sLat = startLat.toStringAsFixed(3);
     final sLon = startLon.toStringAsFixed(3);
@@ -184,48 +185,53 @@ class TravelWeatherService {
     final eLon = endLon.toStringAsFixed(3);
     return '$_routeCachePrefix${sLat}_${sLon}_to_${eLat}_$eLon';
   }
-  
+
   /// Get cache key for full motorway route
   String _getFullMotorwayCacheKey(String motorwayId, bool forward) {
     return '${_routeCachePrefix}full_${motorwayId}_${forward ? 'fwd' : 'rev'}';
   }
-  
+
   /// Identify which motorway a route belongs to and if it's a sub-route
   /// Returns: {'motorway': 'm2', 'forward': true, 'startIndex': 0, 'endIndex': 5}
   /// or null if not on a known motorway
   Map<String, dynamic>? _identifyMotorwayRoute(
-    double startLat, double startLon, double endLat, double endLon,
+    double startLat,
+    double startLon,
+    double endLat,
+    double endLon,
     List<MotorwayPoint> routePoints,
   ) {
     if (routePoints.isEmpty) return null;
-    
+
     final firstPoint = routePoints.first;
     final lastPoint = routePoints.last;
-    
+
     // Determine motorway based on point IDs
     String? motorwayId;
     if (firstPoint.id.startsWith('m2_') || lastPoint.id.startsWith('m2_')) {
       motorwayId = 'm2';
-    } else if (firstPoint.id.startsWith('m1_') || lastPoint.id.startsWith('m1_')) {
+    } else if (firstPoint.id.startsWith('m1_') ||
+        lastPoint.id.startsWith('m1_')) {
       motorwayId = 'm1';
     }
-    
+
     if (motorwayId == null) return null;
-    
+
     // Get full motorway points
-    final fullPoints = motorwayId == 'm2' ? M2Motorway.points : M1Motorway.points;
-    
+    final fullPoints =
+        motorwayId == 'm2' ? M2Motorway.points : M1Motorway.points;
+
     // Find indices in full motorway
     int startIdx = -1, endIdx = -1;
     for (int i = 0; i < fullPoints.length; i++) {
       if (fullPoints[i].id == firstPoint.id) startIdx = i;
       if (fullPoints[i].id == lastPoint.id) endIdx = i;
     }
-    
+
     if (startIdx < 0 || endIdx < 0) return null;
-    
+
     final isForward = startIdx < endIdx;
-    
+
     return {
       'motorway': motorwayId,
       'forward': isForward,
@@ -234,68 +240,81 @@ class TravelWeatherService {
       'fullPoints': fullPoints,
     };
   }
-  
+
   /// Try to get a sub-route from a cached full motorway route
   Future<RouteData?> _getSubRouteFromFullCache(
-    double startLat, double startLon, double endLat, double endLon,
+    double startLat,
+    double startLon,
+    double endLat,
+    double endLon,
     List<MotorwayPoint> routePoints,
   ) async {
-    debugPrint('🔍 Checking for cached sub-route: ${routePoints.first.name} → ${routePoints.last.name}');
-    
-    final info = _identifyMotorwayRoute(startLat, startLon, endLat, endLon, routePoints);
+    debugPrint(
+        '🔍 Checking for cached sub-route: ${routePoints.first.name} → ${routePoints.last.name}');
+
+    final info =
+        _identifyMotorwayRoute(startLat, startLon, endLat, endLon, routePoints);
     if (info == null) {
       debugPrint('⚠️ Could not identify motorway route');
       return null;
     }
-    
+
     final motorwayId = info['motorway'] as String;
     final isForward = info['forward'] as bool;
     final startIdx = info['startIndex'] as int;
     final endIdx = info['endIndex'] as int;
     final fullPoints = info['fullPoints'] as List<MotorwayPoint>;
-    
-    debugPrint('🛣️ Identified: $motorwayId ${isForward ? 'forward' : 'reverse'}, indices $startIdx→$endIdx');
-    
+
+    debugPrint(
+        '🛣️ Identified: $motorwayId ${isForward ? 'forward' : 'reverse'}, indices $startIdx→$endIdx');
+
     // Check if we have the full motorway route cached
     final fullCacheKey = _getFullMotorwayCacheKey(motorwayId, isForward);
     debugPrint('🔑 Looking for cache key: $fullCacheKey');
     final fullRoute = await _loadRouteFromCache(fullCacheKey);
-    
+
     if (fullRoute == null) {
-      debugPrint('📂 No cached full route for $motorwayId (${isForward ? 'forward' : 'reverse'})');
+      debugPrint(
+          '📂 No cached full route for $motorwayId (${isForward ? 'forward' : 'reverse'})');
       return null;
     }
-    
+
     // Check if this is the full route (no trimming needed)
     if (startIdx == 0 && endIdx == fullPoints.length - 1) {
       debugPrint('📂 Using full cached $motorwayId route');
       return fullRoute;
     }
-    
+
     // Trim the polyline to match the sub-route
     final startPoint = fullPoints[startIdx];
     final endPoint = fullPoints[endIdx];
-    
+
     // Find polyline indices that match our start/end latitudes
     final trimmedPoints = _trimPolylineToSegment(
       fullRoute.polylinePoints,
-      startPoint.lat, startPoint.lon,
-      endPoint.lat, endPoint.lon,
+      startPoint.lat,
+      startPoint.lon,
+      endPoint.lat,
+      endPoint.lon,
       isForward,
     );
-    
+
     if (trimmedPoints == null || trimmedPoints.isEmpty) {
       debugPrint('⚠️ Failed to trim polyline for sub-route');
       return null;
     }
-    
+
     // Calculate approximate distance/duration for sub-route
     final fullDistanceKm = motorwayId == 'm2' ? 367.0 : 155.0;
-    final segmentDistanceKm = (endPoint.distanceFromStart - startPoint.distanceFromStart).abs().toDouble();
+    final segmentDistanceKm =
+        (endPoint.distanceFromStart - startPoint.distanceFromStart)
+            .abs()
+            .toDouble();
     final fraction = segmentDistanceKm / fullDistanceKm;
-    
-    debugPrint('✂️ Trimmed $motorwayId route: ${startPoint.name} → ${endPoint.name} (${trimmedPoints.length} points, ${segmentDistanceKm.round()}km)');
-    
+
+    debugPrint(
+        '✂️ Trimmed $motorwayId route: ${startPoint.name} → ${endPoint.name} (${trimmedPoints.length} points, ${segmentDistanceKm.round()}km)');
+
     return RouteData(
       polylinePoints: trimmedPoints,
       distanceMeters: (segmentDistanceKm * 1000).round(),
@@ -303,49 +322,54 @@ class TravelWeatherService {
       steps: [], // Steps won't be accurate for sub-routes
     );
   }
-  
+
   /// Trim polyline points to match a segment between start and end coordinates
   /// Uses latitude-based trimming since motorways generally go north-south
   List<RouteLatLng>? _trimPolylineToSegment(
     List<RouteLatLng> points,
-    double startLat, double startLon,
-    double endLat, double endLon,
+    double startLat,
+    double startLon,
+    double endLat,
+    double endLon,
     bool isForward,
   ) {
     if (points.isEmpty) return null;
-    
-    debugPrint('🔄 Trimming polyline: ${points.length} points, start=($startLat), end=($endLat), forward=$isForward');
-    
+
+    debugPrint(
+        '🔄 Trimming polyline: ${points.length} points, start=($startLat), end=($endLat), forward=$isForward');
+
     // For forward routes (going south, ISB→LHR), we go from higher lat to lower lat
     // For reverse routes (going north, LHR→ISB), we go from lower lat to higher lat
-    
+
     int startIdx = -1;
     int endIdx = -1;
-    
+
     // Find start point: first point close enough to start coordinates
     const double toleranceKm = 2.0; // 2km tolerance for matching
     for (int i = 0; i < points.length; i++) {
       final p = points[i];
-      final dist = _haversineDistance(p.latitude, p.longitude, startLat, startLon);
+      final dist =
+          _haversineDistance(p.latitude, p.longitude, startLat, startLon);
       if (dist < toleranceKm) {
         startIdx = i;
         break; // Take the first match
       }
     }
-    
+
     // If no exact match, find closest
     if (startIdx < 0) {
       double minDist = double.infinity;
       for (int i = 0; i < points.length; i++) {
         final p = points[i];
-        final dist = _haversineDistance(p.latitude, p.longitude, startLat, startLon);
+        final dist =
+            _haversineDistance(p.latitude, p.longitude, startLat, startLon);
         if (dist < minDist) {
           minDist = dist;
           startIdx = i;
         }
       }
     }
-    
+
     // Find end point: search AFTER startIdx for point close to end coordinates
     // This ensures we respect the direction of travel
     final searchStart = startIdx >= 0 ? startIdx : 0;
@@ -357,75 +381,88 @@ class TravelWeatherService {
         break; // Take the first match after start
       }
     }
-    
+
     // If no exact match, find closest point AFTER startIdx
     if (endIdx < 0) {
       double minDist = double.infinity;
       for (int i = searchStart; i < points.length; i++) {
         final p = points[i];
-        final dist = _haversineDistance(p.latitude, p.longitude, endLat, endLon);
+        final dist =
+            _haversineDistance(p.latitude, p.longitude, endLat, endLon);
         if (dist < minDist) {
           minDist = dist;
           endIdx = i;
         }
       }
     }
-    
+
     if (startIdx < 0 || endIdx < 0) {
-      debugPrint('⚠️ Could not find start/end indices: startIdx=$startIdx, endIdx=$endIdx');
+      debugPrint(
+          '⚠️ Could not find start/end indices: startIdx=$startIdx, endIdx=$endIdx');
       return null;
     }
-    
+
     // Ensure correct order (start before end)
     if (startIdx > endIdx) {
       final temp = startIdx;
       startIdx = endIdx;
       endIdx = temp;
     }
-    
-    debugPrint('✂️ Trimming: indices $startIdx→$endIdx (${endIdx - startIdx + 1} points)');
-    
+
+    debugPrint(
+        '✂️ Trimming: indices $startIdx→$endIdx (${endIdx - startIdx + 1} points)');
+
     return points.sublist(startIdx, endIdx + 1);
   }
-  
+
   /// Haversine distance in km
-  double _haversineDistance(double lat1, double lon1, double lat2, double lon2) {
+  double _haversineDistance(
+      double lat1, double lon1, double lat2, double lon2) {
     const R = 6371.0; // Earth's radius in km
     final dLat = (lat2 - lat1) * 3.14159 / 180;
     final dLon = (lon2 - lon1) * 3.14159 / 180;
     final a = sin(dLat / 2) * sin(dLat / 2) +
-        cos(lat1 * 3.14159 / 180) * cos(lat2 * 3.14159 / 180) *
-        sin(dLon / 2) * sin(dLon / 2);
+        cos(lat1 * 3.14159 / 180) *
+            cos(lat2 * 3.14159 / 180) *
+            sin(dLon / 2) *
+            sin(dLon / 2);
     final c = 2 * atan2(sqrt(a), sqrt(1 - a));
     return R * c;
   }
-  
+
   /// Cache a full motorway route
-  Future<void> _cacheFullMotorwayRoute(String motorwayId, bool forward, RouteData route) async {
+  Future<void> _cacheFullMotorwayRoute(
+      String motorwayId, bool forward, RouteData route) async {
     final key = _getFullMotorwayCacheKey(motorwayId, forward);
     await _saveRouteToCache(key, route);
-    debugPrint('💾 Full $motorwayId (${forward ? 'forward' : 'reverse'}) cached: ${route.polylinePoints.length} points');
+    debugPrint(
+        '💾 Full $motorwayId (${forward ? 'forward' : 'reverse'}) cached: ${route.polylinePoints.length} points');
   }
-  
+
   /// Check if route is on a motorway and cache the FULL motorway route for sub-route extraction
   /// This allows offline sub-route navigation after any route on that motorway is fetched
   Future<void> _maybeCacheAsFullMotorway(
-    double startLat, double startLon, double endLat, double endLon,
-    RouteData route, List<MotorwayPoint>? routePoints,
+    double startLat,
+    double startLon,
+    double endLat,
+    double endLon,
+    RouteData route,
+    List<MotorwayPoint>? routePoints,
   ) async {
     if (routePoints == null || routePoints.length < 2) return;
-    
+
     final firstPoint = routePoints.first;
     final lastPoint = routePoints.last;
-    
+
     // Get the actual first and last IDs from the motorway data
     final m2First = M2Motorway.points.first.id; // m2_01
-    final m2Last = M2Motorway.points.last.id;   // m2_20
+    final m2Last = M2Motorway.points.last.id; // m2_20
     final m1First = M1Motorway.points.first.id;
     final m1Last = M1Motorway.points.last.id;
-    
-    debugPrint('🔍 Checking route: first=${firstPoint.id}, last=${lastPoint.id}');
-    
+
+    debugPrint(
+        '🔍 Checking route: first=${firstPoint.id}, last=${lastPoint.id}');
+
     // Check if this is the full M2 route (ISB to LHR) - just cache as-is
     if (firstPoint.id == m2First && lastPoint.id == m2Last) {
       await _cacheFullMotorwayRoute('m2', true, route);
@@ -442,12 +479,12 @@ class TravelWeatherService {
       await _cacheFullMotorwayRoute('m1', false, route);
       return;
     }
-    
+
     // Not a full route - check if it's on M2 or M1 and fetch full route in background
     String? motorwayId;
     bool? isForward;
     List<MotorwayPoint>? fullPoints;
-    
+
     if (firstPoint.id.startsWith('m2_')) {
       motorwayId = 'm2';
       fullPoints = M2Motorway.points;
@@ -462,12 +499,12 @@ class TravelWeatherService {
       final endIdx = fullPoints.indexWhere((p) => p.id == lastPoint.id);
       isForward = startIdx < endIdx;
     }
-    
+
     if (motorwayId == null || fullPoints == null || isForward == null) {
       debugPrint('📂 Not a motorway route - skipping cache');
       return;
     }
-    
+
     // Check if we already have the full route cached
     final fullCacheKey = _getFullMotorwayCacheKey(motorwayId, isForward);
     final existingCache = await _loadRouteFromCache(fullCacheKey);
@@ -475,24 +512,28 @@ class TravelWeatherService {
       debugPrint('📂 Full $motorwayId route already cached');
       return;
     }
-    
+
     // Fetch full motorway route in background for future sub-route extraction
-    debugPrint('🌐 Fetching full $motorwayId route in background for caching...');
+    debugPrint(
+        '🌐 Fetching full $motorwayId route in background for caching...');
     _fetchAndCacheFullMotorway(motorwayId, isForward, fullPoints);
   }
-  
+
   /// Fetch full motorway route and cache it (runs in background)
   /// Note: We fetch WITHOUT intermediate waypoints to get a clean highway route.
   /// If we pass toll plaza coordinates as waypoints, Google routes to each exact
   /// point - causing U-turns when plazas are on opposite sides of the motorway.
   Future<void> _fetchAndCacheFullMotorway(
-    String motorwayId, bool isForward, List<MotorwayPoint> fullPoints,
+    String motorwayId,
+    bool isForward,
+    List<MotorwayPoint> fullPoints,
   ) async {
     try {
-      final orderedPoints = isForward ? fullPoints : fullPoints.reversed.toList();
+      final orderedPoints =
+          isForward ? fullPoints : fullPoints.reversed.toList();
       final start = orderedPoints.first;
       final end = orderedPoints.last;
-      
+
       // Fetch route using ONLY start and end points - no waypoints!
       // This gives us a clean highway polyline without U-turns at toll plazas
       final fullRoute = await _fetchRouteFromApi(
@@ -502,10 +543,11 @@ class TravelWeatherService {
         endLon: end.lon,
         // Don't pass waypoints - let Google follow the natural highway route
       );
-      
+
       if (fullRoute != null) {
         await _cacheFullMotorwayRoute(motorwayId, isForward, fullRoute);
-        debugPrint('✅ Full $motorwayId (${isForward ? 'fwd' : 'rev'}) cached in background (clean route, no waypoints)');
+        debugPrint(
+            '✅ Full $motorwayId (${isForward ? 'fwd' : 'rev'}) cached in background (clean route, no waypoints)');
       } else {
         debugPrint('⚠️ Failed to fetch full $motorwayId route in background');
       }
@@ -520,7 +562,8 @@ class TravelWeatherService {
       final prefs = await SharedPreferences.getInstance();
       final cached = _CachedRoute(route);
       await prefs.setString(key, jsonEncode(cached.toJson()));
-      debugPrint('💾 Route cached: $key (${route.polylinePoints.length} points)');
+      debugPrint(
+          '💾 Route cached: $key (${route.polylinePoints.length} points)');
     } catch (e) {
       debugPrint('⚠️ Failed to cache route: $e');
     }
@@ -533,10 +576,12 @@ class TravelWeatherService {
       final jsonStr = prefs.getString(key);
       if (jsonStr == null) return null;
 
-      final cached = _CachedRoute.fromJson(jsonDecode(jsonStr) as Map<String, dynamic>);
+      final cached =
+          _CachedRoute.fromJson(jsonDecode(jsonStr) as Map<String, dynamic>);
       if (cached.isValid) {
         final daysOld = DateTime.now().difference(cached.cachedAt).inDays;
-        debugPrint('📂 Route loaded from cache: $key ($daysOld days old, ${cached.route.polylinePoints.length} points)');
+        debugPrint(
+            '📂 Route loaded from cache: $key ($daysOld days old, ${cached.route.polylinePoints.length} points)');
         return cached.route;
       } else {
         // Expired - remove from cache
@@ -554,7 +599,8 @@ class TravelWeatherService {
   Future<void> clearRouteCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final keys = prefs.getKeys().where((k) => k.startsWith(_routeCachePrefix));
+      final keys =
+          prefs.getKeys().where((k) => k.startsWith(_routeCachePrefix));
       for (final key in keys) {
         await prefs.remove(key);
       }
@@ -662,11 +708,15 @@ class TravelWeatherService {
       if (cachedRoute != null) {
         return cachedRoute;
       }
-      
+
       // Try to get sub-route from cached full motorway route
       if (waypoints != null && waypoints.isNotEmpty) {
         final subRoute = await _getSubRouteFromFullCache(
-          startLat, startLon, endLat, endLon, waypoints,
+          startLat,
+          startLon,
+          endLat,
+          endLon,
+          waypoints,
         );
         if (subRoute != null) {
           // Cache this sub-route for future exact matches
@@ -681,10 +731,10 @@ class TravelWeatherService {
       // If we pass toll plaza coordinates as waypoints, Google routes to each exact point,
       // causing U-turns when plazas are on opposite sides of the motorway.
       // Instead, we just use start and end points - Google will follow the highway naturally.
-      
+
       // Check if this is a motorway route (has waypoints from motorway points list)
       final isMotorwayRoute = waypoints != null && waypoints.isNotEmpty;
-      
+
       RouteData? routeData;
 
       // For motorway routes: fetch with ONLY start/end (no intermediate waypoints)
@@ -694,15 +744,18 @@ class TravelWeatherService {
         startLon: startLon,
         endLat: endLat,
         endLon: endLon,
-        waypoints: isMotorwayRoute ? null : waypoints, // No waypoints for motorway routes!
+        waypoints: isMotorwayRoute
+            ? null
+            : waypoints, // No waypoints for motorway routes!
       );
 
       // Cache the route for offline use
       if (routeData != null) {
         await _saveRouteToCache(cacheKey, routeData);
-        
+
         // Also cache as full motorway route if applicable (for sub-route trimming)
-        await _maybeCacheAsFullMotorway(startLat, startLon, endLat, endLon, routeData, waypoints);
+        await _maybeCacheAsFullMotorway(
+            startLat, startLon, endLat, endLon, routeData, waypoints);
       }
 
       return routeData;
@@ -726,101 +779,100 @@ class TravelWeatherService {
     required double endLon,
     List<MotorwayPoint>? waypoints,
   }) async {
-      String waypointsStr = '';
-      if (waypoints != null && waypoints.length > 2) {
-        // Only include intermediate points (not start/end)
-        final intermediatePoints = waypoints.sublist(1, waypoints.length - 1);
-        if (intermediatePoints.isNotEmpty) {
-          waypointsStr = '&waypoints=optimize:false|' +
-              intermediatePoints.map((p) => '${p.lat},${p.lon}').join('|');
-        }
+    String waypointsStr = '';
+    if (waypoints != null && waypoints.length > 2) {
+      // Only include intermediate points (not start/end)
+      final intermediatePoints = waypoints.sublist(1, waypoints.length - 1);
+      if (intermediatePoints.isNotEmpty) {
+        waypointsStr = '&waypoints=optimize:false|' +
+            intermediatePoints.map((p) => '${p.lat},${p.lon}').join('|');
       }
+    }
 
-      final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/directions/json'
-        '?origin=$startLat,$startLon'
-        '&destination=$endLat,$endLon'
-        '&mode=driving'
-        '$waypointsStr'
-        '&key=$googleMapsApiKey',
-      );
+    final url = Uri.parse(
+      'https://maps.googleapis.com/maps/api/directions/json'
+      '?origin=$startLat,$startLon'
+      '&destination=$endLat,$endLon'
+      '&mode=driving'
+      '$waypointsStr'
+      '&key=$googleMapsApiKey',
+    );
 
-      final response = await http.get(url).timeout(const Duration(seconds: 15));
+    final response = await http.get(url).timeout(const Duration(seconds: 15));
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['status'] == 'OK' && data['routes'].isNotEmpty) {
-          final route = data['routes'][0];
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      if (data['status'] == 'OK' && data['routes'].isNotEmpty) {
+        final route = data['routes'][0];
 
-          // Get the overview polyline for backup
-          final overviewPolyline =
-              route['overview_polyline']['points'] as String;
+        // Get the overview polyline for backup
+        final overviewPolyline = route['overview_polyline']['points'] as String;
 
-          // Calculate total distance and duration from all legs
-          int totalDistance = 0;
-          int totalDuration = 0;
+        // Calculate total distance and duration from all legs
+        int totalDistance = 0;
+        int totalDuration = 0;
 
-          // Extract turn-by-turn navigation steps AND detailed polyline points
-          final List<NavigationStep> steps = [];
-          final List<RouteLatLng> detailedPoints = [];
+        // Extract turn-by-turn navigation steps AND detailed polyline points
+        final List<NavigationStep> steps = [];
+        final List<RouteLatLng> detailedPoints = [];
 
-          for (final leg in route['legs']) {
-            totalDistance += (leg['distance']['value'] as int);
-            totalDuration += (leg['duration']['value'] as int);
+        for (final leg in route['legs']) {
+          totalDistance += (leg['distance']['value'] as int);
+          totalDuration += (leg['duration']['value'] as int);
 
-            // Extract steps from each leg - use step polylines for accuracy
-            for (final step in leg['steps']) {
-              steps.add(NavigationStep(
-                instruction: step['html_instructions'] ?? '',
-                maneuver: step['maneuver'] ?? 'straight',
-                distanceMeters: step['distance']['value'] ?? 0,
-                durationSeconds: step['duration']['value'] ?? 0,
-                startLocation: RouteLatLng(
-                  step['start_location']['lat'],
-                  step['start_location']['lng'],
-                ),
-                endLocation: RouteLatLng(
-                  step['end_location']['lat'],
-                  step['end_location']['lng'],
-                ),
-              ));
+          // Extract steps from each leg - use step polylines for accuracy
+          for (final step in leg['steps']) {
+            steps.add(NavigationStep(
+              instruction: step['html_instructions'] ?? '',
+              maneuver: step['maneuver'] ?? 'straight',
+              distanceMeters: step['distance']['value'] ?? 0,
+              durationSeconds: step['duration']['value'] ?? 0,
+              startLocation: RouteLatLng(
+                step['start_location']['lat'],
+                step['start_location']['lng'],
+              ),
+              endLocation: RouteLatLng(
+                step['end_location']['lat'],
+                step['end_location']['lng'],
+              ),
+            ));
 
-              // IMPORTANT: Decode each step's polyline for precise road alignment
-              // This gives us much more detailed points than overview_polyline
-              if (step['polyline'] != null &&
-                  step['polyline']['points'] != null) {
-                final stepPolyline = step['polyline']['points'] as String;
-                final stepPoints = _decodePolyline(stepPolyline);
+            // IMPORTANT: Decode each step's polyline for precise road alignment
+            // This gives us much more detailed points than overview_polyline
+            if (step['polyline'] != null &&
+                step['polyline']['points'] != null) {
+              final stepPolyline = step['polyline']['points'] as String;
+              final stepPoints = _decodePolyline(stepPolyline);
 
-                // Add points, avoiding duplicates at step boundaries
-                for (final pt in stepPoints) {
-                  if (detailedPoints.isEmpty ||
-                      (detailedPoints.last.latitude != pt.latitude ||
-                          detailedPoints.last.longitude != pt.longitude)) {
-                    detailedPoints.add(pt);
-                  }
+              // Add points, avoiding duplicates at step boundaries
+              for (final pt in stepPoints) {
+                if (detailedPoints.isEmpty ||
+                    (detailedPoints.last.latitude != pt.latitude ||
+                        detailedPoints.last.longitude != pt.longitude)) {
+                  detailedPoints.add(pt);
                 }
               }
             }
           }
-
-          // Use detailed points if available, otherwise fall back to overview
-          final finalPoints = detailedPoints.isNotEmpty
-              ? detailedPoints
-              : _decodePolyline(overviewPolyline);
-
-          print(
-              '🛣️ Route polyline: ${finalPoints.length} points (detailed from ${steps.length} steps)');
-
-          return RouteData(
-            polylinePoints: finalPoints,
-            distanceMeters: totalDistance,
-            durationSeconds: totalDuration,
-            polylineEncoded: overviewPolyline,
-            steps: steps,
-          );
         }
+
+        // Use detailed points if available, otherwise fall back to overview
+        final finalPoints = detailedPoints.isNotEmpty
+            ? detailedPoints
+            : _decodePolyline(overviewPolyline);
+
+        print(
+            '🛣️ Route polyline: ${finalPoints.length} points (detailed from ${steps.length} steps)');
+
+        return RouteData(
+          polylinePoints: finalPoints,
+          distanceMeters: totalDistance,
+          durationSeconds: totalDuration,
+          polylineEncoded: overviewPolyline,
+          steps: steps,
+        );
       }
+    }
     return null;
   }
 

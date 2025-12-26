@@ -212,6 +212,9 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
 
     // Subscribe to road alerts from Firebase
     _subscribeToRoadAlerts();
+
+    // Restore navigation state if user was navigating
+    _restoreNavigationState();
   }
 
   @override
@@ -237,13 +240,107 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     _tickerScrollTimer?.cancel(); // Cancel ticker scroll timer
     _tickerScrollController.dispose(); // Dispose ticker scroll controller
 
-    // Cancel navigation notification when leaving screen
+    // Save navigation state before disposing (so we can restore it)
     if (_isNavigating) {
+      _saveNavigationState();
       NotificationService().cancelNavigationNotification();
       WakelockPlus.disable(); // Ensure screen can sleep when leaving
     }
 
     super.dispose();
+  }
+
+  /// Save navigation state to SharedPreferences for restoration
+  Future<void> _saveNavigationState() async {
+    if (!_isNavigating || _routePoints.isEmpty || _toId == null) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final stateJson = jsonEncode({
+        'fromId': _fromId,
+        'toId': _toId,
+        'motorwayId': _selectedMotorwayId,
+        'currentPointIndex': _currentPointIndex,
+        'confirmedPointIndex': _confirmedPointIndex,
+        'highestAchievedIndex': _highestAchievedIndex,
+        'currentStepIndex': _currentStepIndex,
+        'routeDistanceMeters': _routeDistanceMeters,
+        'routeDurationSeconds': _routeDurationSeconds,
+        'savedAt': DateTime.now().toIso8601String(),
+      });
+      await prefs.setString('active_navigation_state', stateJson);
+      debugPrint('💾 Navigation state saved: $_fromId → $_toId');
+    } catch (e) {
+      debugPrint('⚠️ Failed to save navigation state: $e');
+    }
+  }
+
+  /// Restore navigation state from SharedPreferences
+  Future<void> _restoreNavigationState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final stateJson = prefs.getString('active_navigation_state');
+      if (stateJson == null) return;
+
+      final state = jsonDecode(stateJson) as Map<String, dynamic>;
+      final savedAt = DateTime.tryParse(state['savedAt'] ?? '');
+
+      // Only restore if saved within last 6 hours (navigation still relevant)
+      if (savedAt == null ||
+          DateTime.now().difference(savedAt).inHours > 6) {
+        await prefs.remove('active_navigation_state');
+        debugPrint('🗑️ Navigation state expired, cleared');
+        return;
+      }
+
+      // Restore state
+      _fromId = state['fromId'] as String?;
+      _toId = state['toId'] as String?;
+      _selectedMotorwayId = state['motorwayId'] as String? ?? 'm2';
+      final savedPointIndex = state['currentPointIndex'] as int? ?? 0;
+      final savedConfirmedIndex = state['confirmedPointIndex'] as int? ?? 0;
+      final savedHighestIndex = state['highestAchievedIndex'] as int? ?? 0;
+      final savedStepIndex = state['currentStepIndex'] as int? ?? 0;
+
+      debugPrint(
+          '📂 Restoring navigation: $_fromId → $_toId (point index: $savedPointIndex)');
+
+      if (_toId != null) {
+        // Wait for location to be available
+        await Future.delayed(const Duration(milliseconds: 500));
+
+        // Load the route and then start navigation
+        await _loadRoute();
+
+        // Restore indices after route loads
+        if (_routePoints.isNotEmpty) {
+          _currentPointIndex =
+              savedPointIndex.clamp(0, _routePoints.length - 1);
+          _confirmedPointIndex =
+              savedConfirmedIndex.clamp(0, _routePoints.length - 1);
+          _highestAchievedIndex =
+              savedHighestIndex.clamp(0, _routePoints.length - 1);
+          _currentStepIndex = savedStepIndex;
+
+          // Start navigation
+          _startNavigation();
+          debugPrint('✅ Navigation restored and resumed');
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Failed to restore navigation state: $e');
+    }
+  }
+
+  /// Clear saved navigation state (call when navigation ends normally)
+  Future<void> _clearNavigationState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('active_navigation_state');
+      debugPrint('🗑️ Navigation state cleared');
+    } catch (e) {
+      debugPrint('⚠️ Failed to clear navigation state: $e');
+    }
   }
 
   Future<void> _initializeLocation() async {
@@ -403,6 +500,9 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
 
     // Cancel navigation notification
     NotificationService().cancelNavigationNotification();
+
+    // Clear saved navigation state (navigation ended normally)
+    _clearNavigationState();
 
     setState(() {
       _isNavigating = false;
@@ -759,13 +859,13 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
         _targetLon += lonDelta;
       }
 
-      // === FAST CORRECTION TOWARDS GPS TARGET ===
-      // Quick blend towards the actual GPS position for instant response
+      // === SMOOTHER CORRECTION TOWARDS GPS TARGET ===
+      // Use lower correction strength for butter-smooth movement like Google Maps
       final latDiff = _targetLat - _displayLat;
       final lonDiff = _targetLon - _displayLon;
 
-      // Fast correction for lightning-quick GPS sync
-      const correctionStrength = 6.0; // Fast correction
+      // Smoother correction - 3.0 gives ~330ms blend time (less jittery)
+      const correctionStrength = 3.0;
       _displayLat += latDiff * correctionStrength * dt;
       _displayLon += lonDiff * correctionStrength * dt;
 
@@ -774,14 +874,13 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       if (bearingDiff > 180) bearingDiff -= 360;
       if (bearingDiff < -180) bearingDiff += 360;
 
-      // Dead zone: ignore bearing changes < 3 degrees to prevent micro-jitter
-      if (bearingDiff.abs() < 3.0) {
+      // Dead zone: ignore bearing changes < 5 degrees to prevent micro-jitter
+      if (bearingDiff.abs() < 5.0) {
         bearingDiff = 0;
       }
 
-      // Smooth bearing using exponential smoothing
-      // Factor 4.0 gives responsive but smooth ~250ms transition
-      _displayBearing += bearingDiff * 4.0 * dt;
+      // Smoother bearing - 2.5 gives ~400ms transition for buttery rotation
+      _displayBearing += bearingDiff * 2.5 * dt;
 
       // Keep bearing in 0-360 range
       _displayBearing = _displayBearing % 360;
@@ -801,10 +900,10 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       );
       _isProgrammaticCameraMove = false;
 
-      // Update user location marker at ~30fps for ultra-smooth movement
+      // Update user location marker at ~20fps for smooth movement (reduced from 30fps)
       _markerUpdateCounter++;
-      if (_markerUpdateCounter >= 2) {
-        // Every 2nd tick (~30fps)
+      if (_markerUpdateCounter >= 3) {
+        // Every 3rd tick (~20fps) - less frequent = smoother
         _markerUpdateCounter = 0;
         _updateUserMarkerOnly();
       }
@@ -1507,7 +1606,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     List<MotorwayPoint> points,
     List<Duration> etas,
   ) async {
-    debugPrint('🛣️ Fetching directions: ${points.first.name} → ${points.last.name} (${points.length} waypoints)');
+    debugPrint(
+        '🛣️ Fetching directions: ${points.first.name} → ${points.last.name} (${points.length} waypoints)');
     try {
       final routeData = await TravelWeatherService.instance.getRoutePolyline(
         startLat: startLat,
@@ -1527,7 +1627,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
         if (polylinePoints.length > 2) {
           final destLat = endLat;
           final isGoingSouth = startLat > endLat; // ISB to LHR
-          
+
           int trimIndex = -1;
           for (int i = 0; i < polylinePoints.length; i++) {
             final pLat = polylinePoints[i].latitude;
@@ -1546,9 +1646,10 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
               }
             }
           }
-          
+
           if (trimIndex > 0 && trimIndex < polylinePoints.length - 1) {
-            debugPrint('✂️ Trimming polyline at index $trimIndex (lat ${polylinePoints[trimIndex].latitude}) to match destination lat $destLat');
+            debugPrint(
+                '✂️ Trimming polyline at index $trimIndex (lat ${polylinePoints[trimIndex].latitude}) to match destination lat $destLat');
             polylinePoints = polylinePoints.sublist(0, trimIndex + 1);
           }
         }
@@ -1863,16 +1964,19 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
       final isDestination = _confirmedPointIndex == _routePoints.length - 1;
       if (isDestination && !_hasArrived) {
         // Calculate latitude difference in meters (111,320 meters per degree)
-        final latDiffMeters = (position.latitude - currentPoint.lat).abs() * 111320;
-        
+        final latDiffMeters =
+            (position.latitude - currentPoint.lat).abs() * 111320;
+
         // Also check regular distance as fallback
-        final isAtLatitude = latDiffMeters < 150; // Within 150m of destination latitude
+        final isAtLatitude =
+            latDiffMeters < 150; // Within 150m of destination latitude
         final isNearby = distToCurrent < 200; // Or within 200m of exact point
-        
+
         if (isAtLatitude || isNearby) {
           _hasArrived = true;
           _showArrivedDialog();
-          debugPrint('🎉 ARRIVED at destination: ${currentPoint.name} (latDiff: ${latDiffMeters.round()}m, dist: ${distToCurrent.round()}m)');
+          debugPrint(
+              '🎉 ARRIVED at destination: ${currentPoint.name} (latDiff: ${latDiffMeters.round()}m, dist: ${distToCurrent.round()}m)');
           if (mounted) setState(() {});
           return; // Don't process further - we've arrived
         }
@@ -2165,13 +2269,18 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     }
   }
 
-  /// Save navigation progress
+  /// Save navigation progress (called during navigation)
   Future<void> _saveNavigationProgress() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('nav_current_point_index', _currentPointIndex);
     await prefs.setInt('nav_highest_achieved_index', _highestAchievedIndex);
     await prefs.setBool('nav_is_navigating', _isNavigating);
     await prefs.setString('nav_route_id', '${_fromId ?? "current"}_to_$_toId');
+
+    // Also update the comprehensive state for restore on app reopen
+    if (_isNavigating) {
+      _saveNavigationState();
+    }
   }
 
   // Custom marker icons for navigation
@@ -2238,7 +2347,7 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
     try {
       final pictureRecorder = PictureRecorder();
       final canvas = Canvas(pictureRecorder);
-      const double size = 96.0; // Good size for visibility
+      const double size = 56.0; // Smaller size like Google Maps
 
       // Draw outer glow circle
       final glowPaint = Paint()
@@ -2251,15 +2360,15 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
         ..color = const Color(0xFF4285F4) // Google Blue
         ..style = PaintingStyle.fill;
       canvas.drawCircle(
-          const Offset(size / 2, size / 2), size / 2 - 6, bgPaint);
+          const Offset(size / 2, size / 2), size / 2 - 4, bgPaint);
 
       // Draw white border
       final borderPaint = Paint()
         ..color = Colors.white
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 3;
+        ..strokeWidth = 2;
       canvas.drawCircle(
-          const Offset(size / 2, size / 2), size / 2 - 7, borderPaint);
+          const Offset(size / 2, size / 2), size / 2 - 5, borderPaint);
 
       // Draw arrow pointing up (like Google Maps navigation arrow)
       final arrowPaint = Paint()
@@ -2267,10 +2376,10 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
         ..style = PaintingStyle.fill;
 
       final arrowPath = Path()
-        ..moveTo(size / 2, 16) // Top point
-        ..lineTo(size / 2 + 22, size - 22) // Bottom right
-        ..lineTo(size / 2, size - 32) // Center notch
-        ..lineTo(size / 2 - 22, size - 22) // Bottom left
+        ..moveTo(size / 2, 10) // Top point
+        ..lineTo(size / 2 + 14, size - 14) // Bottom right
+        ..lineTo(size / 2, size - 20) // Center notch
+        ..lineTo(size / 2 - 14, size - 14) // Bottom left
         ..close();
       canvas.drawPath(arrowPath, arrowPaint);
 
@@ -3815,7 +3924,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('🗑️ Route cache cleared! New routes will be fetched fresh.'),
+                      content: Text(
+                          '🗑️ Route cache cleared! New routes will be fetched fresh.'),
                       backgroundColor: Colors.green,
                     ),
                   );
@@ -3833,7 +3943,8 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                   // Fetch fresh directions bypassing cache
                   final start = _routePoints.first.point;
                   final end = _routePoints.last.point;
-                  final routeData = await TravelWeatherService.instance.getRoutePolyline(
+                  final routeData =
+                      await TravelWeatherService.instance.getRoutePolyline(
                     startLat: start.lat,
                     startLon: start.lon,
                     endLat: end.lat,
@@ -4748,33 +4859,44 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                                     ),
                                   ),
                                   const SizedBox(height: 2),
-                                  Row(
+                                  Wrap(
+                                    spacing: 4,
+                                    runSpacing: 2,
+                                    crossAxisAlignment: WrapCrossAlignment.center,
                                     children: [
-                                      Icon(Icons.straighten,
-                                          size: 12, color: Colors.white54),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        '${tp.distanceFromUser} km',
-                                        style: TextStyle(
-                                          color: Colors.white
-                                              .withValues(alpha: 0.7),
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                      if (tp.etaFromStart != null) ...[
-                                        const SizedBox(width: 10),
-                                        Icon(Icons.schedule,
-                                            size: 12, color: Colors.white54),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          _formatDuration(tp.etaFromStart!),
-                                          style: TextStyle(
-                                            color: Colors.white
-                                                .withValues(alpha: 0.7),
-                                            fontSize: 12,
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.straighten,
+                                              size: 12, color: Colors.white54),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            '${tp.distanceFromUser} km',
+                                            style: TextStyle(
+                                              color: Colors.white
+                                                  .withValues(alpha: 0.7),
+                                              fontSize: 12,
+                                            ),
                                           ),
+                                        ],
+                                      ),
+                                      if (tp.etaFromStart != null)
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(Icons.schedule,
+                                                size: 12, color: Colors.white54),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              _formatDuration(tp.etaFromStart!),
+                                              style: TextStyle(
+                                                color: Colors.white
+                                                    .withValues(alpha: 0.7),
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                      ],
                                     ],
                                   ),
                                 ],
@@ -4926,7 +5048,9 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
   }) {
     if (metar != null) {
       // Show METAR data: icon, condition, visibility, temp, humidity, wind
-      return Row(
+      return Wrap(
+        spacing: 6,
+        runSpacing: 6,
         children: [
           _buildWeatherChip(
             Icons.thermostat,
@@ -4938,17 +5062,19 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
           ),
           _buildWeatherChip(
             Icons.air,
-            '${metar['wind_kph']} km/h',
+            '${metar['wind_kph']}km/h',
           ),
           _buildWeatherChip(
             Icons.visibility,
-            '${metar['visibility_km']} km',
+            '${metar['visibility_km']}km',
           ),
         ],
       );
     } else if (weather != null) {
       // Show weather data: temp, humidity, wind, feels like
-      return Row(
+      return Wrap(
+        spacing: 6,
+        runSpacing: 6,
         children: [
           _buildWeatherChip(
             Icons.thermostat,
@@ -4960,14 +5086,14 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
           ),
           _buildWeatherChip(
             Icons.air,
-            '${weather.windKph.round()} km/h',
+            '${weather.windKph.round()}km/h',
           ),
         ],
       );
     }
 
     // Show loading/no data placeholder
-    return Row(
+    return Wrap(
       children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -4993,7 +5119,6 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
 
   Widget _buildWeatherChip(IconData icon, String value) {
     return Container(
-      margin: const EdgeInsets.only(right: 8),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.1),
@@ -5182,11 +5307,14 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
                   ),
                   title: Row(
                     children: [
-                      Text(
-                        motorway.name,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w500,
+                      Flexible(
+                        child: Text(
+                          motorway.name,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       if (motorway.isCombined) ...[
@@ -5998,6 +6126,14 @@ Shared via Weather Alert Pakistan
             child: _buildSpeedometerWidget(),
           ),
 
+        // Animated Compass widget (when navigating) - Above timeline slider button
+        if (_isNavigating)
+          Positioned(
+            bottom: _showTimelineSlider ? 270 : 255,
+            left: 26,
+            child: _buildAnimatedCompass(),
+          ),
+
         // Recenter/Follow Button - Always visible above Timeline button
         if (!_showTimelineSlider)
           Positioned(
@@ -6307,96 +6443,97 @@ Shared via Weather Alert Pakistan
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 4),
-                // Distance, duration, arrival time
-                Row(
+                // Distance, duration, arrival time - use Wrap to prevent overflow
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 4,
                   children: [
                     // Distance
-                    Icon(
-                      Icons.straighten,
-                      color: Colors.white.withValues(alpha: 0.7),
-                      size: 14,
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.straighten,
+                          color: Colors.white.withValues(alpha: 0.7),
+                          size: 14,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          distanceText,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.9),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 4),
-                    Text(
-                      distanceText,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
                     // Duration
-                    Icon(
-                      Icons.timer_outlined,
-                      color: Colors.white.withValues(alpha: 0.7),
-                      size: 14,
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.timer_outlined,
+                          color: Colors.white.withValues(alpha: 0.7),
+                          size: 14,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          _formatDuration(Duration(seconds: remainingSeconds)),
+                          style: TextStyle(
+                            color: _orangeAccent,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 4),
-                    Text(
-                      _formatDuration(Duration(seconds: remainingSeconds)),
-                      style: TextStyle(
-                        color: _orangeAccent,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
                     // Arrival time
-                    Icon(
-                      Icons.access_time,
-                      color: Colors.white.withValues(alpha: 0.7),
-                      size: 14,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      arrivalTimeText,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                      ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.access_time,
+                          color: Colors.white.withValues(alpha: 0.7),
+                          size: 14,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          arrivalTimeText,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.9),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 12),
-          // Stop button
+          const SizedBox(width: 8),
+          // Stop button - compact
           GestureDetector(
             onTap: _stopNavigation,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: Colors.red.shade600,
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.red.withValues(alpha: 0.4),
-                    blurRadius: 8,
+                    blurRadius: 6,
                     offset: const Offset(0, 2),
                   ),
                 ],
               ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.stop,
-                    color: Colors.white,
-                    size: 18,
-                  ),
-                  SizedBox(width: 6),
-                  Text(
-                    'Stop',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
+              child: const Icon(
+                Icons.stop,
+                color: Colors.white,
+                size: 18,
               ),
             ),
           ),
@@ -6546,34 +6683,45 @@ Shared via Weather Alert Pakistan
                                   ),
                                 ),
                                 const SizedBox(height: 4),
-                                Row(
+                                Wrap(
+                                  spacing: 12,
+                                  runSpacing: 4,
                                   children: [
-                                    Icon(Icons.access_time,
-                                        color:
-                                            Colors.white.withValues(alpha: 0.6),
-                                        size: 14),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      'Arrival: $timeStr',
-                                      style: TextStyle(
-                                        color:
-                                            Colors.white.withValues(alpha: 0.7),
-                                        fontSize: 13,
-                                      ),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.access_time,
+                                            color:
+                                                Colors.white.withValues(alpha: 0.6),
+                                            size: 14),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Arrival: $timeStr',
+                                          style: TextStyle(
+                                            color:
+                                                Colors.white.withValues(alpha: 0.7),
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    const SizedBox(width: 12),
-                                    Icon(Icons.straighten,
-                                        color:
-                                            Colors.white.withValues(alpha: 0.6),
-                                        size: 14),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      '${currentPoint.distanceFromUser} km',
-                                      style: TextStyle(
-                                        color:
-                                            Colors.white.withValues(alpha: 0.7),
-                                        fontSize: 13,
-                                      ),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.straighten,
+                                            color:
+                                                Colors.white.withValues(alpha: 0.6),
+                                            size: 14),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          '${currentPoint.distanceFromUser} km',
+                                          style: TextStyle(
+                                            color:
+                                                Colors.white.withValues(alpha: 0.7),
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
@@ -6942,6 +7090,83 @@ Shared via Weather Alert Pakistan
     );
   }
 
+  /// Animated compass widget - shows N/S/E/W direction like Google Maps
+  Widget _buildAnimatedCompass() {
+    // Use the current bearing to rotate the compass
+    final bearing = _roadBearing != 0 ? _roadBearing : _currentHeading;
+    
+    return GestureDetector(
+      onTap: () {
+        // Tap to align map to north
+        if (_mapController != null && _currentPosition != null) {
+          _mapController!.animateCamera(
+            CameraUpdate.newCameraPosition(
+              CameraPosition(
+                target: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+                zoom: 18,
+                bearing: 0, // North
+                tilt: 55,
+              ),
+            ),
+          );
+        }
+      },
+      child: Container(
+        width: 52,
+        height: 52,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: _cardDark.withValues(alpha: 0.95),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.2),
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // Rotating compass needle
+            Transform.rotate(
+              angle: -bearing * (3.14159 / 180), // Negative to show correct direction
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // North indicator (red triangle)
+                  CustomPaint(
+                    size: const Size(14, 18),
+                    painter: _CompassNeedlePainter(isNorth: true),
+                  ),
+                  const SizedBox(height: 2),
+                  // South indicator (white triangle)
+                  CustomPaint(
+                    size: const Size(14, 18),
+                    painter: _CompassNeedlePainter(isNorth: false),
+                  ),
+                ],
+              ),
+            ),
+            // Center dot
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.8),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Next toll plaza weather card
   Widget _buildNextTollPlazaCard() {
     if (_routePoints.isEmpty) {
@@ -7157,33 +7382,37 @@ Shared via Weather Alert Pakistan
                 color: _isDayAtTime(nextPoint.estimatedArrival)
                     ? Colors.amber
                     : Colors.blueGrey.shade200,
-                size: 32,
+                size: 28,
               ),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '$temp°C',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        displayCondition.length > 25
-                            ? '${displayCondition.substring(0, 25)}...'
-                            : displayCondition,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.7),
-                          fontSize: 11,
-                        ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '$temp°C',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
                       ),
-                      if (hasMetar) ...[
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            displayCondition.length > 20
+                                ? '${displayCondition.substring(0, 20)}...'
+                                : displayCondition,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.7),
+                              fontSize: 10,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (hasMetar) ...[
                         const SizedBox(width: 4),
                         Container(
                           padding: const EdgeInsets.symmetric(
@@ -7206,7 +7435,8 @@ Shared via Weather Alert Pakistan
                   ),
                 ],
               ),
-              const Spacer(),
+              ),
+              const SizedBox(width: 8),
               // Weather details
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -7440,45 +7670,59 @@ Shared via Weather Alert Pakistan
 
           // Header
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(
               children: [
                 if (_isNavigating)
                   Container(
                     padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                     decoration: BoxDecoration(
                       color: Colors.green,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
-                      '${displayPoints.length} stops ahead',
+                      '${displayPoints.length} ahead',
                       style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 12,
+                          fontSize: 11,
                           fontWeight: FontWeight.w600),
                     ),
                   ),
-                const Spacer(),
-                Text(
-                  'Tap section for more details',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.5),
-                    fontSize: 13,
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Tap for details',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.5),
+                      fontSize: 12,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
                   ),
                 ),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.ios_share, color: Colors.white),
-                  onPressed: _shareRoute,
+                const SizedBox(width: 4),
+                SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(Icons.ios_share, color: Colors.white, size: 20),
+                    onPressed: _shareRoute,
+                  ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white),
-                  onPressed: () {
-                    setState(() => _currentView = 0);
-                    // The ticker and recenter will be handled in onMapCreated
-                    // when the map view is rebuilt
-                  },
+                SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(Icons.close, color: Colors.white, size: 20),
+                    onPressed: () {
+                      setState(() => _currentView = 0);
+                      // The ticker and recenter will be handled in onMapCreated
+                      // when the map view is rebuilt
+                    },
+                  ),
                 ),
               ],
             ),
@@ -7692,22 +7936,18 @@ Shared via Weather Alert Pakistan
                   const SizedBox(height: 2),
                   Row(
                     children: [
-                      Text(
-                        time,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.7),
-                          fontSize: 12,
-                        ),
-                      ),
-                      Text(
-                        ' • $distanceDisplay',
-                        style: TextStyle(
-                          color: isNext
-                              ? _orangeAccent.withValues(alpha: 0.8)
-                              : Colors.white.withValues(alpha: 0.5),
-                          fontSize: 12,
-                          fontWeight:
-                              isNext ? FontWeight.w600 : FontWeight.normal,
+                      Flexible(
+                        child: Text(
+                          '$time • $distanceDisplay',
+                          style: TextStyle(
+                            color: isNext
+                                ? _orangeAccent.withValues(alpha: 0.8)
+                                : Colors.white.withValues(alpha: 0.6),
+                            fontSize: 12,
+                            fontWeight:
+                                isNext ? FontWeight.w600 : FontWeight.normal,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
@@ -7718,12 +7958,15 @@ Shared via Weather Alert Pakistan
                       children: [
                         Icon(Icons.mosque, color: _orangeAccent, size: 12),
                         const SizedBox(width: 4),
-                        Text(
-                          '$prayerName${prayerTime != null ? ' $prayerTime' : ''}',
-                          style: TextStyle(
-                            color: _orangeAccent,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
+                        Flexible(
+                          child: Text(
+                            '$prayerName${prayerTime != null ? ' $prayerTime' : ''}',
+                            style: TextStyle(
+                              color: _orangeAccent,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
@@ -9320,4 +9563,37 @@ enum AlertType {
   closure,
   congestion,
   info,
+}
+
+/// Custom painter for compass needle (N/S indicator)
+class _CompassNeedlePainter extends CustomPainter {
+  final bool isNorth;
+  
+  _CompassNeedlePainter({required this.isNorth});
+  
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = isNorth ? const Color(0xFFE53935) : Colors.white
+      ..style = PaintingStyle.fill;
+    
+    final path = Path();
+    if (isNorth) {
+      // Triangle pointing up (North)
+      path.moveTo(size.width / 2, 0);
+      path.lineTo(size.width, size.height);
+      path.lineTo(0, size.height);
+    } else {
+      // Triangle pointing down (South)
+      path.moveTo(0, 0);
+      path.lineTo(size.width, 0);
+      path.lineTo(size.width / 2, size.height);
+    }
+    path.close();
+    
+    canvas.drawPath(path, paint);
+  }
+  
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

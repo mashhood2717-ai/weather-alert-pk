@@ -33,165 +33,203 @@ class ForecastTile extends StatelessWidget {
     if (dailyWeather == null) return;
 
     final d = dailyWeather!;
-    final fg = isDay ? Colors.black87 : Colors.white;
-    final bgColor = isDay
-        ? Colors.white.withValues(alpha: 0.95)
-        : Colors.grey[900]!.withValues(alpha: 0.95);
+    // Get screen dimensions for responsive layout
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isSmallScreen = screenWidth < 360;
+    final padding = isSmallScreen ? 14.0 : 20.0;
+    
+    // Consistent app theme colors (blue-based like rest of app)
+    const fg = Colors.white;
+    final cardBg = isDay
+        ? Colors.white.withValues(alpha: 0.15)
+        : Colors.white.withValues(alpha: 0.08);
+    final dividerColor = Colors.white.withValues(alpha: 0.2);
 
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (context) => Container(
-        padding: const EdgeInsets.all(20),
+        constraints: BoxConstraints(
+          maxHeight: screenHeight * 0.85,
+        ),
+        padding: EdgeInsets.all(padding),
         decoration: BoxDecoration(
-          color: bgColor,
+          gradient: LinearGradient(
+            colors: isDay
+                ? [const Color(0xFF1976D2), const Color(0xFF1565C0)]
+                : [const Color(0xFF1C1C1E), const Color(0xFF2C2C2E)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Handle bar
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: fg.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(2),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Handle bar
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: fg.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
-            ),
-            // Header with date and temps
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(_formatDateDisplay(d.date),
+              // Header with date only (no duplicate temps)
+              Center(
+                child: Text(_formatDateDisplay(d.date),
                     style: TextStyle(
-                        fontSize: 20, fontWeight: FontWeight.bold, color: fg)),
-                Row(
-                  children: [
-                    Text("${d.maxTemp.toStringAsFixed(0)}°",
-                        style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.orange[700])),
-                    const SizedBox(width: 8),
-                    Text("${d.minTemp.toStringAsFixed(0)}°",
-                        style:
-                            TextStyle(fontSize: 20, color: Colors.blue[600])),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Day/Night Weather Cards
-            Row(
-              children: [
-                // Daytime Card
-                Expanded(
-                  child: _buildDayNightCard(
-                    title: "Day",
-                    icon: d.dayIcon ?? icon,
-                    condition: d.dayCondition ?? d.condition,
-                    temp: d.dayHighTemp ?? d.maxTemp,
-                    isHigh: true,
-                    sunTime: "☀️ ${d.sunrise}",
-                    fg: fg,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                // Nighttime Card
-                Expanded(
-                  child: _buildDayNightCard(
-                    title: "Night",
-                    icon: d.nightIcon ?? icon,
-                    condition: d.nightCondition ?? d.condition,
-                    temp: d.nightLowTemp ?? d.minTemp,
-                    isHigh: false,
-                    sunTime: "🌙 ${d.sunset}",
-                    fg: fg,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            const Divider(),
-            const SizedBox(height: 12),
-
-            // Feels Like Section
-            if (feelsLikeHigh != null || feelsLikeLow != null) ...[
-              Text(
-                "Feels Like",
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: fg.withValues(alpha: 0.7),
-                ),
+                        fontSize: isSmallScreen ? 18 : 22, 
+                        fontWeight: FontWeight.bold, 
+                        color: fg)),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
+
+              // Day/Night Weather Cards (these show the temps)
               Row(
                 children: [
+                  // Daytime Card
                   Expanded(
-                    child: _buildFeelsLikeTile(
-                      "High",
-                      feelsLikeHigh != null
-                          ? "${feelsLikeHigh!.toStringAsFixed(0)}°C"
-                          : "--",
-                      Colors.orange[700]!,
-                      fg,
+                    child: _buildDayNightCard(
+                      context: context,
+                      title: "Day",
+                      icon: d.dayIcon ?? icon,
+                      condition: d.dayCondition ?? d.condition,
+                      temp: d.dayHighTemp ?? d.maxTemp,
+                      isHigh: true,
+                      sunTime: d.sunrise,
+                      fg: fg,
+                      cardBg: cardBg,
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
+                  // Nighttime Card
                   Expanded(
-                    child: _buildFeelsLikeTile(
-                      "Low",
-                      feelsLikeLow != null
-                          ? "${feelsLikeLow!.toStringAsFixed(0)}°C"
-                          : "--",
-                      Colors.blue[600]!,
-                      fg,
+                    child: _buildDayNightCard(
+                      context: context,
+                      title: "Night",
+                      icon: d.nightIcon ?? icon,
+                      condition: d.nightCondition ?? d.condition,
+                      temp: d.nightLowTemp ?? d.minTemp,
+                      isHigh: false,
+                      sunTime: d.sunset,
+                      fg: fg,
+                      cardBg: cardBg,
                     ),
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              Divider(color: dividerColor),
+              const SizedBox(height: 8),
+
+              // Feels Like Section
+              if (feelsLikeHigh != null || feelsLikeLow != null) ...[
+                Text(
+                  "Feels Like",
+                  style: TextStyle(
+                    fontSize: isSmallScreen ? 12 : 14,
+                    fontWeight: FontWeight.w600,
+                    color: fg.withValues(alpha: 0.7),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildFeelsLikeTile(
+                        context: context,
+                        label: "High",
+                        value: feelsLikeHigh != null
+                            ? "${feelsLikeHigh!.toStringAsFixed(0)}°"
+                            : "--",
+                        accentColor: Colors.orange[400]!,
+                        fg: fg,
+                        cardBg: cardBg,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildFeelsLikeTile(
+                        context: context,
+                        label: "Low",
+                        value: feelsLikeLow != null
+                            ? "${feelsLikeLow!.toStringAsFixed(0)}°"
+                            : "--",
+                        accentColor: Colors.blue[300]!,
+                        fg: fg,
+                        cardBg: cardBg,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
+
+              // Parameters Grid - Dynamic columns based on screen width
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final itemWidth = constraints.maxWidth / 3 - 8;
+                  final itemCount = _getDetailItems(d, fg, cardBg).length;
+                  if (itemCount == 0) return const SizedBox.shrink();
+                  
+                  return Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _getDetailItems(d, fg, cardBg).map((item) {
+                      return SizedBox(
+                        width: itemWidth,
+                        child: item,
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
               const SizedBox(height: 16),
             ],
-
-            // Parameters Grid
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                if (d.uvIndexMax != null)
-                  _buildDetailItem(Icons.wb_sunny_outlined, "UV Index",
-                      d.uvIndexMax!.toStringAsFixed(1), fg),
-                if (d.precipitationProbability != null)
-                  _buildDetailItem(Icons.water_drop, "Rain Chance",
-                      "${d.precipitationProbability}%", fg),
-                if (d.precipitationSum != null)
-                  _buildDetailItem(Icons.grain, "Precipitation",
-                      "${d.precipitationSum!.toStringAsFixed(1)} mm", fg),
-                if (d.windGustsMax != null)
-                  _buildDetailItem(Icons.air, "Wind Gusts",
-                      "${d.windGustsMax!.toStringAsFixed(0)} km/h", fg),
-                if (d.windDirectionDominant != null)
-                  _buildDetailItem(Icons.explore, "Wind Dir",
-                      _windDirToCardinal(d.windDirectionDominant!), fg),
-              ],
-            ),
-            const SizedBox(height: 20),
-          ],
+          ),
         ),
       ),
     );
   }
 
+  /// Get list of detail items for the grid
+  List<Widget> _getDetailItems(DailyWeather d, Color fg, Color cardBg) {
+    final items = <Widget>[];
+    if (d.uvIndexMax != null) {
+      items.add(_buildDetailItem(Icons.wb_sunny_outlined, "UV",
+          d.uvIndexMax!.toStringAsFixed(1), fg, cardBg, iconColor: Colors.amber));
+    }
+    if (d.precipitationProbability != null) {
+      // Use cyan color for rain drop icon - visible on blue background
+      items.add(_buildDetailItem(Icons.water_drop, "Rain",
+          "${d.precipitationProbability}%", fg, cardBg, iconColor: Colors.cyan[200]));
+    }
+    if (d.precipitationSum != null) {
+      items.add(_buildDetailItem(Icons.grain, "Precip",
+          "${d.precipitationSum!.toStringAsFixed(1)}mm", fg, cardBg, iconColor: Colors.lightBlue[200]));
+    }
+    if (d.windGustsMax != null) {
+      items.add(_buildDetailItem(Icons.air, "Gusts",
+          "${d.windGustsMax!.toStringAsFixed(0)}km/h", fg, cardBg));
+    }
+    if (d.windDirectionDominant != null) {
+      items.add(_buildDetailItem(Icons.explore, "Wind",
+          _windDirToCardinal(d.windDirectionDominant!), fg, cardBg));
+    }
+    return items;
+  }
+
   /// Build a card for day or night weather
   Widget _buildDayNightCard({
+    required BuildContext context,
     required String title,
     required String icon,
     required String condition,
@@ -199,84 +237,92 @@ class ForecastTile extends StatelessWidget {
     required bool isHigh,
     required String sunTime,
     required Color fg,
+    required Color cardBg,
   }) {
-    final accentColor = isHigh ? Colors.orange[700]! : Colors.blue[600]!;
-    final bgGradient = isHigh
-        ? [
-            Colors.orange.withValues(alpha: 0.1),
-            Colors.yellow.withValues(alpha: 0.05)
-          ]
-        : [
-            Colors.indigo.withValues(alpha: 0.1),
-            Colors.blue.withValues(alpha: 0.05)
-          ];
+    final accentColor = isHigh ? Colors.orange[400]! : Colors.blue[300]!;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 360;
+    final iconSize = isSmallScreen ? 32.0 : 40.0;
+    final tempFontSize = isSmallScreen ? 20.0 : 24.0;
+    final sunIcon = isHigh ? "☀️" : "🌙";
 
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: EdgeInsets.all(isSmallScreen ? 10 : 12),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: bgGradient,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: accentColor.withValues(alpha: 0.3)),
+        color: cardBg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accentColor.withValues(alpha: 0.4)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // Title
+          // Title row
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
                 title,
                 style: TextStyle(
-                  fontSize: 14,
+                  fontSize: isSmallScreen ? 12 : 14,
                   fontWeight: FontWeight.w600,
                   color: accentColor,
                 ),
               ),
-              Text(
-                sunTime,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: fg.withValues(alpha: 0.6),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          // Icon and Temp
-          Row(
-            children: [
-              Image.network(
-                icon,
-                width: 40,
-                height: 40,
-                errorBuilder: (_, __, ___) => Icon(
-                    isHigh ? Icons.wb_sunny : Icons.nightlight_round,
-                    size: 40,
-                    color: accentColor),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                "${temp.toStringAsFixed(0)}°",
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: accentColor,
+              Flexible(
+                child: Text(
+                  "$sunIcon $sunTime",
+                  style: TextStyle(
+                    fontSize: isSmallScreen ? 9 : 10,
+                    color: fg.withValues(alpha: 0.7),
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 8),
+          // Icon and Temp
+          Row(
+            children: [
+              // Add light background to make rain drops visible on blue gradient
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.85),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Image.network(
+                  icon,
+                  width: iconSize,
+                  height: iconSize,
+                  errorBuilder: (_, __, ___) => Icon(
+                      isHigh ? Icons.wb_sunny : Icons.nightlight_round,
+                      size: iconSize,
+                      color: accentColor),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  "${temp.toStringAsFixed(0)}°",
+                  style: TextStyle(
+                    fontSize: tempFontSize,
+                    fontWeight: FontWeight.bold,
+                    color: accentColor,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
           // Condition
           Text(
             condition,
             style: TextStyle(
-              fontSize: 12,
-              color: fg.withValues(alpha: 0.7),
+              fontSize: isSmallScreen ? 10 : 11,
+              color: fg.withValues(alpha: 0.8),
             ),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -286,36 +332,50 @@ class ForecastTile extends StatelessWidget {
     );
   }
 
-  Widget _buildFeelsLikeTile(
-      String label, String value, Color accentColor, Color fg) {
+  Widget _buildFeelsLikeTile({
+      required BuildContext context,
+      required String label, 
+      required String value, 
+      required Color accentColor, 
+      required Color fg, 
+      required Color cardBg}) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 360;
+    
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: EdgeInsets.symmetric(
+        horizontal: isSmallScreen ? 8 : 12, 
+        vertical: isSmallScreen ? 8 : 10,
+      ),
       decoration: BoxDecoration(
-        color: accentColor.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: accentColor.withValues(alpha: 0.3)),
+        color: cardBg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: accentColor.withValues(alpha: 0.4)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              Icon(Icons.thermostat, size: 18, color: accentColor),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: fg.withValues(alpha: 0.7),
-                  fontWeight: FontWeight.w500,
+          Flexible(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.thermostat, size: isSmallScreen ? 14 : 16, color: accentColor),
+                const SizedBox(width: 4),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: isSmallScreen ? 11 : 12,
+                    color: fg.withValues(alpha: 0.8),
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           Text(
             value,
             style: TextStyle(
-              fontSize: 16,
+              fontSize: isSmallScreen ? 14 : 15,
               fontWeight: FontWeight.bold,
               color: accentColor,
             ),
@@ -325,24 +385,31 @@ class ForecastTile extends StatelessWidget {
     );
   }
 
-  Widget _buildDetailItem(IconData icon, String label, String value, Color fg) {
+  Widget _buildDetailItem(IconData icon, String label, String value, Color fg, Color cardBg, {Color? iconColor}) {
     return Container(
-      width: 95,
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
       decoration: BoxDecoration(
-        color: fg.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: fg.withValues(alpha: 0.1)),
+        color: cardBg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: fg.withValues(alpha: 0.15)),
       ),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 20, color: fg.withValues(alpha: 0.7)),
-          const SizedBox(height: 4),
-          Text(value,
-              style: TextStyle(
-                  fontSize: 13, fontWeight: FontWeight.bold, color: fg)),
-          Text(label,
-              style: TextStyle(fontSize: 10, color: fg.withValues(alpha: 0.6))),
+          Icon(icon, size: 18, color: iconColor ?? fg.withValues(alpha: 0.8)),
+          const SizedBox(height: 3),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(value,
+                style: TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.bold, color: fg)),
+          ),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(label,
+                style: TextStyle(fontSize: 9, color: fg.withValues(alpha: 0.7))),
+          ),
         ],
       ),
     );

@@ -1397,78 +1397,85 @@ Is GPS: ${controller.isFromCurrentLocation}
 
   Widget _buildModernAppBar(bool isDay) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Row(children: [
         Container(
-            padding: const EdgeInsets.all(4),
+            padding: const EdgeInsets.all(3),
             decoration: BoxDecoration(
                 color: isDay
                     ? Colors.white.withValues(alpha: 0.25)
                     : Colors.black.withValues(alpha: 0.25),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(10),
                 border: Border.all(
                     color: Colors.white.withValues(alpha: 0.15), width: 1)),
             child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(7),
                 child: Image.asset('assets/images/logo.png',
-                    width: 36, height: 36, fit: BoxFit.contain))),
+                    width: 32, height: 32, fit: BoxFit.contain))),
         // Expanded spacer for layout (logo on left, icons on right)
+        const SizedBox(width: 8),
         Expanded(
             child: GestureDetector(
                 onLongPress: _showFcmTokenDialog, child: const SizedBox())),
-        _buildAppBarButton(
-            icon: Icons.star_rounded,
-            isDay: isDay,
-            iconColor: _favorites.isNotEmpty ? Colors.amber : null,
-            onTap: () => _showFavoritesSheet(isDay)),
-        const SizedBox(width: 6),
-        _buildAppBarButton(
-            icon: Icons.my_location_rounded,
-            isDay: isDay,
-            onTap: () async {
-              _setLoading(true);
-              _fadeController.reset();
-              try {
-                await controller.loadByLocation();
-                _fadeController.forward();
-              } catch (e) {
-                _showError(
-                    'Location Error: ${e.toString().split(':').last.trim()}');
-              }
-              _setLoading(false);
-            }),
-        const SizedBox(width: 6),
-        _buildAppBarButton(
-            icon: Icons.notifications_rounded,
-            isDay: isDay,
-            onTap: () => Navigator.pushNamed(context, '/alerts')),
-        const SizedBox(width: 6),
-        _buildAppBarButton(
-            icon: Icons.settings_rounded,
-            isDay: isDay,
-            onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (context) => SettingsScreen(isDay: isDay)))),
-        const SizedBox(width: 6),
-        _buildAppBarButton(
-            icon: Icons.directions_car,
-            isDay: isDay,
-            iconColor: isDay ? Colors.blue.shade700 : Colors.blue.shade300,
-            onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (context) => TravelWeatherScreen(isDay: isDay)))),
-        const SizedBox(width: 6),
-        _buildAppBarButton(
-            icon: Icons.admin_panel_settings,
-            isDay: isDay,
-            iconColor: isDay ? Colors.deepPurple : Colors.purple.shade300,
-            onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                    content: Text('Long press to access Admin Portal'),
-                    duration: Duration(seconds: 1))),
-            onLongPress: () => Navigator.pushNamed(context, '/admin')),
+        // App bar buttons - compact layout to fit 6 buttons
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildAppBarButton(
+                icon: Icons.star_rounded,
+                isDay: isDay,
+                iconColor: _favorites.isNotEmpty ? Colors.amber : null,
+                onTap: () => _showFavoritesSheet(isDay)),
+            const SizedBox(width: 4),
+            _buildAppBarButton(
+                icon: Icons.my_location_rounded,
+                isDay: isDay,
+                onTap: () async {
+                  _setLoading(true);
+                  _fadeController.reset();
+                  try {
+                    await controller.loadByLocation();
+                    _fadeController.forward();
+                  } catch (e) {
+                    _showError(
+                        'Location Error: ${e.toString().split(':').last.trim()}');
+                  }
+                  _setLoading(false);
+                }),
+            const SizedBox(width: 4),
+            _buildAppBarButton(
+                icon: Icons.notifications_rounded,
+                isDay: isDay,
+                onTap: () => Navigator.pushNamed(context, '/alerts')),
+            const SizedBox(width: 4),
+            _buildAppBarButton(
+                icon: Icons.settings_rounded,
+                isDay: isDay,
+                onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => SettingsScreen(isDay: isDay)))),
+            const SizedBox(width: 4),
+            _buildAppBarButton(
+                icon: Icons.directions_car,
+                isDay: isDay,
+                iconColor: isDay ? Colors.blue.shade700 : Colors.blue.shade300,
+                onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => TravelWeatherScreen(isDay: isDay)))),
+            const SizedBox(width: 4),
+            _buildAppBarButton(
+                icon: Icons.admin_panel_settings,
+                isDay: isDay,
+                iconColor: isDay ? Colors.deepPurple : Colors.purple.shade300,
+                onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text('Long press to access Admin Portal'),
+                        duration: Duration(seconds: 1))),
+                onLongPress: () => Navigator.pushNamed(context, '/admin')),
+          ],
+        ),
       ]),
     );
   }
@@ -1484,14 +1491,14 @@ Is GPS: ${controller.isFromCurrentLocation}
         child: InkWell(
             onTap: onTap,
             onLongPress: onLongPress,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(10),
             child: Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                     color: isDay
                         ? Colors.white.withValues(alpha: 0.25)
                         : Colors.black.withValues(alpha: 0.25),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(10),
                     border: Border.all(
                         color: Colors.white.withValues(alpha: 0.15), width: 1)),
                 child: Icon(icon,
@@ -1499,7 +1506,7 @@ Is GPS: ${controller.isFromCurrentLocation}
                         (isDay
                             ? Colors.black.withValues(alpha: 0.87)
                             : Colors.white),
-                    size: 20))));
+                    size: 18))));
   }
 
   Widget _buildModernSearchBar(bool isDay) {

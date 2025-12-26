@@ -82,6 +82,9 @@ class _AlertsScreenState extends State<AlertsScreen>
   Future<void> _loadData() async {
     setState(() => _loading = true);
 
+    // Sync read status from cloud first (for reinstall persistence)
+    await _storage.syncReadStatusFromCloud();
+
     // Clean up any existing duplicates first
     await _storage.removeDuplicates();
 

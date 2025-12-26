@@ -259,11 +259,13 @@ class _PrayerWidgetState extends State<PrayerWidget> {
               ),
             ),
             const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              alignment: WrapAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 Icon(next.icon, color: Colors.amber, size: 32),
-                const SizedBox(width: 12),
                 Text(
                   next.name,
                   style: TextStyle(
@@ -272,7 +274,6 @@ class _PrayerWidgetState extends State<PrayerWidget> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(width: 8),
                 Text(
                   next.nameArabic,
                   style: TextStyle(
@@ -375,12 +376,15 @@ class _PrayerWidgetState extends State<PrayerWidget> {
               children: [
                 Row(
                   children: [
-                    Text(
-                      prayer.name,
-                      style: TextStyle(
-                        color: isNext ? Colors.green : fg,
-                        fontSize: 16,
-                        fontWeight: isNext ? FontWeight.bold : FontWeight.w500,
+                    Flexible(
+                      child: Text(
+                        prayer.name,
+                        style: TextStyle(
+                          color: isNext ? Colors.green : fg,
+                          fontSize: 16,
+                          fontWeight: isNext ? FontWeight.bold : FontWeight.w500,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     const SizedBox(width: 8),

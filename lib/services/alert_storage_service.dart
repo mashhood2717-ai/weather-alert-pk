@@ -2,6 +2,7 @@
 
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/weather_alert.dart';
 import 'user_service.dart';
 
@@ -9,6 +10,8 @@ class AlertStorageService {
   static const String _alertsKey = 'weather_alerts';
   static const String _subscribedCitiesKey = 'subscribed_cities';
   static const int _maxAlerts = 50; // Keep last 50 alerts
+  
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   // Singleton pattern
   static final AlertStorageService _instance = AlertStorageService._internal();
@@ -110,6 +113,62 @@ class AlertStorageService {
 
     final encoded = jsonEncode(updatedAlerts.map((e) => e.toJson()).toList());
     await prefs.setString(_userAlertsKey, encoded);
+    
+    // Sync read status to Firestore for cross-device/reinstall persistence
+    await _syncReadAlertToCloud(alertId);
+  }
+  
+  /// Sync a read alert ID to Firestore so it persists across reinstalls
+  Future<void> _syncReadAlertToCloud(String alertId) async {
+    final userId = UserService().userId;
+    if (userId.isEmpty) return;
+    
+    try {
+      await _firestore.collection('users').doc(userId).set({
+        'readAlertIds': FieldValue.arrayUnion([alertId]),
+        'lastReadSync': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      print('☁️ Synced read alert to cloud: $alertId');
+    } catch (e) {
+      print('☁️ Error syncing read alert: $e');
+    }
+  }
+  
+  /// Fetch read alert IDs from Firestore and apply to local alerts
+  Future<void> syncReadStatusFromCloud() async {
+    final userId = UserService().userId;
+    if (userId.isEmpty) return;
+    
+    try {
+      final doc = await _firestore.collection('users').doc(userId).get();
+      if (!doc.exists) return;
+      
+      final data = doc.data();
+      final List<dynamic> cloudReadIds = data?['readAlertIds'] ?? [];
+      
+      if (cloudReadIds.isEmpty) return;
+      
+      // Apply cloud read status to local alerts
+      final prefs = await SharedPreferences.getInstance();
+      final alerts = await getAlerts();
+      bool hasChanges = false;
+      
+      final updatedAlerts = alerts.map((alert) {
+        if (cloudReadIds.contains(alert.id) && !alert.isRead) {
+          hasChanges = true;
+          return alert.copyWith(isRead: true);
+        }
+        return alert;
+      }).toList();
+      
+      if (hasChanges) {
+        final encoded = jsonEncode(updatedAlerts.map((e) => e.toJson()).toList());
+        await prefs.setString(_userAlertsKey, encoded);
+        print('☁️ Applied ${cloudReadIds.length} read alerts from cloud');
+      }
+    } catch (e) {
+      print('☁️ Error fetching read status from cloud: $e');
+    }
   }
 
   Future<void> markAllAsRead() async {
