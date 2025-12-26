@@ -2598,17 +2598,19 @@ class _TravelWeatherScreenState extends State<TravelWeatherScreen>
         final moonPaint = Paint()
           ..color = const Color(0xFFFFF9C4) // Warm moon yellow
           ..style = PaintingStyle.fill;
-        
+
         // Create crescent using path with arc
         final moonPath = Path();
         // Outer circle (full moon shape)
-        moonPath.addOval(Rect.fromCircle(center: const Offset(18, 28), radius: 7));
+        moonPath
+            .addOval(Rect.fromCircle(center: const Offset(18, 28), radius: 7));
         // Subtract inner circle offset to create crescent
         final cutoutPath = Path()
           ..addOval(Rect.fromCircle(center: const Offset(22, 27), radius: 6));
-        final crescentPath = Path.combine(PathOperation.difference, moonPath, cutoutPath);
+        final crescentPath =
+            Path.combine(PathOperation.difference, moonPath, cutoutPath);
         canvas.drawPath(crescentPath, moonPaint);
-        
+
         // Add a small star near the moon
         final starPaint = Paint()
           ..color = Colors.white
@@ -7232,9 +7234,7 @@ Shared via Weather Alert Pakistan
             children: [
               // Point name
               Text(
-                shortName.length > 8
-                    ? shortName.substring(0, 8)
-                    : shortName,
+                shortName.length > 8 ? shortName.substring(0, 8) : shortName,
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 9,
