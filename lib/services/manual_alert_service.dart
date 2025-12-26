@@ -128,6 +128,24 @@ class ManualAlertService {
         return; // Already shown this alert
       }
 
+      // Check if alert is older than 24 hours (for notification suppression)
+      bool isOldAlert = false;
+      DateTime alertTime = DateTime.now();
+      final timestamp = data['timestamp'];
+      if (timestamp != null) {
+        if (timestamp is Timestamp) {
+          alertTime = timestamp.toDate();
+        } else if (timestamp is int) {
+          alertTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
+        }
+        
+        final ageInHours = DateTime.now().difference(alertTime).inHours;
+        if (ageInHours > 24) {
+          isOldAlert = true;
+          print('⏰ Old alert detected (${ageInHours}h old): $alertId - will save but skip notification');
+        }
+      }
+
       // Get alert location
       final location = data['location'] as Map<String, dynamic>?;
       if (location == null) return;
@@ -222,14 +240,15 @@ class ManualAlertService {
       }
       await prefs.setStringList('processed_manual_alerts', processedAlerts);
 
-      // Create and show alert
+      // Create alert with correct receivedAt time
       final alert = WeatherAlert(
         id: alertId,
         title: data['title'] ?? 'Weather Alert',
         body: data['message'] ?? '',
         city: cityName,
         severity: data['severity'] ?? 'medium',
-        receivedAt: DateTime.now(),
+        receivedAt: alertTime, // Use actual alert time, not current time
+        isRead: isOldAlert, // Mark old alerts as read so they don't show as unread
         data: {
           'type': data['type'] ?? 'other',
           'mode': mode,
@@ -239,20 +258,24 @@ class ManualAlertService {
         },
       );
 
-      // Save to storage (for alerts history)
+      // Save to storage (for alerts history) - always save
       await _alertStorage.saveAlert(alert);
 
-      // Show local notification since Cloud Functions may not be deployed
-      // This ensures user gets notified when app detects they're in alert zone
-      await _notificationService.showWeatherAlert(
-        title: alert.title,
-        body: '${alert.city}: ${alert.body}',
-        payload: jsonEncode({
-          'type': 'manual_alert',
-          'alert_id': alertId,
-          'city': cityName,
-        }),
-      );
+      // Only show notification for recent alerts (within 24 hours)
+      // Skip notification for old alerts to avoid re-notifying on reinstall
+      if (!isOldAlert) {
+        await _notificationService.showWeatherAlert(
+          title: alert.title,
+          body: '${alert.city}: ${alert.body}',
+          payload: jsonEncode({
+            'type': 'manual_alert',
+            'alert_id': alertId,
+            'city': cityName,
+          }),
+        );
+      } else {
+        print('🔕 Notification skipped for old alert: ${alert.title}');
+      }
     } catch (e) {
       // Error processing alert
     }

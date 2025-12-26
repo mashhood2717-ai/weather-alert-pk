@@ -9,6 +9,7 @@ import '../utils/background_utils.dart';
 
 class WuWidget extends StatefulWidget {
   final bool isDay;
+  final bool isActive; // Only load data when tab is active
   final Function(Map<String, dynamic>? data)? onDataLoaded;
   final String? city; // City from main app to sync with
   final double? userLat; // User's current latitude
@@ -17,6 +18,7 @@ class WuWidget extends StatefulWidget {
   const WuWidget(
       {super.key,
       required this.isDay,
+      this.isActive = false,
       this.onDataLoaded,
       this.city,
       this.userLat,
@@ -42,13 +44,15 @@ class _WuWidgetState extends State<WuWidget> {
   // Track if we're scanning for nearby stations
   bool _scanningForNearby = false;
   bool _hasScannedForLocation = false;
+  // Track if data has been loaded at least once (for lazy loading)
+  bool _hasLoadedOnce = false;
 
   @override
   void initState() {
     super.initState();
     _initializeCity();
-    // Auto-scan for nearby station if user location is available
-    if (widget.userLat != null && widget.userLon != null) {
+    // Only load if tab is active (lazy loading)
+    if (widget.isActive && widget.userLat != null && widget.userLon != null) {
       _scanForNearbyStation();
     }
   }
@@ -56,6 +60,16 @@ class _WuWidgetState extends State<WuWidget> {
   @override
   void didUpdateWidget(WuWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
+    
+    // If tab became active and hasn't loaded yet, load now
+    if (widget.isActive && !oldWidget.isActive && !_hasLoadedOnce) {
+      if (widget.userLat != null && widget.userLon != null && !_hasScannedForLocation) {
+        _scanForNearbyStation();
+      } else if (_selectedCity != null && _currentData == null) {
+        _autoLoadFirstStation(_selectedCity!);
+      }
+    }
+    
     // If city prop changed, update selection
     if (oldWidget.city != widget.city && widget.city != null) {
       _syncCityFromProp();
@@ -112,6 +126,9 @@ class _WuWidgetState extends State<WuWidget> {
 
   /// Auto-load the first station for a given city
   Future<void> _autoLoadFirstStation(String city) async {
+    // Only load if tab is active (lazy loading)
+    if (!widget.isActive) return;
+    
     final stations = wuStationsByCity[city];
     if (stations == null || stations.isEmpty) return;
 
@@ -136,6 +153,7 @@ class _WuWidgetState extends State<WuWidget> {
 
     setState(() {
       _loading = false;
+      _hasLoadedOnce = true; // Mark as loaded
       if (res == null) _error = "No data found for $id";
       _currentData = res;
       // Store station info for dropdown display
@@ -200,23 +218,14 @@ class _WuWidgetState extends State<WuWidget> {
     }
   }
 
-  /// Scan all stations in the matched city to find nearest one within 5km
-  /// This fetches data from each station to get coordinates
+  /// Scan stations in the matched city to find nearest one within 5km
+  /// Only scans the matched city to avoid excessive API calls
   Future<void> _scanForNearbyStation() async {
+    // Only scan if tab is active (lazy loading)
+    if (!widget.isActive) return;
     if (widget.userLat == null || widget.userLon == null) return;
     if (_hasScannedForLocation) return;
     if (_scanningForNearby) return;
-
-    setState(() {
-      _scanningForNearby = true;
-      _loading = true;
-    });
-    _hasScannedForLocation = true;
-
-    double? minDistance;
-    String? nearestStationId;
-    String? nearestCity;
-    Map<String, dynamic>? nearestStationData;
 
     // First, check if we have a matching city
     String? matchedCity;
@@ -232,68 +241,84 @@ class _WuWidgetState extends State<WuWidget> {
       }
     }
 
-    // If no matched city, scan all cities
-    final citiesToScan = matchedCity != null
-        ? {matchedCity: wuStationsByCity[matchedCity]!}
-        : wuStationsByCity;
+    // Don't scan all cities - too many API calls. Only scan if we have a matched city.
+    if (matchedCity == null) {
+      _hasScannedForLocation = true;
+      // Just use the first city/station without scanning
+      if (_selectedCity == null && wuStationsByCity.isNotEmpty) {
+        _selectedCity = wuStationsByCity.keys.first;
+        _autoLoadFirstStation(_selectedCity!);
+      }
+      return;
+    }
 
-    // Iterate through cities and stations
-    for (final cityEntry in citiesToScan.entries) {
-      final city = cityEntry.key;
-      final stations = cityEntry.value;
+    final stations = wuStationsByCity[matchedCity];
+    if (stations == null || stations.isEmpty) {
+      _hasScannedForLocation = true;
+      return;
+    }
 
-      for (final station in stations) {
-        final stationId = station['id'];
-        if (stationId == null) continue;
+    // Limit scanning to max 3 stations to conserve API calls
+    final stationsToScan = stations.take(3).toList();
 
-        // Fetch station data to get coordinates
-        final stationData = await fetchWUCurrentByStation(stationId);
-        if (!mounted) return;
+    setState(() {
+      _scanningForNearby = true;
+      _loading = true;
+    });
+    _hasScannedForLocation = true;
 
-        if (stationData != null) {
-          // Store station info for later use
-          _stationInfo[stationId] = {
-            'lat': stationData['lat'],
-            'lon': stationData['lon'],
-            'neighborhood': stationData['neighborhood'],
-          };
+    double? minDistance;
+    String? nearestStationId;
+    Map<String, dynamic>? nearestStationData;
 
-          final stationLat = stationData['lat'] as num?;
-          final stationLon = stationData['lon'] as num?;
+    for (final station in stationsToScan) {
+      final stationId = station['id'];
+      if (stationId == null) continue;
 
-          if (stationLat != null && stationLon != null) {
-            final distance = _calculateDistance(
-              widget.userLat!,
-              widget.userLon!,
-              stationLat.toDouble(),
-              stationLon.toDouble(),
-            );
+      // Fetch station data to get coordinates
+      final stationData = await fetchWUCurrentByStation(stationId);
+      if (!mounted) return;
 
-            if (distance <= 5.0 &&
-                (minDistance == null || distance < minDistance)) {
-              minDistance = distance;
-              nearestStationId = stationId;
-              nearestCity = city;
-              nearestStationData = stationData;
-            }
+      if (stationData != null) {
+        // Store station info for later use
+        _stationInfo[stationId] = {
+          'lat': stationData['lat'],
+          'lon': stationData['lon'],
+          'neighborhood': stationData['neighborhood'],
+        };
+
+        final stationLat = stationData['lat'] as num?;
+        final stationLon = stationData['lon'] as num?;
+
+        if (stationLat != null && stationLon != null) {
+          final distance = _calculateDistance(
+            widget.userLat!,
+            widget.userLon!,
+            stationLat.toDouble(),
+            stationLon.toDouble(),
+          );
+
+          if (distance <= 5.0 &&
+              (minDistance == null || distance < minDistance)) {
+            minDistance = distance;
+            nearestStationId = stationId;
+            nearestStationData = stationData;
           }
         }
       }
-
-      // If we found a nearby station in matched city, stop scanning
-      if (matchedCity != null && nearestStationId != null) break;
+      
+      // If we found a station within 5km, stop scanning
+      if (nearestStationId != null) break;
     }
 
     if (!mounted) return;
 
-    if (nearestStationId != null &&
-        nearestCity != null &&
-        nearestStationData != null) {
+    if (nearestStationId != null && nearestStationData != null) {
       setState(() {
         _isWithinRadius = true;
         _nearbyStationId = nearestStationId;
         _nearbyStationDistance = minDistance;
-        _selectedCity = nearestCity;
+        _selectedCity = matchedCity;
         _selectedStationId = nearestStationId;
         _currentData = nearestStationData;
         _scanningForNearby = false;
@@ -304,11 +329,12 @@ class _WuWidgetState extends State<WuWidget> {
         widget.onDataLoaded!(nearestStationData);
       }
     } else {
-      // No nearby station found, just show dropdowns
+      // No nearby station found within 5km, just load the first station
       setState(() {
         _scanningForNearby = false;
-        _loading = false;
+        _selectedCity = matchedCity;
       });
+      _autoLoadFirstStation(matchedCity);
     }
   }
 

@@ -83,11 +83,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
   late AnimationController _shimmerController;
+  int _currentTabIndex = 0; // Track current tab for lazy loading
 
   @override
   void initState() {
     super.initState();
     tabs = TabController(length: 6, vsync: this);
+    // Listen to tab changes for lazy loading
+    tabs.addListener(_onTabChanged);
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
@@ -112,6 +115,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     // Initialize widget services in background (non-blocking)
     _initWidgetServices();
+  }
+
+  void _onTabChanged() {
+    if (tabs.index != _currentTabIndex) {
+      setState(() {
+        _currentTabIndex = tabs.index;
+      });
+    }
   }
 
   Future<void> _initSettings() async {
@@ -247,6 +258,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void dispose() {
     _fadeController.dispose();
     _shimmerController.dispose();
+    tabs.removeListener(_onTabChanged);
     tabs.dispose();
     _search.dispose();
     _debounceTimer?.cancel();
@@ -1378,6 +1390,7 @@ Is GPS: ${controller.isFromCurrentLocation}
                                 _buildMetarTab(isDay),
                                 WuWidget(
                                   isDay: isDay,
+                                  isActive: _currentTabIndex == 4,
                                   city: c?.city ?? controller.lastCitySearched,
                                   userLat: c?.lat,
                                   userLon: c?.lon,
