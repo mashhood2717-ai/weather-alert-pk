@@ -9,7 +9,9 @@ import '../services/notification_service.dart';
 import '../utils/background_utils.dart';
 
 class AlertsScreen extends StatefulWidget {
-  const AlertsScreen({super.key});
+  final bool embedded;
+  
+  const AlertsScreen({super.key, this.embedded = false});
 
   @override
   State<AlertsScreen> createState() => _AlertsScreenState();
@@ -227,6 +229,31 @@ class _AlertsScreenState extends State<AlertsScreen>
     const isDay = true; // You can make this dynamic based on time
     final fg = foregroundForCard(isDay);
 
+    final content = Column(
+      children: [
+        if (!widget.embedded) _buildAppBar(fg, isDay),
+        _buildTabBar(isDay),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _buildAlertsTab(isDay),
+                    _buildSubscriptionsTab(isDay),
+                    _buildSettingsTab(isDay),
+                  ],
+                ),
+        ),
+      ],
+    );
+
+    // If embedded in another screen, return just the content
+    if (widget.embedded) {
+      return content;
+    }
+
+    // Otherwise return full Scaffold
     return Scaffold(
       backgroundColor: Colors.transparent,
       extendBodyBehindAppBar: true,
@@ -235,24 +262,7 @@ class _AlertsScreenState extends State<AlertsScreen>
           gradient: dynamicGradient('clear', isDay),
         ),
         child: SafeArea(
-          child: Column(
-            children: [
-              _buildAppBar(fg, isDay),
-              _buildTabBar(isDay),
-              Expanded(
-                child: _loading
-                    ? const Center(child: CircularProgressIndicator())
-                    : TabBarView(
-                        controller: _tabController,
-                        children: [
-                          _buildAlertsTab(isDay),
-                          _buildSubscriptionsTab(isDay),
-                          _buildSettingsTab(isDay),
-                        ],
-                      ),
-              ),
-            ],
-          ),
+          child: content,
         ),
       ),
     );

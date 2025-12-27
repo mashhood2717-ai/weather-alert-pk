@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import '../services/prayer_service.dart';
 import '../services/notification_service.dart';
 import '../utils/background_utils.dart';
+import 'qibla_compass_widget.dart';
+import 'prayer_calendar_widget.dart';
 
 class PrayerWidget extends StatefulWidget {
   final bool isDay;
@@ -24,7 +26,9 @@ class PrayerWidget extends StatefulWidget {
   State<PrayerWidget> createState() => _PrayerWidgetState();
 }
 
-class _PrayerWidgetState extends State<PrayerWidget> {
+class _PrayerWidgetState extends State<PrayerWidget>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
   DailyPrayerTimes? _prayerTimes;
   bool _loading = true;
   String? _error;
@@ -36,6 +40,7 @@ class _PrayerWidgetState extends State<PrayerWidget> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this);
     _loadPreferences();
     // Refresh every minute to update countdown
     _refreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
@@ -45,6 +50,7 @@ class _PrayerWidgetState extends State<PrayerWidget> {
 
   @override
   void dispose() {
+    _tabController.dispose();
     _refreshTimer?.cancel();
     super.dispose();
   }
@@ -164,6 +170,83 @@ class _PrayerWidgetState extends State<PrayerWidget> {
     final fg = foregroundForCard(widget.isDay);
     final tint = cardTint(widget.isDay);
 
+    return Column(
+      children: [
+        // Tab bar
+        _buildTabBar(fg, tint),
+        // Tab content
+        Expanded(
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              // Today tab
+              _buildTodayTab(fg, tint),
+              // Qibla tab
+              QiblaCompassWidget(
+                isDay: widget.isDay,
+                latitude: widget.latitude,
+                longitude: widget.longitude,
+              ),
+              // Calendar tab
+              PrayerCalendarWidget(
+                isDay: widget.isDay,
+                latitude: widget.latitude,
+                longitude: widget.longitude,
+                cityName: widget.cityName,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTabBar(Color fg, Color tint) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      decoration: BoxDecoration(
+        color: tint.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: fg.withValues(alpha: 0.1)),
+      ),
+      child: TabBar(
+        controller: _tabController,
+        indicator: BoxDecoration(
+          color: Colors.green.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        indicatorSize: TabBarIndicatorSize.tab,
+        indicatorPadding: const EdgeInsets.all(4),
+        dividerColor: Colors.transparent,
+        labelColor: fg,
+        unselectedLabelColor: fg.withValues(alpha: 0.5),
+        labelStyle: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+        unselectedLabelStyle: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.normal,
+        ),
+        tabs: const [
+          Tab(
+            icon: Icon(Icons.mosque, size: 20),
+            text: 'Today',
+          ),
+          Tab(
+            icon: Icon(Icons.explore, size: 20),
+            text: 'Qibla',
+          ),
+          Tab(
+            icon: Icon(Icons.calendar_month, size: 20),
+            text: 'Calendar',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTodayTab(Color fg, Color tint) {
     if (_loading) {
       return Center(
         child: Column(
@@ -448,22 +531,7 @@ class _PrayerWidgetState extends State<PrayerWidget> {
                         _notificationModes[prayer.name] ??
                             PrayerNotificationMode.vibrationOnly,
                       ),
-                      size: 16,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      PrayerService.getNotificationModeLabel(
-                        _notificationModes[prayer.name] ??
-                            PrayerNotificationMode.vibrationOnly,
-                      ),
-                      style: TextStyle(
-                        color: PrayerService.getNotificationModeColor(
-                          _notificationModes[prayer.name] ??
-                              PrayerNotificationMode.vibrationOnly,
-                        ),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
+                      size: 18,
                     ),
                   ],
                 ),

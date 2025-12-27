@@ -760,7 +760,10 @@ class WeatherController {
     }
 
     final weatherCode = cur["weather_code"] ?? 0;
-    final isDay = cur["is_day"] == 1;
+    // Handle is_day as either int (0/1) or bool
+    final isDayRaw = cur["is_day"];
+    final isDay = isDayRaw == 1 || isDayRaw == true;
+    print('🌙 _parseCurrentWeather: isDayRaw=$isDayRaw (${isDayRaw.runtimeType}), isDay=$isDay, weatherCode=$weatherCode');
     final condition = OpenMeteoService.getWeatherDescription(weatherCode);
     final icon = OpenMeteoService.getWeatherIcon(weatherCode, isDay);
 
@@ -779,7 +782,7 @@ class WeatherController {
       pressureMb: _toD(cur["pressure_msl"]),
       visKm: null,
       gustKph: _toD(cur["wind_gusts_10m"]),
-      isDay: cur["is_day"] ?? 1,
+      isDay: isDay ? 1 : 0, // Use the parsed isDay boolean
       lat: _toD(json["latitude"]),
       lon: _toD(json["longitude"]),
       uvIndex: _toD(cur["uv_index"]),

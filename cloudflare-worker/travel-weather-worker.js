@@ -10,8 +10,8 @@
  * - METAR_CACHE: For storing pre-fetched Pakistan METAR and Weather data
  * 
  * Cron Schedule:
- * - METAR: Every 15 minutes
- * - WeatherAPI for toll plazas: Every 30 minutes
+ * - METAR: At :02, :17, :32, :47 (2 min after METAR publish times)
+ * - WeatherAPI for toll plazas: At :02, :32 (every 30 min, offset by 2 min)
  * 
  * Deploy: wrangler deploy -c wrangler-travel.toml
  */
@@ -146,8 +146,8 @@ export default {
         version: '2.0.0',
         description: 'Pre-cached Weather and METAR data for Pakistan motorway travel',
         cron_schedule: {
-          metar: 'Every 15 minutes',
-          weather: 'Every 30 minutes',
+          metar: 'At :02, :17, :32, :47 (2 min after METAR publish)',
+          weather: 'At :02, :32 (every 30 min, offset by 2 min)',
         },
         endpoints: {
           '/health': 'GET - Health check with cache status',
@@ -173,18 +173,18 @@ export default {
   },
 
   // Scheduled cron handler
-  // Cron 1: */15 * * * * - METAR refresh every 15 minutes
-  // Cron 2: */30 * * * * - Weather refresh every 30 minutes
+  // Cron 1: 2,17,32,47 * * * * - METAR refresh at :02, :17, :32, :47
+  // Cron 2: 2,32 * * * * - Weather refresh at :02, :32
   async scheduled(event, env, ctx) {
     const cronPattern = event.cron;
     console.log(`Cron triggered: ${cronPattern}`);
     
-    if (cronPattern === '*/15 * * * *') {
-      // Every 15 minutes: refresh METAR
+    if (cronPattern === '2,17,32,47 * * * *') {
+      // At :02, :17, :32, :47: refresh METAR (2 min after METAR publish)
       console.log('Refreshing Pakistan METAR data...');
       ctx.waitUntil(refreshPakistanMetar(env));
-    } else if (cronPattern === '*/30 * * * *') {
-      // Every 30 minutes: refresh Weather
+    } else if (cronPattern === '2,32 * * * *') {
+      // At :02, :32: refresh Weather (2 min after 30-min mark)
       console.log('Refreshing toll plaza weather data...');
       ctx.waitUntil(refreshTollPlazaWeather(env));
     } else {

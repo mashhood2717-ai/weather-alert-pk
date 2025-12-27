@@ -14,10 +14,10 @@ binding = "METAR_CACHE"
 id = "1416c83092a848ef8e2bf84592b6d91a"
 
 # Cron triggers:
-# - Every 15 minutes: Refresh METAR for all Pakistan airports
-# - Every 30 minutes: Refresh Weather for all toll plazas
+# - At :02, :17, :32, :47: Refresh METAR for all Pakistan airports (2 min after METAR publish)
+# - At :02, :32: Refresh Weather for all toll plazas (2 min after 30-min mark)
 [triggers]
-crons = ["*/15 * * * *", "*/30 * * * *"]
+crons = ["2,17,32,47 * * * *", "2,32 * * * *"]
 
 # Routes (update with your domain if needed)
 # routes = [

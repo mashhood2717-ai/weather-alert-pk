@@ -26,16 +26,16 @@ import '../utils/feels_like_utils.dart';
 import '../widgets/current_weather_tile.dart';
 import '../widgets/hourly_tile.dart';
 import '../widgets/forecast_tile.dart';
-import '../widgets/metar_tile.dart';
 import '../widgets/tiles_area.dart';
 import '../widgets/sun_widget.dart';
 import '../widgets/wu_widget.dart';
-import '../widgets/aqi_widget.dart';
+import '../widgets/aqi_bar_widget.dart';
 import '../widgets/prayer_widget.dart';
 import '../models/daily_weather.dart';
 import '../models/current_weather.dart';
 import 'settings_screen.dart';
 import 'travel_weather_screen.dart';
+import 'alerts_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -59,7 +59,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   // AQI data
   AirQualityData? _aqiData;
   bool _aqiLoading = false;
-  String? _aqiError;
 
   // Prayer data for persistent notification
   DailyPrayerTimes? _prayerData;
@@ -89,7 +88,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    tabs = TabController(length: 6, vsync: this);
+    tabs = TabController(length: 5, vsync: this);
     // Listen to tab changes for lazy loading
     tabs.addListener(_onTabChanged);
     _fadeController = AnimationController(
@@ -339,7 +338,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _fetchAqiData(double lat, double lon) async {
     setState(() {
       _aqiLoading = true;
-      _aqiError = null;
     });
 
     try {
@@ -353,10 +351,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _aqiError = e.toString();
           _aqiLoading = false;
         });
       }
+      debugPrint('AQI fetch error: $e');
     }
   }
 
@@ -1391,12 +1389,11 @@ Is GPS: ${controller.isFromCurrentLocation}
                                       TabBarView(controller: tabs, children: [
                                 _buildHomeTab(
                                     c, windDirection, dailyData, isDay),
-                                _buildAqiTab(isDay),
                                 _buildWindyTab(),
-                                _buildMetarTab(isDay),
+                                _buildAlertsTab(isDay),
                                 WuWidget(
                                   isDay: isDay,
-                                  isActive: _currentTabIndex == 4,
+                                  isActive: _currentTabIndex == 3,
                                   city: c?.city ?? controller.lastCitySearched,
                                   userLat: c?.lat,
                                   userLon: c?.lon,
@@ -1463,9 +1460,14 @@ Is GPS: ${controller.isFromCurrentLocation}
                 }),
             const SizedBox(width: 4),
             _buildAppBarButton(
-                icon: Icons.notifications_rounded,
+                icon: Icons.directions_car_rounded,
                 isDay: isDay,
-                onTap: () => Navigator.pushNamed(context, '/alerts')),
+                iconColor: isDay ? Colors.blue.shade700 : Colors.blue.shade300,
+                onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) =>
+                            TravelWeatherScreen(isDay: isDay)))),
             const SizedBox(width: 4),
             _buildAppBarButton(
                 icon: Icons.settings_rounded,
@@ -1474,16 +1476,6 @@ Is GPS: ${controller.isFromCurrentLocation}
                     context,
                     MaterialPageRoute(
                         builder: (context) => SettingsScreen(isDay: isDay)))),
-            const SizedBox(width: 4),
-            _buildAppBarButton(
-                icon: Icons.directions_car,
-                isDay: isDay,
-                iconColor: isDay ? Colors.blue.shade700 : Colors.blue.shade300,
-                onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) =>
-                            TravelWeatherScreen(isDay: isDay)))),
             const SizedBox(width: 4),
             _buildAppBarButton(
                 icon: Icons.admin_panel_settings,
@@ -1565,7 +1557,7 @@ Is GPS: ${controller.isFromCurrentLocation}
                           fontWeight: FontWeight.w500,
                         ),
                         decoration: InputDecoration(
-                          hintText: "Search any location...",
+                          hintText: "Search any location / ICAO...",
                           hintStyle: TextStyle(
                             color: fg.withValues(alpha: 0.45),
                             fontSize: 14,
@@ -1761,8 +1753,8 @@ Is GPS: ${controller.isFromCurrentLocation}
             streetAddress: c?.streetAddress),
         if (controller.metarApplied)
           Positioned(
-              top: 14,
-              right: 28,
+              top: 10,
+              right: 10,
               child: ClipRRect(
                   borderRadius: BorderRadius.circular(10),
                   child: BackdropFilter(
@@ -1776,14 +1768,15 @@ Is GPS: ${controller.isFromCurrentLocation}
                               border: Border.all(
                                   color: Colors.white.withValues(alpha: 0.3),
                                   width: 1)),
-                          child: const Row(
+                          child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.flight,
+                                const Icon(Icons.flight,
                                     size: 11, color: Colors.white),
-                                SizedBox(width: 4),
-                                Text('METAR',
-                                    style: TextStyle(
+                                const SizedBox(width: 4),
+                                Text(
+                                    'METAR ${_formatMetarTime(controller.metar?["observed"])}',
+                                    style: const TextStyle(
                                         fontSize: 9,
                                         color: Colors.white,
                                         fontWeight: FontWeight.bold,
@@ -1865,9 +1858,8 @@ Is GPS: ${controller.isFromCurrentLocation}
             dividerColor: Colors.transparent,
             tabs: const [
               Tab(icon: Icon(Icons.home_rounded, size: 22)),
-              Tab(icon: Icon(Icons.air_rounded, size: 22)),
               Tab(icon: Icon(Icons.waves_rounded, size: 22)),
-              Tab(icon: Icon(Icons.flight_takeoff_rounded, size: 22)),
+              Tab(icon: Icon(Icons.notifications_rounded, size: 22)),
               Tab(icon: Icon(Icons.sensors_rounded, size: 22)),
               Tab(icon: Icon(Icons.mosque_rounded, size: 22)),
             ]));
@@ -1879,8 +1871,22 @@ Is GPS: ${controller.isFromCurrentLocation}
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         cacheExtent: 500, // Cache more items to reduce rebuilds
         children: [
+          // Main Weather Card
           RepaintBoundary(child: _buildWeatherCard(c, windDirection, isDay)),
           const SizedBox(height: 12),
+          // AQI Bar (tappable to open AQI details)
+          RepaintBoundary(
+            child: AqiBarWidget(
+              aqiData: _aqiData,
+              isDay: isDay,
+              isLoading: _aqiLoading,
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Current Weather Tiles
+          RepaintBoundary(child: TilesArea(controller: controller)),
+          const SizedBox(height: 14),
+          // Hourly Forecast
           if (controller.hourly.isNotEmpty) ...[
             _buildSectionTitle("Hourly Forecast", isDay),
             const SizedBox(height: 8),
@@ -1908,8 +1914,7 @@ Is GPS: ${controller.isFromCurrentLocation}
             ),
             const SizedBox(height: 14),
           ],
-          RepaintBoundary(child: TilesArea(controller: controller)),
-          const SizedBox(height: 12),
+          // Sunrise/Sunset
           if (dailyData != null)
             RepaintBoundary(
               child: SunWidget(
@@ -1918,6 +1923,7 @@ Is GPS: ${controller.isFromCurrentLocation}
                   isDay: isDay),
             ),
           const SizedBox(height: 14),
+          // 7-Day Forecast
           if (controller.daily.isNotEmpty) ...[
             _buildSectionTitle("7-Day Forecast", isDay),
             const SizedBox(height: 8),
@@ -1951,74 +1957,9 @@ Is GPS: ${controller.isFromCurrentLocation}
             letterSpacing: 0.2));
   }
 
-  Widget _buildMetarTab(bool isDay) {
-    return controller.metar == null
-        ? Center(
-            child: Text("No METAR loaded.\nSearch by ICAO (e.g., OPLA).",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    color: isDay
-                        ? Colors.black.withValues(alpha: 0.54)
-                        : Colors.white.withValues(alpha: 0.54),
-                    fontSize: 14)))
-        : ListView(padding: const EdgeInsets.all(16), children: [
-            Builder(builder: (context) {
-              final metarTempC = controller.metar!["temp_c"];
-              final metarWindKph = controller.metar!["wind_kph"];
-              final metarDewC = controller.metar!["dewpoint_c"];
-
-              // Safe parsing for values that might be String or num
-              double? parseDouble(dynamic v) {
-                if (v == null || v == '--') return null;
-                if (v is num) return v.toDouble();
-                return double.tryParse(v.toString());
-              }
-
-              final tempDisplay = parseDouble(metarTempC) != null
-                  ? _settings
-                      .convertTemperature(parseDouble(metarTempC)!)
-                      .toStringAsFixed(1)
-                  : "--";
-              final windDisplay = parseDouble(metarWindKph) != null
-                  ? _settings
-                      .convertWindSpeedHybrid(parseDouble(metarWindKph)!)
-                      .toStringAsFixed(0)
-                  : "--";
-              final dewDisplay = parseDouble(metarDewC) != null
-                  ? _settings
-                      .convertTemperature(parseDouble(metarDewC)!)
-                      .toStringAsFixed(1)
-                  : "--";
-              return MetarTile(
-                  station: controller.metar!["station"] ?? "--",
-                  observed: controller.metar!["observed"] ?? "--",
-                  temp: "$tempDisplay${_settings.temperatureSymbol}",
-                  wind:
-                      "$windDisplay ${_settings.windSymbolHybrid} (${controller.metar!["wind_degrees"] ?? "--"}°)",
-                  visibility:
-                      "${controller.metar!["visibility_km"] ?? "--"} km",
-                  pressure: "${controller.metar!["pressure_hpa"] ?? "--"} hPa",
-                  humidity: "${controller.metar!["humidity"] ?? "--"}%",
-                  dewpoint: "$dewDisplay${_settings.temperatureSymbol}",
-                  iconUrl: controller.metar!["icon"] ?? '',
-                  isDay: isDay);
-            })
-          ]);
-  }
-
-  Widget _buildAqiTab(bool isDay) {
-    return AqiWidget(
-      aqiData: _aqiData,
-      isDay: isDay,
-      isLoading: _aqiLoading,
-      errorMessage: _aqiError,
-      onRefresh: () {
-        final coords = controller.getCurrentCoordinates();
-        if (coords != null) {
-          _fetchAqiData(coords.$1, coords.$2);
-        }
-      },
-    );
+  /// Alerts tab - embedded alerts screen
+  Widget _buildAlertsTab(bool isDay) {
+    return const AlertsScreen(embedded: true);
   }
 
   Widget _buildWindyTab() {
@@ -2046,5 +1987,20 @@ Is GPS: ${controller.isFromCurrentLocation}
       isDay: isDay,
       cityName: c?.city,
     );
+  }
+
+  /// Format METAR observation time from ISO string to PST (UTC+5)
+  String _formatMetarTime(String? isoTime) {
+    if (isoTime == null || isoTime.isEmpty) return '';
+    try {
+      final dt = DateTime.parse(isoTime);
+      // Convert UTC to PST (Pakistan Standard Time = UTC+5)
+      final pst = dt.add(const Duration(hours: 5));
+      final hours = pst.hour.toString().padLeft(2, '0');
+      final minutes = pst.minute.toString().padLeft(2, '0');
+      return '@ $hours:$minutes';
+    } catch (_) {
+      return '';
+    }
   }
 }

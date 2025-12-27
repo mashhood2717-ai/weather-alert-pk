@@ -2,7 +2,7 @@ name: weather_alert_pakistan
 description: Weather & Prayer Alert PK - Weather forecasts and Islamic prayer times
 publish_to: 'none'
 
-version: 1.1.24+25
+version: 1.1.26+27
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -28,6 +28,7 @@ dependencies:
   device_info_plus: ^12.3.0
   permission_handler: ^11.3.1
   wakelock_plus: ^1.4.0
+  flutter_compass: ^0.8.0
 
 dev_dependencies:
   flutter_test:

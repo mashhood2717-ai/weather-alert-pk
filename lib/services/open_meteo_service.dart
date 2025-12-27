@@ -71,7 +71,9 @@ class OpenMeteoService {
   /// Get weather icon URL from WMO code
   static String getWeatherIcon(int code, bool isDay) {
     final iconFile = WMOWeatherCode.getIcon(code, isDay);
-    return 'https://cdn.weatherapi.com/weather/64x64/${isDay ? 'day' : 'night'}/$iconFile';
+    final url = 'https://cdn.weatherapi.com/weather/64x64/${isDay ? 'day' : 'night'}/$iconFile';
+    print('🌤️ getWeatherIcon: code=$code, isDay=$isDay, iconFile=$iconFile, url=$url');
+    return url;
   }
 }
 
@@ -144,13 +146,13 @@ class WMOWeatherCode {
   /// Get icon filename for WMO code (uses WeatherAPI CDN format)
   static String getIcon(int code, bool isDay) {
     switch (code) {
-      case 0: // Clear
-        return isDay ? '113.png' : '113.png';
-      case 1: // Mainly clear
+      case 0: // Clear sky - pure sun/moon
+        return '113.png';
+      case 1: // Mainly clear - sun/moon with some clouds
         return '116.png';
-      case 2: // Partly cloudy
+      case 2: // Partly cloudy - sun/moon with more clouds
         return '119.png';
-      case 3: // Overcast
+      case 3: // Overcast - full clouds
         return '122.png';
       case 45: // Fog
       case 48: // Rime fog

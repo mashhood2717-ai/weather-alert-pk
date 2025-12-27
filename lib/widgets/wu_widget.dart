@@ -434,12 +434,15 @@ class _WuWidgetState extends State<WuWidget> {
                 children: [
                   Row(
                     children: [
-                      Text(
-                        cityName,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: fg,
+                      Flexible(
+                        child: Text(
+                          cityName,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: fg,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       if (_isWithinRadius) ...[
