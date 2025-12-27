@@ -71,8 +71,10 @@ class OpenMeteoService {
   /// Get weather icon URL from WMO code
   static String getWeatherIcon(int code, bool isDay) {
     final iconFile = WMOWeatherCode.getIcon(code, isDay);
-    final url = 'https://cdn.weatherapi.com/weather/64x64/${isDay ? 'day' : 'night'}/$iconFile';
-    print('🌤️ getWeatherIcon: code=$code, isDay=$isDay, iconFile=$iconFile, url=$url');
+    final url =
+        'https://cdn.weatherapi.com/weather/64x64/${isDay ? 'day' : 'night'}/$iconFile';
+    print(
+        '🌤️ getWeatherIcon: code=$code, isDay=$isDay, iconFile=$iconFile, url=$url');
     return url;
   }
 }

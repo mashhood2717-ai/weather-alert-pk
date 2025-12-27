@@ -64,8 +64,7 @@ class AqiDetailScreen extends StatelessWidget {
                 _buildPollutantsCard(fg, tint),
                 const SizedBox(height: 16),
                 // 5-Day Forecast
-                if (aqiData.forecast.isNotEmpty)
-                  _buildForecastCard(fg, tint),
+                if (aqiData.forecast.isNotEmpty) _buildForecastCard(fg, tint),
                 const SizedBox(height: 16),
                 // AQI Scale Legend
                 _buildAqiScaleLegend(fg, tint),
@@ -596,8 +595,7 @@ class AqiDetailScreen extends StatelessWidget {
         {'icon': Icons.info, 'text': 'Air quality is acceptable'},
         {
           'icon': Icons.elderly,
-          'text':
-              'Sensitive individuals may experience minor effects'
+          'text': 'Sensitive individuals may experience minor effects'
         },
         {
           'icon': Icons.directions_walk,
@@ -606,45 +604,27 @@ class AqiDetailScreen extends StatelessWidget {
       ];
     } else if (aqi <= 150) {
       return [
-        {
-          'icon': Icons.warning_amber,
-          'text': 'Unhealthy for sensitive groups'
-        },
+        {'icon': Icons.warning_amber, 'text': 'Unhealthy for sensitive groups'},
         {
           'icon': Icons.elderly,
           'text':
               'Children, elderly, and those with respiratory issues should reduce outdoor exertion'
         },
-        {
-          'icon': Icons.masks,
-          'text': 'Consider wearing a mask outdoors'
-        },
+        {'icon': Icons.masks, 'text': 'Consider wearing a mask outdoors'},
       ];
     } else if (aqi <= 200) {
       return [
         {'icon': Icons.warning, 'text': 'Unhealthy for everyone'},
-        {
-          'icon': Icons.home,
-          'text': 'Reduce prolonged outdoor exertion'
-        },
+        {'icon': Icons.home, 'text': 'Reduce prolonged outdoor exertion'},
         {'icon': Icons.masks, 'text': 'Wear N95 mask if going outside'},
-        {
-          'icon': Icons.air,
-          'text': 'Use air purifiers indoors'
-        },
+        {'icon': Icons.air, 'text': 'Use air purifiers indoors'},
       ];
     } else if (aqi <= 300) {
       return [
         {'icon': Icons.dangerous, 'text': 'Very unhealthy - health alert'},
-        {
-          'icon': Icons.home,
-          'text': 'Avoid outdoor activities'
-        },
+        {'icon': Icons.home, 'text': 'Avoid outdoor activities'},
         {'icon': Icons.masks, 'text': 'Wear N95/KN95 mask outdoors'},
-        {
-          'icon': Icons.air,
-          'text': 'Run air purifiers at maximum'
-        },
+        {'icon': Icons.air, 'text': 'Run air purifiers at maximum'},
         {'icon': Icons.window, 'text': 'Keep windows closed'},
       ];
     } else {
@@ -652,10 +632,7 @@ class AqiDetailScreen extends StatelessWidget {
         {'icon': Icons.error, 'text': 'HAZARDOUS - Emergency conditions'},
         {'icon': Icons.home, 'text': 'Stay indoors'},
         {'icon': Icons.masks, 'text': 'Wear N95 mask even indoors if needed'},
-        {
-          'icon': Icons.air,
-          'text': 'Seal windows and run air purifiers'
-        },
+        {'icon': Icons.air, 'text': 'Seal windows and run air purifiers'},
         {
           'icon': Icons.local_hospital,
           'text': 'Seek medical attention if experiencing symptoms'

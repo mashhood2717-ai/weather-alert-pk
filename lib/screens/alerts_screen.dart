@@ -10,7 +10,7 @@ import '../utils/background_utils.dart';
 
 class AlertsScreen extends StatefulWidget {
   final bool embedded;
-  
+
   const AlertsScreen({super.key, this.embedded = false});
 
   @override

@@ -1768,20 +1768,18 @@ Is GPS: ${controller.isFromCurrentLocation}
                               border: Border.all(
                                   color: Colors.white.withValues(alpha: 0.3),
                                   width: 1)),
-                          child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.flight,
-                                    size: 11, color: Colors.white),
-                                const SizedBox(width: 4),
-                                Text(
-                                    'METAR ${_formatMetarTime(controller.metar?["observed"])}',
-                                    style: const TextStyle(
-                                        fontSize: 9,
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        letterSpacing: 0.3))
-                              ]))))),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            const Icon(Icons.flight,
+                                size: 11, color: Colors.white),
+                            const SizedBox(width: 4),
+                            Text(
+                                'METAR ${_formatMetarTime(controller.metar?["observed"])}',
+                                style: const TextStyle(
+                                    fontSize: 9,
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.3))
+                          ]))))),
       ]),
     );
   }

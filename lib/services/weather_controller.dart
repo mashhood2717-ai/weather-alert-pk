@@ -763,7 +763,8 @@ class WeatherController {
     // Handle is_day as either int (0/1) or bool
     final isDayRaw = cur["is_day"];
     final isDay = isDayRaw == 1 || isDayRaw == true;
-    print('🌙 _parseCurrentWeather: isDayRaw=$isDayRaw (${isDayRaw.runtimeType}), isDay=$isDay, weatherCode=$weatherCode');
+    print(
+        '🌙 _parseCurrentWeather: isDayRaw=$isDayRaw (${isDayRaw.runtimeType}), isDay=$isDay, weatherCode=$weatherCode');
     final condition = OpenMeteoService.getWeatherDescription(weatherCode);
     final icon = OpenMeteoService.getWeatherIcon(weatherCode, isDay);
 
