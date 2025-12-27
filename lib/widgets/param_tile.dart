@@ -1,7 +1,7 @@
-// lib/widgets/param_tile.dart - COMPACT FOR 3 PER ROW
+// lib/widgets/param_tile.dart - Premium glass tile design
 
 import 'package:flutter/material.dart';
-import '../utils/background_utils.dart';
+import '../utils/app_theme.dart';
 
 class ParamTile extends StatelessWidget {
   final String label;
@@ -19,58 +19,80 @@ class ParamTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = foregroundForCard(isDay);
-    final tint = cardTint(isDay);
+    final theme = AppTheme(isDay: isDay);
 
-    // PERFORMANCE: Removed BackdropFilter - too expensive for 9+ tiles
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       decoration: BoxDecoration(
-        color: tint,
-        borderRadius: BorderRadius.circular(12),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: isDay
+              ? [
+                  Colors.white.withValues(alpha: 0.35),
+                  Colors.white.withValues(alpha: 0.2),
+                ]
+              : [
+                  Colors.white.withValues(alpha: 0.12),
+                  Colors.white.withValues(alpha: 0.05),
+                ],
+        ),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: fg.withValues(alpha: isDay ? 0.1 : 0.15),
+          color: Colors.white.withValues(alpha: isDay ? 0.4 : 0.15),
+          width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: isDay
-                ? Colors.black.withValues(alpha: 0.05)
-                : Colors.black.withValues(alpha: 0.2),
-            blurRadius: 10,
+            color: Colors.black.withValues(alpha: isDay ? 0.06 : 0.2),
+            blurRadius: 12,
+            spreadRadius: -2,
             offset: const Offset(0, 4),
-          )
+          ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Icon with subtle background
           if (icon != null) ...[
-            Icon(
-              icon,
-              size: 18,
-              color: fg.withValues(alpha: 0.6),
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: theme.textPrimary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                icon,
+                size: 16,
+                color: theme.textSecondary,
+              ),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 8),
           ],
+          // Label
           Text(
-            label,
+            label.toUpperCase(),
             style: TextStyle(
-              fontSize: 10,
+              fontSize: 9,
               fontWeight: FontWeight.w600,
-              color: fg.withValues(alpha: 0.7),
+              color: theme.textTertiary,
+              letterSpacing: 0.8,
             ),
             textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 4),
+          // Value
           Text(
             value,
             style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: fg,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: theme.textPrimary,
+              letterSpacing: -0.5,
             ),
             textAlign: TextAlign.center,
             maxLines: 1,

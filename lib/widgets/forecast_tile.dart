@@ -1,7 +1,7 @@
-// lib/widgets/forecast_tile.dart - WITH FEELS LIKE HIGH/LOW
+// lib/widgets/forecast_tile.dart - Premium glass design with details
 
 import 'package:flutter/material.dart';
-import '../utils/background_utils.dart';
+import '../utils/app_theme.dart';
 import '../models/daily_weather.dart';
 
 class ForecastTile extends StatelessWidget {
@@ -482,65 +482,144 @@ class ForecastTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = foregroundForCard(isDay);
-    final tint = cardTint(isDay);
+    final theme = AppTheme(isDay: isDay);
 
-    // PERFORMANCE: Removed BackdropFilter - too expensive for 7 tiles
     return GestureDetector(
       onTap: () => _showDayDetails(context),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: tint,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isDay
+                ? [
+                    Colors.white.withValues(alpha: 0.35),
+                    Colors.white.withValues(alpha: 0.2),
+                  ]
+                : [
+                    Colors.white.withValues(alpha: 0.12),
+                    Colors.white.withValues(alpha: 0.05),
+                  ],
+          ),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: isDay ? 0.4 : 0.15),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDay ? 0.05 : 0.2),
+              blurRadius: 12,
+              spreadRadius: -2,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Row(
           children: [
-            Image.network(
-              icon,
-              width: 44,
-              height: 44,
-              cacheWidth: 88, // Cache at 2x for retina
-              cacheHeight: 88,
-              filterQuality: FilterQuality.low,
-              errorBuilder: (_, __, ___) =>
-                  Icon(Icons.cloud, size: 40, color: fg.withValues(alpha: 0.6)),
+            // Weather icon with subtle glow
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: theme.textPrimary.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Image.network(
+                icon,
+                width: 40,
+                height: 40,
+                cacheWidth: 80,
+                cacheHeight: 80,
+                filterQuality: FilterQuality.low,
+                errorBuilder: (_, __, ___) => Icon(
+                  Icons.cloud,
+                  size: 36,
+                  color: theme.textTertiary,
+                ),
+              ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 14),
+            // Date and condition
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(_formatDateDisplay(date),
-                      style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: fg)),
-                  Text(condition,
-                      style: TextStyle(
-                          fontSize: 12, color: fg.withValues(alpha: 0.7)),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
+                  Text(
+                    _formatDateDisplay(date),
+                    style: theme.titleMedium.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    condition,
+                    style: theme.bodySmall.copyWith(
+                      color: theme.textSecondary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ],
               ),
             ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+            // Temperature range
+            Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Text("$maxTemp°",
-                    style: TextStyle(
-                        color: Colors.orange[700],
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600)),
-                Text("$minTemp°",
-                    style: TextStyle(color: Colors.blue[400], fontSize: 13)),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.arrow_upward_rounded,
+                          size: 12,
+                          color: Colors.orange.shade400,
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          "$maxTemp°",
+                          style: TextStyle(
+                            color: Colors.orange.shade400,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.arrow_downward_rounded,
+                          size: 12,
+                          color: Colors.blue.shade300,
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          "$minTemp°",
+                          style: TextStyle(
+                            color: Colors.blue.shade300,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: theme.textTertiary,
+                  size: 20,
+                ),
               ],
             ),
-            const SizedBox(width: 6),
-            Icon(Icons.chevron_right,
-                color: fg.withValues(alpha: 0.4), size: 18),
           ],
         ),
       ),

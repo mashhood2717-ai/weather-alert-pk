@@ -1,8 +1,9 @@
-// lib/widgets/sun_widget.dart - COMPACT HORIZONTAL LINE VERSION
+// lib/widgets/sun_widget.dart - Premium arc sun tracker
 
 import 'dart:ui';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import '../utils/background_utils.dart';
+import '../utils/app_theme.dart';
 
 class SunWidget extends StatelessWidget {
   final String sunrise;
@@ -36,73 +37,108 @@ class SunWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = foregroundForCard(isDay);
-
+    final theme = AppTheme(isDay: isDay);
     final double riseM = _toMinutes(sunrise);
     final double setM = _toMinutes(sunset);
-
     final now = TimeOfDay.now();
     final nowM = (now.hour * 60 + now.minute).toDouble();
 
     double progress = 0.0;
-
     if (setM > riseM) {
       progress = ((nowM - riseM) / (setM - riseM)).clamp(0.0, 1.0);
     }
 
+    // Calculate daylight hours
+    final daylightMinutes = setM - riseM;
+    final daylightHours = (daylightMinutes / 60).floor();
+    final daylightMins = (daylightMinutes % 60).round();
+
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(24),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: isDay
                   ? [
-                      Colors.white.withValues(alpha: 0.3),
+                      Colors.white.withValues(alpha: 0.4),
                       Colors.white.withValues(alpha: 0.2),
                     ]
                   : [
-                      Colors.black.withValues(alpha: 0.3),
-                      Colors.black.withValues(alpha: 0.2),
+                      Colors.white.withValues(alpha: 0.15),
+                      Colors.white.withValues(alpha: 0.05),
                     ],
             ),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(24),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.2),
-              width: 1,
+              color: Colors.white.withValues(alpha: isDay ? 0.5 : 0.2),
+              width: 1.5,
             ),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Sunrise and Sunset row with progress line
+              // Sun arc visualization
+              SizedBox(
+                height: 80,
+                child: CustomPaint(
+                  painter: _SunArcPainter(
+                    progress: progress,
+                    isDay: isDay,
+                  ),
+                  size: const Size(double.infinity, 80),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Sunrise and Sunset times
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Sunrise
-                  _buildTimeColumn(
-                    Icons.wb_sunny_rounded,
-                    'Sunrise',
-                    sunrise,
-                    fg,
-                    Colors.orange.shade400,
+                  _buildTimeInfo(
+                    icon: Icons.wb_twilight_rounded,
+                    label: 'Sunrise',
+                    time: sunrise,
+                    color: Colors.orange.shade400,
+                    theme: theme,
                   ),
-                  const SizedBox(width: 12),
-                  // Progress line
-                  Expanded(
-                    child: _buildProgressLine(progress, fg),
+                  // Daylight duration
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: theme.textPrimary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.timelapse_rounded,
+                          size: 14,
+                          color: theme.textSecondary,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '${daylightHours}h ${daylightMins}m',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: theme.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(width: 12),
-                  // Sunset
-                  _buildTimeColumn(
-                    Icons.nights_stay_rounded,
-                    'Sunset',
-                    sunset,
-                    fg,
-                    Colors.deepPurple.shade300,
+                  _buildTimeInfo(
+                    icon: Icons.nights_stay_rounded,
+                    label: 'Sunset',
+                    time: sunset,
+                    color: Colors.deepPurple.shade300,
+                    theme: theme,
+                    alignRight: true,
                   ),
                 ],
               ),
@@ -113,114 +149,139 @@ class SunWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildTimeColumn(
-      IconData icon, String label, String time, Color fg, Color accentColor) {
+  Widget _buildTimeInfo({
+    required IconData icon,
+    required String label,
+    required String time,
+    required Color color,
+    required AppTheme theme,
+    bool alignRight = false,
+  }) {
     return Column(
-      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: alignRight ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 22, color: accentColor),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 9,
-            color: fg.withValues(alpha: 0.6),
-            fontWeight: FontWeight.w500,
-          ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (!alignRight) ...[
+              Icon(icon, size: 18, color: color),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              label.toUpperCase(),
+              style: TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w600,
+                color: theme.textTertiary,
+                letterSpacing: 0.8,
+              ),
+            ),
+            if (alignRight) ...[
+              const SizedBox(width: 6),
+              Icon(icon, size: 18, color: color),
+            ],
+          ],
         ),
+        const SizedBox(height: 4),
         Text(
           time,
           style: TextStyle(
-            fontSize: 12,
-            color: fg,
-            fontWeight: FontWeight.bold,
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: theme.textPrimary,
+            letterSpacing: -0.5,
           ),
         ),
       ],
     );
   }
+}
 
-  Widget _buildProgressLine(double progress, Color fg) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final lineWidth = constraints.maxWidth;
-        final sunPosition = lineWidth * progress;
+class _SunArcPainter extends CustomPainter {
+  final double progress;
+  final bool isDay;
 
-        return SizedBox(
-          height: 36,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              // Background line
-              Container(
-                height: 3,
-                decoration: BoxDecoration(
-                  color: fg.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              // Progress line
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Container(
-                  width: sunPosition,
-                  height: 3,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: isDay
-                          ? [Colors.orange.shade300, Colors.amber.shade400]
-                          : [
-                              Colors.deepPurple.shade300,
-                              Colors.indigo.shade300
-                            ],
-                    ),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              // Sun indicator
-              Positioned(
-                left: sunPosition - 12,
-                child: Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: isDay
-                          ? [Colors.orange.shade400, Colors.amber.shade300]
-                          : [
-                              Colors.deepPurple.shade300,
-                              Colors.indigo.shade200
-                            ],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: isDay
-                            ? Colors.orange.withValues(alpha: 0.4)
-                            : Colors.deepPurple.withValues(alpha: 0.4),
-                        blurRadius: 8,
-                        spreadRadius: 2,
-                      ),
-                    ],
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.7),
-                      width: 2,
-                    ),
-                  ),
-                  child: Icon(
-                    isDay ? Icons.wb_sunny : Icons.nightlight_round,
-                    size: 12,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+  _SunArcPainter({required this.progress, required this.isDay});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height);
+    final radius = size.width * 0.42;
+
+    // Draw background arc (dashed)
+    final bgPaint = Paint()
+      ..color = Colors.white.withValues(alpha: isDay ? 0.3 : 0.15)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      math.pi,
+      math.pi,
+      false,
+      bgPaint,
+    );
+
+    // Draw progress arc
+    final progressPaint = Paint()
+      ..shader = LinearGradient(
+        colors: isDay
+            ? [Colors.orange.shade300, Colors.amber.shade400, Colors.orange.shade500]
+            : [Colors.deepPurple.shade300, Colors.indigo.shade300],
+      ).createShader(Rect.fromCircle(center: center, radius: radius))
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.5
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      math.pi,
+      math.pi * progress,
+      false,
+      progressPaint,
+    );
+
+    // Draw sun indicator
+    final angle = math.pi + math.pi * progress;
+    final sunX = center.dx + radius * math.cos(angle);
+    final sunY = center.dy + radius * math.sin(angle);
+
+    // Glow effect
+    final glowPaint = Paint()
+      ..color = (isDay ? Colors.orange : Colors.deepPurple).withValues(alpha: 0.4)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+    canvas.drawCircle(Offset(sunX, sunY), 14, glowPaint);
+
+    // Sun circle
+    final sunGradient = RadialGradient(
+      colors: isDay
+          ? [Colors.amber.shade300, Colors.orange.shade500]
+          : [Colors.indigo.shade300, Colors.deepPurple.shade400],
+    );
+    final sunPaint = Paint()
+      ..shader = sunGradient.createShader(Rect.fromCircle(center: Offset(sunX, sunY), radius: 12));
+    canvas.drawCircle(Offset(sunX, sunY), 12, sunPaint);
+
+    // Sun border
+    final borderPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.8)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    canvas.drawCircle(Offset(sunX, sunY), 12, borderPaint);
+
+    // Horizon line
+    final horizonPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.2)
+      ..strokeWidth = 1;
+    canvas.drawLine(
+      Offset(center.dx - radius - 10, center.dy),
+      Offset(center.dx + radius + 10, center.dy),
+      horizonPaint,
     );
   }
+
+  @override
+  bool shouldRepaint(_SunArcPainter oldDelegate) =>
+      oldDelegate.progress != progress || oldDelegate.isDay != isDay;
 }

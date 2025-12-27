@@ -1,9 +1,11 @@
 // lib/widgets/aqi_bar_widget.dart
-// Compact AQI bar for home screen - tappable to open detailed AQI screen
+// Premium AQI bar for home screen - tappable to open detailed AQI screen
 
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../services/aqi_service.dart';
 import '../screens/aqi_detail_screen.dart';
+import '../utils/app_theme.dart';
 
 class AqiBarWidget extends StatelessWidget {
   final AirQualityData? aqiData;
@@ -19,17 +21,14 @@ class AqiBarWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = isDay ? Colors.black87 : Colors.white;
-    final tint = isDay
-        ? Colors.white.withValues(alpha: 0.3)
-        : Colors.white.withValues(alpha: 0.1);
+    final theme = AppTheme(isDay: isDay);
 
     if (isLoading) {
-      return _buildLoadingBar(fg, tint);
+      return _buildLoadingBar(theme);
     }
 
     if (aqiData == null) {
-      return const SizedBox.shrink(); // Don't show if no data
+      return const SizedBox.shrink();
     }
 
     final aqiColor = AqiService.getAqiColor(aqiData!.usAqi);
@@ -37,139 +36,180 @@ class AqiBarWidget extends StatelessWidget {
 
     return GestureDetector(
       onTap: () => _openAqiDetailScreen(context),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: tint,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: fg.withValues(alpha: 0.1)),
-        ),
-        child: Row(
-          children: [
-            // AQI Circle indicator
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: aqiColor.withValues(alpha: 0.2),
-                border: Border.all(color: aqiColor, width: 3),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: isDay
+                    ? [Colors.white.withValues(alpha: 0.4), Colors.white.withValues(alpha: 0.25)]
+                    : [Colors.white.withValues(alpha: 0.12), Colors.white.withValues(alpha: 0.06)],
               ),
-              child: Center(
-                child: Text(
-                  aqiData!.usAqi.toString(),
-                  style: TextStyle(
-                    color: aqiColor,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: isDay ? 0.5 : 0.15),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDay ? 0.08 : 0.25),
+                  blurRadius: 15,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                // AQI Circle indicator with gradient border
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        aqiColor.withValues(alpha: 0.2),
+                        aqiColor.withValues(alpha: 0.05),
+                      ],
+                    ),
+                    border: Border.all(color: aqiColor, width: 3),
+                    boxShadow: [
+                      BoxShadow(
+                        color: aqiColor.withValues(alpha: 0.3),
+                        blurRadius: 12,
+                        spreadRadius: -2,
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Text(
+                      aqiData!.usAqi.toString(),
+                      style: TextStyle(
+                        color: aqiColor,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-            const SizedBox(width: 14),
-            // AQI Info
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+                const SizedBox(width: 16),
+                // AQI Info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.air, color: aqiColor, size: 18),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Air Quality',
-                        style: TextStyle(
-                          color: fg,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      Row(
+                        children: [
+                          Icon(Icons.eco_rounded, color: aqiColor, size: 18),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Air Quality',
+                            style: theme.titleMedium.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: aqiColor.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: aqiColor.withValues(alpha: 0.3)),
+                            ),
+                            child: Text(
+                              classification,
+                              style: TextStyle(
+                                color: aqiColor,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Flexible(
+                            child: Text(
+                              _getHealthAdvice(aqiData!.usAqi),
+                              style: theme.bodySmall,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: aqiColor.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          classification,
-                          style: TextStyle(
-                            color: aqiColor,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          _getHealthAdvice(aqiData!.usAqi),
-                          style: TextStyle(
-                            color: fg.withValues(alpha: 0.6),
-                            fontSize: 12,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: theme.textTertiary,
+                  size: 24,
+                ),
+              ],
             ),
-            // Arrow indicator
-            Icon(
-              Icons.chevron_right,
-              color: fg.withValues(alpha: 0.5),
-              size: 24,
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildLoadingBar(Color fg, Color tint) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: tint,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: fg.withValues(alpha: 0.1)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: fg.withValues(alpha: 0.1),
+  Widget _buildLoadingBar(AppTheme theme) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: isDay
+                  ? [Colors.white.withValues(alpha: 0.4), Colors.white.withValues(alpha: 0.25)]
+                  : [Colors.white.withValues(alpha: 0.12), Colors.white.withValues(alpha: 0.06)],
             ),
-            child: Center(
-              child: SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: fg.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: isDay ? 0.5 : 0.15),
+              width: 1.5,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: theme.textPrimary.withValues(alpha: 0.1),
+                ),
+                child: Center(
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: theme.textSecondary,
+                    ),
+                  ),
                 ),
               ),
-            ),
+              const SizedBox(width: 14),
+              Text(
+                'Loading Air Quality...',
+                style: theme.bodyMedium,
+              ),
+            ],
           ),
-          const SizedBox(width: 14),
-          Text(
-            'Loading Air Quality...',
-            style: TextStyle(
-              color: fg.withValues(alpha: 0.6),
-              fontSize: 14,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

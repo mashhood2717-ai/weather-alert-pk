@@ -1,51 +1,58 @@
 // ============================================
-// 14. lib/utils/background_utils.dart
+// lib/utils/background_utils.dart
+// Unified background utilities using new theme system
 // ============================================
 
 import 'package:flutter/material.dart';
+import 'app_theme.dart';
 
+/// Get dynamic gradient based on weather condition and time
+/// Now uses the new WeatherGradients system for consistent theming
 LinearGradient dynamicGradient(String condition, bool isDay) {
-  final cond = condition.toLowerCase();
+  return WeatherGradients.getGradient(condition, isDay);
+}
 
-  if (cond.contains('rain') ||
-      cond.contains('shower') ||
-      cond.contains('thunder')) {
-    return const LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [Color(0xFF0F2A44), Color(0xFF093B5A)],
-    );
-  }
+/// Get foreground color for cards/text based on day/night mode
+Color foregroundForCard(bool isDay) {
+  return isDay ? AppColors.dayTextPrimary : AppColors.nightTextPrimary;
+}
 
-  if (cond.contains('cloud') || cond.contains('overcast')) {
-    return const LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [Color(0xFF3A4A6B), Color(0xFF1F2A44)],
-    );
-  }
+/// Get card background tint color
+Color cardTint(bool isDay) {
+  return isDay ? AppColors.dayCardBackground : AppColors.nightCardBackground;
+}
 
-  if (!isDay) {
-    return const LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [Color(0xFF050F24), Color(0xFF0D1B33)],
-    );
-  }
+/// Get card border color
+Color cardBorderColor(bool isDay) {
+  return isDay ? AppColors.dayCardBorder : AppColors.nightCardBorder;
+}
 
-  return const LinearGradient(
-    begin: Alignment.topCenter,
-    end: Alignment.bottomCenter,
-    colors: [Color(0xFF87CEEB), Color(0xFFE0F7FA)],
+/// Get secondary text color
+Color secondaryTextColor(bool isDay) {
+  return isDay ? AppColors.dayTextSecondary : AppColors.nightTextSecondary;
+}
+
+/// Get tertiary/hint text color
+Color tertiaryTextColor(bool isDay) {
+  return isDay ? AppColors.dayTextTertiary : AppColors.nightTextTertiary;
+}
+
+/// Create glass card decoration with consistent styling
+BoxDecoration glassCardDecoration({
+  required bool isDay,
+  double borderRadius = 20,
+  bool elevated = false,
+}) {
+  return AppTheme(isDay: isDay).glassDecoration(
+    borderRadius: borderRadius,
+    elevated: elevated,
   );
 }
 
-Color foregroundForCard(bool isDay) {
-  return isDay ? Colors.black87 : Colors.white;
-}
-
-Color cardTint(bool isDay) {
-  return isDay
-      ? Colors.white.withValues(alpha: 0.35)
-      : Colors.black.withValues(alpha: 0.32);
+/// Simple semi-transparent card decoration
+BoxDecoration simpleCardDecoration({
+  required bool isDay,
+  double borderRadius = 16,
+}) {
+  return AppTheme(isDay: isDay).simpleCardDecoration(borderRadius: borderRadius);
 }

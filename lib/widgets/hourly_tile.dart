@@ -1,7 +1,7 @@
-// lib/widgets/hourly_tile.dart - COMPACT VERSION
+// lib/widgets/hourly_tile.dart - Premium glass design
 
 import 'package:flutter/material.dart';
-import '../utils/background_utils.dart';
+import '../utils/app_theme.dart';
 
 class HourlyTile extends StatelessWidget {
   final String time;
@@ -21,76 +21,102 @@ class HourlyTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = foregroundForCard(isDay);
-    final tint = cardTint(isDay);
+    final theme = AppTheme(isDay: isDay);
 
-    // PERFORMANCE: Removed BackdropFilter - too expensive for 24+ tiles
     return Container(
-      width: 70,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      width: 72,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
       decoration: BoxDecoration(
-        color: tint,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-      ),
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              time,
-              style: TextStyle(
-                color: fg,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 3),
-            Image.network(
-              icon,
-              width: 32,
-              height: 32,
-              cacheWidth: 64, // Cache at 2x for retina displays
-              cacheHeight: 64,
-              filterQuality: FilterQuality.low, // Faster rendering
-              errorBuilder: (_, __, ___) => Icon(
-                Icons.cloud,
-                size: 28,
-                color: fg.withValues(alpha: 0.5),
-              ),
-            ),
-            const SizedBox(height: 3),
-            Text(
-              temp,
-              style: TextStyle(
-                color: fg,
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.water_drop,
-                  size: 10,
-                  color: Colors.blue.shade300,
-                ),
-                const SizedBox(width: 2),
-                Text(
-                  "$humidity%",
-                  style: TextStyle(
-                    color: fg.withValues(alpha: 0.7),
-                    fontSize: 10,
-                  ),
-                ),
-              ],
-            ),
-          ],
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: isDay
+              ? [
+                  Colors.white.withValues(alpha: 0.4),
+                  Colors.white.withValues(alpha: 0.2),
+                ]
+              : [
+                  Colors.white.withValues(alpha: 0.12),
+                  Colors.white.withValues(alpha: 0.05),
+                ],
         ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: isDay ? 0.5 : 0.15),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDay ? 0.05 : 0.2),
+            blurRadius: 10,
+            spreadRadius: -2,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Time
+          Text(
+            time,
+            style: TextStyle(
+              color: theme.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: -0.2,
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Icon
+          Image.network(
+            icon,
+            width: 36,
+            height: 36,
+            cacheWidth: 72,
+            cacheHeight: 72,
+            filterQuality: FilterQuality.low,
+            errorBuilder: (_, __, ___) => Icon(
+              Icons.cloud,
+              size: 32,
+              color: theme.textTertiary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Temperature
+          Text(
+            temp,
+            style: TextStyle(
+              color: theme.textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.5,
+            ),
+          ),
+          const SizedBox(height: 4),
+          // Humidity
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.water_drop_rounded,
+                size: 10,
+                color: Colors.blue.shade300,
+              ),
+              const SizedBox(width: 2),
+              Text(
+                "$humidity%",
+                style: TextStyle(
+                  color: theme.textTertiary,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

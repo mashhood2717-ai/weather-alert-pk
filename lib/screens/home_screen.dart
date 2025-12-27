@@ -20,6 +20,7 @@ import '../services/prayer_service.dart';
 import '../services/widget_service.dart';
 import '../services/manual_alert_service.dart';
 import '../services/user_service.dart';
+import '../utils/app_theme.dart';
 import '../utils/background_utils.dart';
 import '../utils/wind_utils.dart';
 import '../utils/feels_like_utils.dart';
@@ -1413,27 +1414,38 @@ Is GPS: ${controller.isFromCurrentLocation}
 
   Widget _buildModernAppBar(bool isDay) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(children: [
+        // App logo with subtle glass effect
         Container(
-            padding: const EdgeInsets.all(3),
+            padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-                color: isDay
-                    ? Colors.white.withValues(alpha: 0.25)
-                    : Colors.black.withValues(alpha: 0.25),
-                borderRadius: BorderRadius.circular(10),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: isDay
+                      ? [Colors.white.withValues(alpha: 0.5), Colors.white.withValues(alpha: 0.3)]
+                      : [Colors.white.withValues(alpha: 0.15), Colors.white.withValues(alpha: 0.08)],
+                ),
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.15), width: 1)),
+                    color: Colors.white.withValues(alpha: isDay ? 0.5 : 0.2), width: 1.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isDay ? 0.08 : 0.25),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ]),
             child: ClipRRect(
-                borderRadius: BorderRadius.circular(7),
+                borderRadius: BorderRadius.circular(10),
                 child: Image.asset('assets/images/logo.png',
-                    width: 32, height: 32, fit: BoxFit.contain))),
-        // Expanded spacer for layout (logo on left, icons on right)
-        const SizedBox(width: 8),
+                    width: 36, height: 36, fit: BoxFit.contain))),
+        const SizedBox(width: 12),
         Expanded(
             child: GestureDetector(
                 onLongPress: _showFcmTokenDialog, child: const SizedBox())),
-        // App bar buttons - compact layout to fit 6 buttons
+        // App bar action buttons
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1442,7 +1454,7 @@ Is GPS: ${controller.isFromCurrentLocation}
                 isDay: isDay,
                 iconColor: _favorites.isNotEmpty ? Colors.amber : null,
                 onTap: () => _showFavoritesSheet(isDay)),
-            const SizedBox(width: 4),
+            const SizedBox(width: 6),
             _buildAppBarButton(
                 icon: Icons.my_location_rounded,
                 isDay: isDay,
@@ -1458,17 +1470,17 @@ Is GPS: ${controller.isFromCurrentLocation}
                   }
                   _setLoading(false);
                 }),
-            const SizedBox(width: 4),
+            const SizedBox(width: 6),
             _buildAppBarButton(
                 icon: Icons.directions_car_rounded,
                 isDay: isDay,
-                iconColor: isDay ? Colors.blue.shade700 : Colors.blue.shade300,
+                iconColor: AppColors.primary,
                 onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(
                         builder: (context) =>
                             TravelWeatherScreen(isDay: isDay)))),
-            const SizedBox(width: 4),
+            const SizedBox(width: 6),
             _buildAppBarButton(
                 icon: Icons.settings_rounded,
                 isDay: isDay,
@@ -1476,11 +1488,11 @@ Is GPS: ${controller.isFromCurrentLocation}
                     context,
                     MaterialPageRoute(
                         builder: (context) => SettingsScreen(isDay: isDay)))),
-            const SizedBox(width: 4),
+            const SizedBox(width: 6),
             _buildAppBarButton(
                 icon: Icons.admin_panel_settings,
                 isDay: isDay,
-                iconColor: isDay ? Colors.deepPurple : Colors.purple.shade300,
+                iconColor: Colors.deepPurple.shade300,
                 onTap: () => ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                         content: Text('Long press to access Admin Portal'),
@@ -1503,48 +1515,62 @@ Is GPS: ${controller.isFromCurrentLocation}
         child: InkWell(
             onTap: onTap,
             onLongPress: onLongPress,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
             child: Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                    color: isDay
-                        ? Colors.white.withValues(alpha: 0.25)
-                        : Colors.black.withValues(alpha: 0.25),
-                    borderRadius: BorderRadius.circular(10),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: isDay
+                          ? [Colors.white.withValues(alpha: 0.4), Colors.white.withValues(alpha: 0.25)]
+                          : [Colors.white.withValues(alpha: 0.12), Colors.white.withValues(alpha: 0.06)],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.15), width: 1)),
+                        color: Colors.white.withValues(alpha: isDay ? 0.4 : 0.15), width: 1)),
                 child: Icon(icon,
                     color: iconColor ??
                         (isDay
-                            ? Colors.black.withValues(alpha: 0.87)
-                            : Colors.white),
+                            ? AppColors.dayTextPrimary
+                            : AppColors.nightTextPrimary),
                     size: 18))));
   }
 
   Widget _buildModernSearchBar(bool isDay) {
-    final fg = isDay ? Colors.black : Colors.white;
-    final bgColor = isDay
-        ? Colors.white.withValues(alpha: 0.25)
-        : Colors.black.withValues(alpha: 0.25);
+    final theme = AppTheme(isDay: isDay);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Search bar
+          // Search bar with premium glass effect
           ClipRRect(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(18),
             child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+              filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
               child: Container(
                 decoration: BoxDecoration(
-                  color: bgColor,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    width: 1,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: isDay
+                        ? [Colors.white.withValues(alpha: 0.45), Colors.white.withValues(alpha: 0.3)]
+                        : [Colors.white.withValues(alpha: 0.15), Colors.white.withValues(alpha: 0.08)],
                   ),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: isDay ? 0.5 : 0.2),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: isDay ? 0.08 : 0.25),
+                      blurRadius: 15,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
                 ),
                 child: Row(
                   children: [
@@ -1552,27 +1578,32 @@ Is GPS: ${controller.isFromCurrentLocation}
                       child: TextField(
                         controller: _search,
                         style: TextStyle(
-                          color: fg.withValues(alpha: 0.87),
-                          fontSize: 14,
+                          color: theme.textPrimary,
+                          fontSize: 15,
                           fontWeight: FontWeight.w500,
                         ),
                         decoration: InputDecoration(
-                          hintText: "Search any location / ICAO...",
+                          hintText: "Search any location...",
                           hintStyle: TextStyle(
-                            color: fg.withValues(alpha: 0.45),
-                            fontSize: 14,
+                            color: theme.textTertiary,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w400,
                           ),
-                          prefixIcon: Icon(
-                            Icons.search_rounded,
-                            color: fg.withValues(alpha: 0.54),
-                            size: 20,
+                          prefixIcon: Padding(
+                            padding: const EdgeInsets.only(left: 16, right: 12),
+                            child: Icon(
+                              Icons.search_rounded,
+                              color: theme.textSecondary,
+                              size: 22,
+                            ),
                           ),
+                          prefixIconConstraints: const BoxConstraints(),
                           suffixIcon: _search.text.isNotEmpty
                               ? IconButton(
                                   icon: Icon(
                                     Icons.close_rounded,
-                                    color: fg.withValues(alpha: 0.54),
-                                    size: 18,
+                                    color: theme.textSecondary,
+                                    size: 20,
                                   ),
                                   onPressed: () {
                                     _search.clear();
@@ -1585,8 +1616,8 @@ Is GPS: ${controller.isFromCurrentLocation}
                               : null,
                           border: InputBorder.none,
                           contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 14,
+                            horizontal: 0,
+                            vertical: 16,
                           ),
                         ),
                         onChanged: _onSearchTextChanged,
@@ -1594,25 +1625,35 @@ Is GPS: ${controller.isFromCurrentLocation}
                       ),
                     ),
                     if (controller.current.value != null)
-                      IconButton(
-                        icon: Icon(
-                          _isFavorite
-                              ? Icons.star_rounded
-                              : Icons.star_border_rounded,
-                          color: _isFavorite
-                              ? Colors.amber
-                              : fg.withValues(alpha: 0.54),
-                          size: 22,
+                      Container(
+                        margin: const EdgeInsets.only(right: 4),
+                        child: IconButton(
+                          icon: Icon(
+                            _isFavorite
+                                ? Icons.star_rounded
+                                : Icons.star_border_rounded,
+                            color: _isFavorite
+                                ? Colors.amber
+                                : theme.textSecondary,
+                            size: 24,
+                          ),
+                          onPressed: _toggleFavorite,
                         ),
-                        onPressed: _toggleFavorite,
                       ),
-                    IconButton(
-                      icon: Icon(
-                        Icons.send_rounded,
-                        color: fg.withValues(alpha: 0.54),
-                        size: 20,
+                    Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.9),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      onPressed: _onSearch,
+                      child: IconButton(
+                        icon: const Icon(
+                          Icons.arrow_forward_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                        onPressed: _onSearch,
+                      ),
                     ),
                   ],
                 ),
@@ -1817,47 +1858,57 @@ Is GPS: ${controller.isFromCurrentLocation}
   }
 
   Widget _buildModernTabBar(bool isDay) {
+    final theme = AppTheme(isDay: isDay);
     return Container(
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-        padding: const EdgeInsets.all(4),
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        padding: const EdgeInsets.all(5),
         decoration: BoxDecoration(
-            color: isDay
-                ? Colors.white.withValues(alpha: 0.25)
-                : Colors.black.withValues(alpha: 0.25),
-            borderRadius: BorderRadius.circular(14),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: isDay
+                  ? [Colors.white.withValues(alpha: 0.4), Colors.white.withValues(alpha: 0.25)]
+                  : [Colors.white.withValues(alpha: 0.12), Colors.white.withValues(alpha: 0.06)],
+            ),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(
-                color: Colors.white.withValues(alpha: 0.15), width: 1)),
+                color: Colors.white.withValues(alpha: isDay ? 0.4 : 0.15), width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDay ? 0.08 : 0.25),
+                blurRadius: 15,
+                offset: const Offset(0, 5),
+              ),
+            ]),
         child: TabBar(
             controller: tabs,
-            labelColor:
-                isDay ? Colors.black.withValues(alpha: 0.87) : Colors.white,
-            unselectedLabelColor: isDay
-                ? Colors.black.withValues(alpha: 0.45)
-                : Colors.white.withValues(alpha: 0.5),
+            labelColor: theme.textPrimary,
+            unselectedLabelColor: theme.textTertiary,
             labelStyle: const TextStyle(
-                fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.2),
+                fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.3),
             unselectedLabelStyle:
                 const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
             indicator: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
-                color: isDay
-                    ? Colors.white.withValues(alpha: 0.5)
-                    : Colors.black.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(13),
+                gradient: LinearGradient(
+                  colors: isDay
+                      ? [Colors.white.withValues(alpha: 0.8), Colors.white.withValues(alpha: 0.6)]
+                      : [Colors.white.withValues(alpha: 0.2), Colors.white.withValues(alpha: 0.1)],
+                ),
                 boxShadow: [
                   BoxShadow(
-                      color: isDay
-                          ? Colors.black.withValues(alpha: 0.06)
-                          : Colors.black.withValues(alpha: 0.25),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2))
+                      color: Colors.black.withValues(alpha: isDay ? 0.1 : 0.3),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3))
                 ]),
             indicatorPadding:
-                const EdgeInsets.symmetric(horizontal: -2, vertical: 2),
+                const EdgeInsets.symmetric(horizontal: -2, vertical: 3),
             dividerColor: Colors.transparent,
+            splashBorderRadius: BorderRadius.circular(13),
             tabs: const [
               Tab(icon: Icon(Icons.home_rounded, size: 22)),
-              Tab(icon: Icon(Icons.waves_rounded, size: 22)),
-              Tab(icon: Icon(Icons.notifications_rounded, size: 22)),
+              Tab(icon: Icon(Icons.air_rounded, size: 22)),
+              Tab(icon: Icon(Icons.notifications_active_rounded, size: 22)),
               Tab(icon: Icon(Icons.sensors_rounded, size: 22)),
               Tab(icon: Icon(Icons.mosque_rounded, size: 22)),
             ]));
@@ -1947,12 +1998,32 @@ Is GPS: ${controller.isFromCurrentLocation}
   }
 
   Widget _buildSectionTitle(String title, bool isDay) {
-    return Text(title,
-        style: TextStyle(
-            color: isDay ? Colors.black.withValues(alpha: 0.87) : Colors.white,
-            fontSize: 15,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 0.2));
+    final theme = AppTheme(isDay: isDay);
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Row(
+        children: [
+          Container(
+            width: 3,
+            height: 16,
+            decoration: BoxDecoration(
+              color: AppColors.primary,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            title.toUpperCase(),
+            style: TextStyle(
+              color: theme.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Alerts tab - embedded alerts screen
