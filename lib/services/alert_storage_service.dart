@@ -220,7 +220,8 @@ class AlertStorageService {
     }
 
     if (uniqueAlerts.length < alerts.length) {
-      debugPrint('Removed ${alerts.length - uniqueAlerts.length} duplicate alerts');
+      debugPrint(
+          'Removed ${alerts.length - uniqueAlerts.length} duplicate alerts');
       final encoded = jsonEncode(uniqueAlerts.map((e) => e.toJson()).toList());
       await prefs.setString(_userAlertsKey, encoded);
     }
@@ -261,4 +262,3 @@ class AlertStorageService {
     return cities.contains(city);
   }
 }
-

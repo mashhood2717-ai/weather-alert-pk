@@ -354,4 +354,3 @@ class ManualAlertService {
     _alertSubscription?.cancel();
   }
 }
-

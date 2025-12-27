@@ -791,7 +791,8 @@ class NotificationService {
     required Map<String, PrayerNotificationMode> prayerModes,
     int minutesBefore = 5,
   }) async {
-    debugPrint('🕌 Scheduling prayer notifications with dual-method approach...');
+    debugPrint(
+        '🕌 Scheduling prayer notifications with dual-method approach...');
 
     // Cancel all existing alarms first
     await cancelAllPrayerNotifications();
@@ -921,7 +922,8 @@ class NotificationService {
   /// This helps identify if the issue is with AlarmManager or the app
   Future<void> testBothSchedulingMethods() async {
     debugPrint('🧪 ========== DUAL SCHEDULING TEST ==========');
-    debugPrint('🧪 Testing both zonedSchedule AND Future.delayed simultaneously');
+    debugPrint(
+        '🧪 Testing both zonedSchedule AND Future.delayed simultaneously');
     debugPrint('🧪 Current time: ${DateTime.now()}');
 
     _ensureTimezoneInitialized();
@@ -1079,4 +1081,3 @@ class NotificationService {
     await _localNotifications.cancel(_navigationNotificationId);
   }
 }
-

@@ -435,4 +435,3 @@ class WeatherMonitorService {
     await checkWeatherConditions();
   }
 }
-

@@ -135,4 +135,3 @@ class FavoritesService {
     await prefs.remove(_favoritesKey);
   }
 }
-

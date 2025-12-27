@@ -199,4 +199,3 @@ class AqiService {
     return double.tryParse(v.toString()) ?? 0.0;
   }
 }
-

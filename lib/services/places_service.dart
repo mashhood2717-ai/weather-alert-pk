@@ -220,4 +220,3 @@ class PlacesService {
     _detailsCache.clear();
   }
 }
-
