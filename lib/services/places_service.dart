@@ -1,6 +1,7 @@
 // lib/services/places_service.dart
 
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../secrets.dart';
 
@@ -91,7 +92,7 @@ class PlacesService {
         }
       }
     } catch (e) {
-      print('Places autocomplete error: $e');
+      debugPrint('Places autocomplete error: $e');
     }
 
     return [];
@@ -129,7 +130,7 @@ class PlacesService {
         }
       }
     } catch (e) {
-      print('Places autocomplete error: $e');
+      debugPrint('Places autocomplete error: $e');
     }
 
     return [];
@@ -203,7 +204,7 @@ class PlacesService {
         }
       }
     } catch (e) {
-      print('Places details error: $e');
+      debugPrint('Places details error: $e');
     }
 
     return null;
@@ -219,3 +220,4 @@ class PlacesService {
     _detailsCache.clear();
   }
 }
+

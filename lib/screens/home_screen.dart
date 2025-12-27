@@ -577,17 +577,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       icao: controller.metar?['station'],
     );
     final isNowFavorite = await _favoritesService.toggleFavorite(location);
-    if (mounted) {
-      setState(() => _isFavorite = isNowFavorite);
-      await _loadFavorites();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(isNowFavorite
-            ? '${c.city} added to favorites'
-            : '${c.city} removed from favorites'),
-        backgroundColor: isNowFavorite ? Colors.green : Colors.orange,
-        duration: const Duration(seconds: 2),
-      ));
-    }
+    if (!mounted) return;
+    setState(() => _isFavorite = isNowFavorite);
+    await _loadFavorites();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(isNowFavorite
+          ? '${c.city} added to favorites'
+          : '${c.city} removed from favorites'),
+      backgroundColor: isNowFavorite ? Colors.green : Colors.orange,
+      duration: const Duration(seconds: 2),
+    ));
   }
 
   Future<void> _loadFavoriteLocation(FavoriteLocation fav) async {

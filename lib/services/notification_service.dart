@@ -2,7 +2,7 @@
 
 import 'dart:convert';
 import 'dart:io' show Platform;
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show Color, GlobalKey, NavigatorState;
 import 'package:flutter/services.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -24,9 +24,9 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // Firebase must be initialized in background isolate
   // Firebase is auto-initialized by FlutterFire, but we ensure it's ready
-  print('Background message received: ${message.messageId}');
-  print('Background notification title: ${message.notification?.title}');
-  print('Background notification body: ${message.notification?.body}');
+  debugPrint('Background message received: ${message.messageId}');
+  debugPrint('Background notification title: ${message.notification?.title}');
+  debugPrint('Background notification body: ${message.notification?.body}');
 
   // For data-only messages, we handle them here
   // For notification messages (with title/body), Android shows them automatically
@@ -158,7 +158,7 @@ class NotificationService {
       provisional: false,
     );
 
-    print('FCM Permission: ${settings.authorizationStatus}');
+    debugPrint('FCM Permission: ${settings.authorizationStatus}');
 
     // Initialize local notifications for Android
     const AndroidInitializationSettings androidSettings =
@@ -190,7 +190,7 @@ class NotificationService {
       // Request notification permission on Android 13+ (API 33+)
       // This is REQUIRED for local notifications to work on Android 13+
       final granted = await androidPlugin.requestNotificationsPermission();
-      print('🔔 Android notification permission granted: $granted');
+      debugPrint('🔔 Android notification permission granted: $granted');
     }
 
     // Initialize timezone for scheduled notifications
@@ -202,13 +202,13 @@ class NotificationService {
     try {
       await _checkExactAlarmPermission();
     } catch (e) {
-      print('⚠️ Exact alarm permission check failed: $e');
+      debugPrint('⚠️ Exact alarm permission check failed: $e');
       // Continue initialization even if this fails
     }
 
     // Get FCM token and save to Firestore
     String? token = await _messaging.getToken();
-    print('FCM Token: $token');
+    debugPrint('FCM Token: $token');
 
     // Save FCM token to Firestore for push notifications when app is closed
     if (token != null) {
@@ -217,7 +217,7 @@ class NotificationService {
 
     // Listen for token refresh
     _messaging.onTokenRefresh.listen((newToken) async {
-      print('FCM Token refreshed: $newToken');
+      debugPrint('FCM Token refreshed: $newToken');
       await _saveFcmToken(newToken);
     });
 
@@ -261,9 +261,9 @@ class NotificationService {
         'platform': 'android',
       }, SetOptions(merge: true));
 
-      print('FCM token saved to Firestore for device: $deviceId');
+      debugPrint('FCM token saved to Firestore for device: $deviceId');
     } catch (e) {
-      print('Error saving FCM token: $e');
+      debugPrint('Error saving FCM token: $e');
     }
   }
 
@@ -280,23 +280,23 @@ class NotificationService {
     await _messaging.subscribeToTopic('alerts_lahore');
     await _messaging.subscribeToTopic('alerts_karachi');
 
-    print('Subscribed to weather alert topics (city-specific only)');
+    debugPrint('Subscribed to weather alert topics (city-specific only)');
   }
 
   Future<void> subscribeToCity(String city) async {
     final topic = 'alerts_${city.toLowerCase().replaceAll(' ', '_')}';
     await _messaging.subscribeToTopic(topic);
-    print('Subscribed to $topic');
+    debugPrint('Subscribed to $topic');
   }
 
   Future<void> unsubscribeFromCity(String city) async {
     final topic = 'alerts_${city.toLowerCase().replaceAll(' ', '_')}';
     await _messaging.unsubscribeFromTopic(topic);
-    print('Unsubscribed from $topic');
+    debugPrint('Unsubscribed from $topic');
   }
 
   void _handleForegroundMessage(RemoteMessage message) async {
-    print('Foreground message: ${message.notification?.title}');
+    debugPrint('Foreground message: ${message.notification?.title}');
 
     // Save to local storage
     await _saveAlertFromMessage(message);
@@ -314,13 +314,13 @@ class NotificationService {
   }
 
   void _handleNotificationOpen(RemoteMessage message) {
-    print('Notification opened: ${message.data}');
+    debugPrint('Notification opened: ${message.data}');
     // Navigate to alerts screen
     navigatorKey.currentState?.pushNamed('/alerts');
   }
 
   void _onNotificationTap(NotificationResponse response) {
-    print('Notification tapped: ${response.payload}');
+    debugPrint('Notification tapped: ${response.payload}');
     // Navigate to alerts screen when notification is tapped
     navigatorKey.currentState?.pushNamed('/alerts');
   }
@@ -416,7 +416,7 @@ class NotificationService {
   }) async {
     // Skip if mode is off
     if (mode == PrayerNotificationMode.off) {
-      print('Prayer notification skipped (mode off): $prayerName');
+      debugPrint('Prayer notification skipped (mode off): $prayerName');
       return;
     }
 
@@ -429,7 +429,7 @@ class NotificationService {
 
     // Don't schedule if the time has already passed
     if (notificationTime.isBefore(DateTime.now())) {
-      print(
+      debugPrint(
           'Prayer notification skipped (past time): $prayerName at $scheduledTime');
       return;
     }
@@ -503,10 +503,10 @@ class NotificationService {
         matchDateTimeComponents: null,
         payload: 'prayer_$prayerName',
       );
-      print(
+      debugPrint(
           'Prayer notification scheduled: $prayerName at $tzNotificationTime (ID: $id)');
     } catch (e) {
-      print('Error scheduling prayer notification: $e');
+      debugPrint('Error scheduling prayer notification: $e');
     }
   }
 
@@ -531,25 +531,25 @@ class NotificationService {
       final androidInfo = await deviceInfo.androidInfo;
       final sdkInt = androidInfo.version.sdkInt;
 
-      print('📱 Android SDK: $sdkInt');
+      debugPrint('📱 Android SDK: $sdkInt');
 
       // Android 12 (API 31) and above requires explicit exact alarm permission
       if (sdkInt >= 31) {
         final canSchedule = await androidPlugin.canScheduleExactNotifications();
-        print('🔔 Can schedule exact alarms: $canSchedule');
+        debugPrint('🔔 Can schedule exact alarms: $canSchedule');
 
         if (canSchedule != true) {
           // Request exact alarm permission
-          print('⚠️ Requesting exact alarm permission...');
+          debugPrint('⚠️ Requesting exact alarm permission...');
           final granted = await androidPlugin.requestExactAlarmsPermission();
-          print('🔔 Exact alarm permission granted: $granted');
+          debugPrint('🔔 Exact alarm permission granted: $granted');
           return granted ?? false;
         }
         return true;
       }
       return true;
     } catch (e) {
-      print('Error checking exact alarm permission: $e');
+      debugPrint('Error checking exact alarm permission: $e');
       return false;
     }
   }
@@ -575,7 +575,7 @@ class NotificationService {
       const platform = MethodChannel('com.mashhood.weatheralert/settings');
       await platform.invokeMethod('openExactAlarmSettings');
     } catch (e) {
-      print('Error opening exact alarm settings: $e');
+      debugPrint('Error opening exact alarm settings: $e');
       // Fallback: try to open app settings
       try {
         const platform = MethodChannel('com.mashhood.weatheralert/settings');
@@ -591,7 +591,7 @@ class NotificationService {
       const platform = MethodChannel('com.mashhood.weatheralert/settings');
       await platform.invokeMethod('openBatteryOptimizationSettings');
     } catch (e) {
-      print('Error opening battery optimization settings: $e');
+      debugPrint('Error opening battery optimization settings: $e');
       // Fallback: try to open app settings
       try {
         const platform = MethodChannel('com.mashhood.weatheralert/settings');
@@ -613,7 +613,7 @@ class NotificationService {
     for (int i = 1000; i < 1040; i++) {
       await _localNotifications.cancel(i);
     }
-    print('All prayer notifications cancelled');
+    debugPrint('All prayer notifications cancelled');
   }
 
   /// Schedule all prayer notifications for today
@@ -622,9 +622,9 @@ class NotificationService {
     required Map<String, PrayerNotificationMode> prayerModes,
     int minutesBefore = 5,
   }) async {
-    print('Scheduling prayer notifications...');
-    print('Prayer times: $prayerTimes');
-    print('Prayer modes: $prayerModes');
+    debugPrint('Scheduling prayer notifications...');
+    debugPrint('Prayer times: $prayerTimes');
+    debugPrint('Prayer modes: $prayerModes');
 
     // Cancel existing prayer notifications first
     await cancelAllPrayerNotifications();
@@ -640,7 +640,7 @@ class NotificationService {
 
       // Skip if this prayer notification is off
       if (mode == PrayerNotificationMode.off) {
-        print('Skipping $prayerName - notifications off');
+        debugPrint('Skipping $prayerName - notifications off');
         id++;
         continue;
       }
@@ -671,7 +671,7 @@ class NotificationService {
       id++;
     }
 
-    print('Scheduled $scheduledCount prayer notifications for today');
+    debugPrint('Scheduled $scheduledCount prayer notifications for today');
   }
 
   /// Schedule tomorrow's prayer notifications (with offset IDs to avoid conflicts)
@@ -680,7 +680,7 @@ class NotificationService {
     required Map<String, PrayerNotificationMode> prayerModes,
     int minutesBefore = 5,
   }) async {
-    print('Scheduling tomorrow\'s prayer notifications...');
+    debugPrint('Scheduling tomorrow\'s prayer notifications...');
 
     int id =
         1020; // Start from 1020 for tomorrow's prayers (today uses 1000-1019)
@@ -696,7 +696,7 @@ class NotificationService {
 
       // Skip if this prayer notification is off
       if (mode == PrayerNotificationMode.off) {
-        print('Skipping tomorrow $prayerName - notifications off');
+        debugPrint('Skipping tomorrow $prayerName - notifications off');
         id++;
         continue;
       }
@@ -726,7 +726,7 @@ class NotificationService {
       id++;
     }
 
-    print('Scheduled $scheduledCount prayer notifications for tomorrow');
+    debugPrint('Scheduled $scheduledCount prayer notifications for tomorrow');
   }
 
   // ==================== Native Prayer Alarms (More Reliable) ====================
@@ -746,7 +746,7 @@ class NotificationService {
 
     // Don't schedule if in the past
     if (prayerTime.isBefore(DateTime.now())) {
-      print('Skipping past prayer alarm: $prayerName at $prayerTime');
+      debugPrint('Skipping past prayer alarm: $prayerName at $prayerTime');
       return;
     }
 
@@ -757,10 +757,10 @@ class NotificationService {
         'notificationId': notificationId,
         'useAzan': useAzan,
       });
-      print(
+      debugPrint(
           'Native prayer alarm scheduled: $prayerName at $prayerTime (ID: $notificationId)');
     } catch (e) {
-      print('Error scheduling native prayer alarm: $e');
+      debugPrint('Error scheduling native prayer alarm: $e');
       // Fallback to flutter_local_notifications
       await schedulePrayerNotification(
         id: notificationId,
@@ -778,9 +778,9 @@ class NotificationService {
     if (!Platform.isAndroid) return;
     try {
       await _prayerAlarmChannel.invokeMethod('cancelAllPrayerAlarms');
-      print('All native prayer alarms cancelled');
+      debugPrint('All native prayer alarms cancelled');
     } catch (e) {
-      print('Error cancelling native prayer alarms: $e');
+      debugPrint('Error cancelling native prayer alarms: $e');
     }
   }
 
@@ -791,7 +791,7 @@ class NotificationService {
     required Map<String, PrayerNotificationMode> prayerModes,
     int minutesBefore = 5,
   }) async {
-    print('🕌 Scheduling prayer notifications with dual-method approach...');
+    debugPrint('🕌 Scheduling prayer notifications with dual-method approach...');
 
     // Cancel all existing alarms first
     await cancelAllPrayerNotifications();
@@ -806,7 +806,7 @@ class NotificationService {
       final mode = prayerModes[prayerName] ?? PrayerNotificationMode.azan;
 
       if (mode == PrayerNotificationMode.off) {
-        print('Skipping $prayerName - notifications off');
+        debugPrint('Skipping $prayerName - notifications off');
         nativeId++;
         continue;
       }
@@ -829,7 +829,7 @@ class NotificationService {
       minutesBefore: minutesBefore,
     );
 
-    print(
+    debugPrint(
         '✅ Scheduled $scheduledCount prayer alarms (native + flutter backup)');
   }
 
@@ -874,10 +874,10 @@ class NotificationService {
         'notificationId': 999,
         'useAzan': true,
       });
-      print(
+      debugPrint(
           '🕌 Immediate azan triggered using native MediaPlayer for $prayerName');
     } catch (e) {
-      print('❌ Error triggering immediate azan: $e');
+      debugPrint('❌ Error triggering immediate azan: $e');
     }
   }
 
@@ -886,9 +886,9 @@ class NotificationService {
   Future<void> scheduleTestPrayerNotification() async {
     final scheduledTime = DateTime.now().add(const Duration(seconds: 10));
 
-    print('📅 Current time: ${DateTime.now()}');
-    print('📅 Target time: $scheduledTime');
-    print('🕌 Using NATIVE AlarmManager with MediaPlayer for test');
+    debugPrint('📅 Current time: ${DateTime.now()}');
+    debugPrint('📅 Target time: $scheduledTime');
+    debugPrint('🕌 Using NATIVE AlarmManager with MediaPlayer for test');
 
     try {
       // Use the native alarm system (same as real prayer notifications)
@@ -898,18 +898,18 @@ class NotificationService {
         notificationId: 2999, // Test notification ID
         useAzan: true,
       );
-      print(
+      debugPrint(
           '✅ Test prayer notification scheduled for $scheduledTime (10 seconds from now)');
-      print('🔊 Azan will play using MediaPlayer (full duration)');
+      debugPrint('🔊 Azan will play using MediaPlayer (full duration)');
     } catch (e) {
-      print('❌ Error scheduling test prayer notification: $e');
+      debugPrint('❌ Error scheduling test prayer notification: $e');
     }
   }
 
   /// Schedule a test notification using show() with a delay (works around alarm issues)
   Future<void> scheduleTestWithDelay() async {
-    print('📅 Starting delayed notification test...');
-    print('📅 Notification will show in 10 seconds...');
+    debugPrint('📅 Starting delayed notification test...');
+    debugPrint('📅 Notification will show in 10 seconds...');
 
     // Delay 10 seconds then show immediately
     await Future.delayed(const Duration(seconds: 10));
@@ -920,15 +920,15 @@ class NotificationService {
   /// Test BOTH methods simultaneously to diagnose which one works
   /// This helps identify if the issue is with AlarmManager or the app
   Future<void> testBothSchedulingMethods() async {
-    print('🧪 ========== DUAL SCHEDULING TEST ==========');
-    print('🧪 Testing both zonedSchedule AND Future.delayed simultaneously');
-    print('🧪 Current time: ${DateTime.now()}');
+    debugPrint('🧪 ========== DUAL SCHEDULING TEST ==========');
+    debugPrint('🧪 Testing both zonedSchedule AND Future.delayed simultaneously');
+    debugPrint('🧪 Current time: ${DateTime.now()}');
 
     _ensureTimezoneInitialized();
 
     // Check permissions
     final canScheduleExact = await canScheduleExactAlarms();
-    print('🧪 Can schedule exact alarms: $canScheduleExact');
+    debugPrint('🧪 Can schedule exact alarms: $canScheduleExact');
 
     // === Method 1: zonedSchedule (AlarmManager) ===
     final scheduledTime = DateTime.now().add(const Duration(seconds: 15));
@@ -958,20 +958,20 @@ class NotificationService {
             : AndroidScheduleMode.inexactAllowWhileIdle,
         payload: 'test_alarmmanager',
       );
-      print('🧪 ✅ zonedSchedule registered for: $tzScheduledTime');
+      debugPrint('🧪 ✅ zonedSchedule registered for: $tzScheduledTime');
 
       // Verify it's in pending
       final pending = await getPendingNotifications();
       final found = pending.any((n) => n.id == 997);
-      print('🧪 Notification 997 in pending list: $found');
+      debugPrint('🧪 Notification 997 in pending list: $found');
     } catch (e) {
-      print('🧪 ❌ zonedSchedule error: $e');
+      debugPrint('🧪 ❌ zonedSchedule error: $e');
     }
 
     // === Method 2: Dart Timer (in-memory) ===
-    print('🧪 Starting Dart Timer for 15 seconds...');
+    debugPrint('🧪 Starting Dart Timer for 15 seconds...');
     Future.delayed(const Duration(seconds: 15), () async {
-      print('🧪 ⏰ Dart Timer fired! Showing notification...');
+      debugPrint('🧪 ⏰ Dart Timer fired! Showing notification...');
       await _localNotifications.show(
         996, // Different ID
         '⏱️ Dart Timer Test',
@@ -991,13 +991,13 @@ class NotificationService {
       );
     });
 
-    print('🧪 ========================================');
-    print('🧪 Both methods scheduled. Watch for:');
-    print(
+    debugPrint('🧪 ========================================');
+    debugPrint('🧪 Both methods scheduled. Watch for:');
+    debugPrint(
         '🧪   - ID 996: Dart Timer (orange) - should always work if app open');
-    print('🧪   - ID 997: AlarmManager (green) - tests system scheduling');
-    print('🧪 If only 996 appears, AlarmManager is being blocked');
-    print('🧪 ========================================');
+    debugPrint('🧪   - ID 997: AlarmManager (green) - tests system scheduling');
+    debugPrint('🧪 If only 996 appears, AlarmManager is being blocked');
+    debugPrint('🧪 ========================================');
   }
 
   /// Cancel test notifications
@@ -1006,7 +1006,7 @@ class NotificationService {
     await _localNotifications.cancel(997);
     await _localNotifications.cancel(998);
     await _localNotifications.cancel(999);
-    print('🧹 Test notifications cancelled (IDs 996-999)');
+    debugPrint('🧹 Test notifications cancelled (IDs 996-999)');
   }
 
   // ==================== NAVIGATION NOTIFICATIONS ====================
@@ -1022,7 +1022,7 @@ class NotificationService {
     final String title = instruction;
     final String body = roadName != null ? '$distance • $roadName' : distance;
     final String? subText =
-        remainingMinutes != null ? '${remainingMinutes} min remaining' : null;
+        remainingMinutes != null ? '$remainingMinutes min remaining' : null;
 
     final AndroidNotificationDetails androidDetails =
         AndroidNotificationDetails(
@@ -1079,3 +1079,4 @@ class NotificationService {
     await _localNotifications.cancel(_navigationNotificationId);
   }
 }
+

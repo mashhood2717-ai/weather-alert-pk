@@ -3,8 +3,9 @@
 // ============================================
 
 String weatherApiIconUrl(String iconFile, {bool isDay = true}) {
-  if (iconFile.startsWith('http'))
+  if (iconFile.startsWith('http')) {
     return iconFile.replaceFirst('http:', 'https:');
+  }
   if (iconFile.startsWith('//')) return 'https:$iconFile';
 
   // Determine day or night folder
@@ -28,7 +29,9 @@ String mapMetarIcon(String code, {bool isDay = true}) {
       code.contains("BR") ||
       code.contains("HZ") ||
       code.contains("DU") ||
-      code.contains("SA")) return "143.png";
+      code.contains("SA")) {
+    return "143.png";
+  }
   if (code.contains("FG")) return "248.png";
 
   // Cloud Cover - same for day/night

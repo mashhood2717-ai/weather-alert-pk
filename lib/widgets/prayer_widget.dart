@@ -36,16 +36,38 @@ class _PrayerWidgetState extends State<PrayerWidget>
   PrayerMethod _currentMethod = PrayerMethod.karachi;
   Map<String, PrayerNotificationMode> _notificationModes = {};
   Timer? _refreshTimer;
+  bool _isVisible = true; // Track visibility for timer optimization
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _loadPreferences();
-    // Refresh every minute to update countdown
-    _refreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
-      if (mounted) _calculatePrayers();
+    _startRefreshTimer();
+  }
+
+  void _startRefreshTimer() {
+    _refreshTimer?.cancel();
+    // Refresh every 2 minutes instead of 1 to reduce CPU usage
+    _refreshTimer = Timer.periodic(const Duration(minutes: 2), (_) {
+      if (mounted && _isVisible) _calculatePrayers();
     });
+  }
+
+  @override
+  void deactivate() {
+    _isVisible = false;
+    super.deactivate();
+  }
+
+  @override
+  void activate() {
+    super.activate();
+    _isVisible = true;
+    // Recalculate when becoming visible again
+    if (mounted && _prayerTimes != null) {
+      _calculatePrayers();
+    }
   }
 
   @override
@@ -140,6 +162,7 @@ class _PrayerWidgetState extends State<PrayerWidget>
         _notificationModes[prayer] ?? PrayerNotificationMode.vibrationOnly;
     final newMode = PrayerService.cycleNotificationMode(currentMode);
     await PrayerService.saveNotificationMode(prayer, newMode);
+    if (!mounted) return;
     setState(() => _notificationModes[prayer] = newMode);
     // Show feedback
     final label = PrayerService.getNotificationModeLabel(newMode);

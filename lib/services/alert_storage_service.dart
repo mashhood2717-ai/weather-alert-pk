@@ -1,6 +1,7 @@
 // lib/services/alert_storage_service.dart
 
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/weather_alert.dart';
@@ -42,7 +43,7 @@ class AlertStorageService {
       // Migrate existing alerts to user-specific key
       if (alertsJson != null && _userAlertsKey != _alertsKey) {
         await prefs.setString(_userAlertsKey, alertsJson);
-        print('📦 Migrated alerts to user-specific storage');
+        debugPrint('📦 Migrated alerts to user-specific storage');
       }
     }
 
@@ -52,7 +53,7 @@ class AlertStorageService {
       final List<dynamic> decoded = jsonDecode(alertsJson);
       return decoded.map((e) => WeatherAlert.fromJson(e)).toList();
     } catch (e) {
-      print('Error parsing alerts: $e');
+      debugPrint('Error parsing alerts: $e');
       return [];
     }
   }
@@ -79,7 +80,7 @@ class AlertStorageService {
     });
 
     if (isDuplicate) {
-      print('Alert skipped (duplicate): ${alert.title} - ${alert.city}');
+      debugPrint('Alert skipped (duplicate): ${alert.title} - ${alert.city}');
       return;
     }
 
@@ -128,9 +129,9 @@ class AlertStorageService {
         'readAlertIds': FieldValue.arrayUnion([alertId]),
         'lastReadSync': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-      print('☁️ Synced read alert to cloud: $alertId');
+      debugPrint('☁️ Synced read alert to cloud: $alertId');
     } catch (e) {
-      print('☁️ Error syncing read alert: $e');
+      debugPrint('☁️ Error syncing read alert: $e');
     }
   }
 
@@ -165,10 +166,10 @@ class AlertStorageService {
         final encoded =
             jsonEncode(updatedAlerts.map((e) => e.toJson()).toList());
         await prefs.setString(_userAlertsKey, encoded);
-        print('☁️ Applied ${cloudReadIds.length} read alerts from cloud');
+        debugPrint('☁️ Applied ${cloudReadIds.length} read alerts from cloud');
       }
     } catch (e) {
-      print('☁️ Error fetching read status from cloud: $e');
+      debugPrint('☁️ Error fetching read status from cloud: $e');
     }
   }
 
@@ -219,7 +220,7 @@ class AlertStorageService {
     }
 
     if (uniqueAlerts.length < alerts.length) {
-      print('Removed ${alerts.length - uniqueAlerts.length} duplicate alerts');
+      debugPrint('Removed ${alerts.length - uniqueAlerts.length} duplicate alerts');
       final encoded = jsonEncode(uniqueAlerts.map((e) => e.toJson()).toList());
       await prefs.setString(_userAlertsKey, encoded);
     }
@@ -260,3 +261,4 @@ class AlertStorageService {
     return cities.contains(city);
   }
 }
+

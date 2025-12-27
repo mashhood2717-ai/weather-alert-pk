@@ -226,7 +226,7 @@ class TilesArea extends StatelessWidget {
           icon: Icons.explore_outlined),
       TileData(
           label: "UV Index",
-          value: "${c.uvIndex?.toStringAsFixed(1) ?? '--'}",
+          value: c.uvIndex?.toStringAsFixed(1) ?? '--',
           icon: Icons.wb_sunny_outlined),
       TileData(
           label: "Cloud Cover",

@@ -1,6 +1,7 @@
 // lib/services/widget_service.dart
 
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 /// Service to update the Android home screen widget
@@ -76,7 +77,8 @@ class WidgetService {
         'isha': isha,
       });
     } on PlatformException catch (e) {
-      print('Failed to update widget: ${e.message}');
+      debugPrint('Failed to update widget: ${e.message}');
     }
   }
 }
+

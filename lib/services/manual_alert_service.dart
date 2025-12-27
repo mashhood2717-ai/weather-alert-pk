@@ -4,6 +4,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -142,7 +143,7 @@ class ManualAlertService {
         final ageInHours = DateTime.now().difference(alertTime).inHours;
         if (ageInHours > 24) {
           isOldAlert = true;
-          print(
+          debugPrint(
               '⏰ Old alert detected (${ageInHours}h old): $alertId - will save but skip notification');
         }
       }
@@ -276,7 +277,7 @@ class ManualAlertService {
           }),
         );
       } else {
-        print('🔕 Notification skipped for old alert: ${alert.title}');
+        debugPrint('🔕 Notification skipped for old alert: ${alert.title}');
       }
     } catch (e) {
       // Error processing alert
@@ -353,3 +354,4 @@ class ManualAlertService {
     _alertSubscription?.cancel();
   }
 }
+

@@ -784,8 +784,7 @@ class TravelWeatherService {
       // Only include intermediate points (not start/end)
       final intermediatePoints = waypoints.sublist(1, waypoints.length - 1);
       if (intermediatePoints.isNotEmpty) {
-        waypointsStr = '&waypoints=optimize:false|' +
-            intermediatePoints.map((p) => '${p.lat},${p.lon}').join('|');
+        waypointsStr = '&waypoints=optimize:false|${intermediatePoints.map((p) => '${p.lat},${p.lon}').join('|')}';
       }
     }
 
@@ -861,7 +860,7 @@ class TravelWeatherService {
             ? detailedPoints
             : _decodePolyline(overviewPolyline);
 
-        print(
+        debugPrint(
             '🛣️ Route polyline: ${finalPoints.length} points (detailed from ${steps.length} steps)');
 
         return RouteData(

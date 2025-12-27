@@ -1,6 +1,7 @@
 // lib/services/geocoding_service.dart
 
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../secrets.dart';
 
@@ -112,7 +113,7 @@ class GeocodingService {
       }
     } catch (e) {
       // Silently fail - geocoding is optional
-      print('Geocoding error: $e');
+      debugPrint('Geocoding error: $e');
     }
 
     return null;
@@ -313,3 +314,4 @@ class GeocodingService {
     _cache.clear();
   }
 }
+

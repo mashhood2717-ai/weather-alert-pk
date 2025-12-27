@@ -111,7 +111,7 @@ class AqiService {
         forecast: forecast,
       );
     } catch (e) {
-      print('AQI Service Error: $e');
+      debugPrint('AQI Service Error: $e');
       return null;
     }
   }
@@ -179,7 +179,7 @@ class AqiService {
         ));
       }
     } catch (e) {
-      print('Parse daily AQI error: $e');
+      debugPrint('Parse daily AQI error: $e');
     }
 
     return forecast;
@@ -199,3 +199,4 @@ class AqiService {
     return double.tryParse(v.toString()) ?? 0.0;
   }
 }
+

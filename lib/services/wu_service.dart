@@ -44,7 +44,7 @@ Future<Map<String, dynamic>?> fetchWUCurrentByStation(String stationId) async {
       return '113.png';
     }
 
-    dynamic safe(v) => v == null ? '--' : v;
+    dynamic safe(v) => v ?? '--';
 
     final clean = {
       "station": safe(o["stationID"]),

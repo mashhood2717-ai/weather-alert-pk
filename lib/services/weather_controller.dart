@@ -233,8 +233,9 @@ class WeatherController {
   String? icaoFromCity(String city) {
     city = city.toUpperCase();
 
-    if (city.contains("ISLAMABAD") || city.contains("RAWALPINDI"))
+    if (city.contains("ISLAMABAD") || city.contains("RAWALPINDI")) {
       return "OPIS";
+    }
     if (city.contains("LAHORE")) return "OPLA";
     if (city.contains("FAISAL")) return "OPFA";
     if (city.contains("KARACHI")) return "OPKC";
@@ -422,7 +423,7 @@ class WeatherController {
         onDataLoaded?.call();
       }
     } catch (e) {
-      print('loadByLocation error: $e');
+      debugPrint('loadByLocation error: $e');
       rethrow;
     }
   }
@@ -464,7 +465,7 @@ class WeatherController {
         );
       }
     } catch (e) {
-      print('Geocoding error: $e');
+      debugPrint('Geocoding error: $e');
     }
   }
 
@@ -622,7 +623,7 @@ class WeatherController {
 
     // Precipitation weather codes (priority conditions)
     // 51-67: Drizzle/Rain, 71-77: Snow, 80-82: Rain showers, 85-86: Snow showers, 95-99: Thunderstorm
-    bool _isPrecipitation(int code) {
+    bool isPrecipitation(int code) {
       return (code >= 51 && code <= 67) ||
           (code >= 71 && code <= 77) ||
           (code >= 80 && code <= 86) ||
@@ -668,7 +669,7 @@ class WeatherController {
     String? dayIcon;
     String? dayCondition;
     if (dayCodes.isNotEmpty) {
-      final dominantDayCode = _getDominantCode(dayCodes, _isPrecipitation);
+      final dominantDayCode = _getDominantCode(dayCodes, isPrecipitation);
       dayIcon = OpenMeteoService.getWeatherIcon(dominantDayCode, true);
       dayCondition = OpenMeteoService.getWeatherDescription(dominantDayCode);
     }
@@ -677,7 +678,7 @@ class WeatherController {
     String? nightIcon;
     String? nightCondition;
     if (nightCodes.isNotEmpty) {
-      final dominantNightCode = _getDominantCode(nightCodes, _isPrecipitation);
+      final dominantNightCode = _getDominantCode(nightCodes, isPrecipitation);
       nightIcon = OpenMeteoService.getWeatherIcon(dominantNightCode, false);
       nightCondition =
           OpenMeteoService.getWeatherDescription(dominantNightCode);
@@ -695,7 +696,7 @@ class WeatherController {
     String? dominantIcon;
     String? dominantCondition;
     if (allCodes.isNotEmpty) {
-      final dominantCode = _getDominantCode(allCodes, _isPrecipitation);
+      final dominantCode = _getDominantCode(allCodes, isPrecipitation);
       dominantIcon = OpenMeteoService.getWeatherIcon(dominantCode, true);
       dominantCondition = OpenMeteoService.getWeatherDescription(dominantCode);
     }
@@ -763,7 +764,7 @@ class WeatherController {
     // Handle is_day as either int (0/1) or bool
     final isDayRaw = cur["is_day"];
     final isDay = isDayRaw == 1 || isDayRaw == true;
-    print(
+    debugPrint(
         '🌙 _parseCurrentWeather: isDayRaw=$isDayRaw (${isDayRaw.runtimeType}), isDay=$isDay, weatherCode=$weatherCode');
     final condition = OpenMeteoService.getWeatherDescription(weatherCode);
     final icon = OpenMeteoService.getWeatherIcon(weatherCode, isDay);
@@ -894,7 +895,7 @@ class WeatherController {
           }
         }
       } catch (e) {
-        print('Error parsing sunrise/sunset: $e');
+        debugPrint('Error parsing sunrise/sunset: $e');
       }
     }
 
@@ -1028,7 +1029,7 @@ class WeatherController {
       "Wind Speed":
           "${current.value!.gustKph?.toStringAsFixed(0) ?? '--'} km/h",
       "Wind Dir": _mapWindDegreesToCardinal(current.value!.windDeg),
-      "UV Index": "${current.value!.uvIndex?.toStringAsFixed(1) ?? '--'}",
+      "UV Index": current.value!.uvIndex?.toStringAsFixed(1) ?? '--',
       "Cloud Cover": "${current.value!.cloudCover ?? '--'}%",
       "Precipitation":
           "${current.value!.precipitation?.toStringAsFixed(1) ?? '0'} mm",

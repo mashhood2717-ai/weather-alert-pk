@@ -352,9 +352,7 @@ class PrayerService {
       );
       timeUntilNext = nextPrayer.time.difference(now);
       // Current prayer is Isha if we're past all prayers
-      if (currentPrayer == null) {
-        currentPrayer = mainPrayers.last; // Isha
-      }
+      currentPrayer ??= mainPrayers.last;
     }
 
     // If no current prayer found, we're before Fajr

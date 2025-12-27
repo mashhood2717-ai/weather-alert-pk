@@ -335,11 +335,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: () async {
               final name = controller.text.trim();
               if (name.isNotEmpty && name.length >= 2) {
+                final navigator = Navigator.of(context);
                 await UserService().setUserName(name);
-                if (mounted) {
-                  Navigator.pop(context);
-                  setState(() {}); // Refresh UI
-                }
+                if (!mounted) return;
+                navigator.pop();
+                setState(() {}); // Refresh UI
               }
             },
             child: const Text('Save', style: TextStyle(color: Colors.blue)),
@@ -575,7 +575,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             icon: Icons.apps,
             iconColor: Colors.purple,
             title: 'App Version',
-            subtitle: '1.1.26',
+            subtitle: '1.1.27',
             fg: fg,
             showArrow: false,
           ),

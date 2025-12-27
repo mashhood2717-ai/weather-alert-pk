@@ -76,10 +76,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   width: 120,
                   height: 120,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.1),
+                    color: Colors.white.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(30),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.2),
+                      color: Colors.white.withValues(alpha: 0.2),
                       width: 2,
                     ),
                   ),
@@ -108,7 +108,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   'Real-time weather updates for Pakistan',
                   style: TextStyle(
                     fontSize: 16,
-                    color: Colors.white.withOpacity(0.7),
+                    color: Colors.white.withValues(alpha: 0.7),
                   ),
                 ),
 
@@ -118,10 +118,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.1),
+                    color: Colors.white.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.2),
+                      color: Colors.white.withValues(alpha: 0.2),
                     ),
                   ),
                   child: Form(
@@ -134,7 +134,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
-                            color: Colors.white.withOpacity(0.9),
+                            color: Colors.white.withValues(alpha: 0.9),
                           ),
                         ),
 
@@ -146,14 +146,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           decoration: InputDecoration(
                             hintText: 'Enter your name',
                             hintStyle: TextStyle(
-                              color: Colors.white.withOpacity(0.4),
+                              color: Colors.white.withValues(alpha: 0.4),
                             ),
                             prefixIcon: Icon(
                               Icons.person_outline,
-                              color: Colors.white.withOpacity(0.6),
+                              color: Colors.white.withValues(alpha: 0.6),
                             ),
                             filled: true,
-                            fillColor: Colors.white.withOpacity(0.1),
+                            fillColor: Colors.white.withValues(alpha: 0.1),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: BorderSide.none,
@@ -161,7 +161,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: BorderSide(
-                                color: Colors.white.withOpacity(0.2),
+                                color: Colors.white.withValues(alpha: 0.2),
                               ),
                             ),
                             focusedBorder: OutlineInputBorder(
@@ -200,7 +200,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               disabledBackgroundColor:
-                                  Colors.blue.withOpacity(0.3),
+                                  Colors.blue.withValues(alpha: 0.3),
                             ),
                             child: _isLoading
                                 ? const SizedBox(
@@ -228,7 +228,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           children: [
                             Expanded(
                               child: Divider(
-                                color: Colors.white.withOpacity(0.3),
+                                color: Colors.white.withValues(alpha: 0.3),
                               ),
                             ),
                             Padding(
@@ -237,14 +237,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                               child: Text(
                                 'OR',
                                 style: TextStyle(
-                                  color: Colors.white.withOpacity(0.5),
+                                  color: Colors.white.withValues(alpha: 0.5),
                                   fontSize: 12,
                                 ),
                               ),
                             ),
                             Expanded(
                               child: Divider(
-                                color: Colors.white.withOpacity(0.3),
+                                color: Colors.white.withValues(alpha: 0.3),
                               ),
                             ),
                           ],
@@ -261,7 +261,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             style: OutlinedButton.styleFrom(
                               foregroundColor: Colors.white,
                               side: BorderSide(
-                                color: Colors.white.withOpacity(0.3),
+                                color: Colors.white.withValues(alpha: 0.3),
                               ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
@@ -292,7 +292,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       'Your unique ID: ${userId.isNotEmpty ? userId.substring(0, userId.length > 20 ? 20 : userId.length) : "generating..."}...',
                       style: TextStyle(
                         fontSize: 10,
-                        color: Colors.white.withOpacity(0.3),
+                        color: Colors.white.withValues(alpha: 0.3),
                       ),
                     );
                   },

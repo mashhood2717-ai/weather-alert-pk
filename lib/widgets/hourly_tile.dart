@@ -52,6 +52,9 @@ class HourlyTile extends StatelessWidget {
               icon,
               width: 32,
               height: 32,
+              cacheWidth: 64, // Cache at 2x for retina displays
+              cacheHeight: 64,
+              filterQuality: FilterQuality.low, // Faster rendering
               errorBuilder: (_, __, ___) => Icon(
                 Icons.cloud,
                 size: 28,

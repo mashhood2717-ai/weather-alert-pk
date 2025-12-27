@@ -299,6 +299,9 @@ class ForecastTile extends StatelessWidget {
                   icon,
                   width: iconSize,
                   height: iconSize,
+                  cacheWidth: 96, // Cache at higher res for popup
+                  cacheHeight: 96,
+                  filterQuality: FilterQuality.low,
                   errorBuilder: (_, __, ___) => Icon(
                       isHigh ? Icons.wb_sunny : Icons.nightlight_round,
                       size: iconSize,
@@ -429,8 +432,9 @@ class ForecastTile extends StatelessWidget {
       final tomorrow = now.add(const Duration(days: 1));
 
       if (dt.day == now.day && dt.month == now.month) return "Today";
-      if (dt.day == tomorrow.day && dt.month == tomorrow.month)
+      if (dt.day == tomorrow.day && dt.month == tomorrow.month) {
         return "Tomorrow";
+      }
 
       const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
       const months = [
@@ -498,6 +502,9 @@ class ForecastTile extends StatelessWidget {
               icon,
               width: 44,
               height: 44,
+              cacheWidth: 88, // Cache at 2x for retina
+              cacheHeight: 88,
+              filterQuality: FilterQuality.low,
               errorBuilder: (_, __, ___) =>
                   Icon(Icons.cloud, size: 40, color: fg.withValues(alpha: 0.6)),
             ),

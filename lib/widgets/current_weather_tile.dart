@@ -186,6 +186,9 @@ class CurrentWeatherTile extends StatelessWidget {
                       safeIcon,
                       width: 60,
                       height: 60,
+                      cacheWidth: 120,
+                      cacheHeight: 120,
+                      filterQuality: FilterQuality.low,
                       errorBuilder: (_, __, ___) => Icon(
                         Icons.wb_cloudy_rounded,
                         size: 50,

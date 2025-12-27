@@ -41,10 +41,14 @@ class _QiblaCompassWidgetState extends State<QiblaCompassWidget>
     _pulseController = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
-    )..repeat(reverse: true);
+    );
     _pulseAnimation = Tween<double>(begin: 1.0, end: 1.1).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
+    // Start animation only when widget is visible
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _pulseController.repeat(reverse: true);
+    });
     _initCompass();
   }
 
@@ -52,6 +56,22 @@ class _QiblaCompassWidgetState extends State<QiblaCompassWidget>
   void dispose() {
     _pulseController.dispose();
     super.dispose();
+  }
+
+  @override
+  void deactivate() {
+    // Pause animation when widget goes off-screen
+    _pulseController.stop();
+    super.deactivate();
+  }
+
+  @override
+  void activate() {
+    super.activate();
+    // Resume animation when widget comes back
+    if (mounted && !_loading && _error == null) {
+      _pulseController.repeat(reverse: true);
+    }
   }
 
   @override
@@ -77,8 +97,8 @@ class _QiblaCompassWidgetState extends State<QiblaCompassWidget>
       }
     }
 
-    // Check if compass is available
-    final isAvailable = await FlutterCompass.events != null;
+    // Check if compass is available (no await needed for stream check)
+    final isAvailable = FlutterCompass.events != null;
     if (!isAvailable) {
       setState(() {
         _error = 'Compass sensor not available on this device';
@@ -315,114 +335,117 @@ class _QiblaCompassWidgetState extends State<QiblaCompassWidget>
 
   Widget _buildCompass(
       Color fg, Color tint, double heading, double qiblaRotation) {
-    return SizedBox(
-      width: 280,
-      height: 280,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Outer ring (rotates with device heading)
-          Transform.rotate(
-            angle: -heading * pi / 180,
-            child: Container(
-              width: 260,
-              height: 260,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: fg.withValues(alpha: 0.2),
-                  width: 2,
-                ),
-              ),
-              child: CustomPaint(
-                painter: _CompassDialPainter(fg: fg),
-              ),
-            ),
-          ),
-
-          // Inner circle
-          Container(
-            width: 200,
-            height: 200,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: tint,
-              border: Border.all(
-                color: fg.withValues(alpha: 0.1),
-                width: 1,
-              ),
-            ),
-          ),
-
-          // Qibla arrow (points to Qibla)
-          AnimatedBuilder(
-            animation: _pulseAnimation,
-            builder: (context, child) {
-              return Transform.rotate(
-                angle: qiblaRotation,
-                child: Transform.scale(
-                  scale: _pulseAnimation.value,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.mosque,
-                        color: Colors.green,
-                        size: 32,
-                      ),
-                      Container(
-                        width: 4,
-                        height: 60,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.green,
-                              Colors.green.withValues(alpha: 0.3),
-                            ],
-                          ),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ],
+    return RepaintBoundary(
+      child: SizedBox(
+        width: 280,
+        height: 280,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // Outer ring (rotates with device heading)
+            Transform.rotate(
+              angle: -heading * pi / 180,
+              child: Container(
+                width: 260,
+                height: 260,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: fg.withValues(alpha: 0.2),
+                    width: 2,
                   ),
                 ),
-              );
-            },
-          ),
-
-          // Center dot
-          Container(
-            width: 16,
-            height: 16,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: fg,
-              border: Border.all(color: Colors.white, width: 2),
-            ),
-          ),
-
-          // Heading display at bottom
-          Positioned(
-            bottom: 0,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: fg.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                '${heading.toStringAsFixed(0)}° ${_getCardinalDirection(heading)}',
-                style: TextStyle(
-                  color: fg,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+                child: CustomPaint(
+                  painter: _CompassDialPainter(fg: fg),
                 ),
               ),
             ),
-          ),
-        ],
+
+            // Inner circle
+            Container(
+              width: 200,
+              height: 200,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: tint,
+                border: Border.all(
+                  color: fg.withValues(alpha: 0.1),
+                  width: 1,
+                ),
+              ),
+            ),
+
+            // Qibla arrow (points to Qibla)
+            AnimatedBuilder(
+              animation: _pulseAnimation,
+              builder: (context, child) {
+                return Transform.rotate(
+                  angle: qiblaRotation,
+                  child: Transform.scale(
+                    scale: _pulseAnimation.value,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.mosque,
+                          color: Colors.green,
+                          size: 32,
+                        ),
+                        Container(
+                          width: 4,
+                          height: 60,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.green,
+                                Colors.green.withValues(alpha: 0.3),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+
+            // Center dot
+            Container(
+              width: 16,
+              height: 16,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: fg,
+                border: Border.all(color: Colors.white, width: 2),
+              ),
+            ),
+
+            // Heading display at bottom
+            Positioned(
+              bottom: 0,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: fg.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '${heading.toStringAsFixed(0)}° ${_getCardinalDirection(heading)}',
+                  style: TextStyle(
+                    color: fg,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

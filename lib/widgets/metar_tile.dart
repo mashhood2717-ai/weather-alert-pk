@@ -81,6 +81,9 @@ class MetarTile extends StatelessWidget {
                       iconUrl,
                       width: 56,
                       height: 56,
+                      cacheWidth: 112,
+                      cacheHeight: 112,
+                      filterQuality: FilterQuality.low,
                       errorBuilder: (_, __, ___) => Icon(
                         Icons.flight_rounded,
                         size: 56,

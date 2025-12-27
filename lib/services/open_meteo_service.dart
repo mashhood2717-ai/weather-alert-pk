@@ -1,6 +1,7 @@
 // lib/services/open_meteo_service.dart
 
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class OpenMeteoService {
@@ -16,7 +17,7 @@ class OpenMeteoService {
         '&current=temperature_2m,relative_humidity_2m,is_day,precipitation,rain,showers,snowfall,weather_code,cloud_cover,pressure_msl,wind_gusts_10m,wind_speed_10m,wind_direction_10m,dew_point_2m,apparent_temperature,uv_index'
         '&models=ecmwf_ifs'
         '&timezone=auto&forecast_days=7';
-    print('OPEN-METEO REQUEST URL: $url');
+    debugPrint('OPEN-METEO REQUEST URL: $url');
 
     try {
       final response = await http.get(Uri.parse(url));
@@ -73,7 +74,7 @@ class OpenMeteoService {
     final iconFile = WMOWeatherCode.getIcon(code, isDay);
     final url =
         'https://cdn.weatherapi.com/weather/64x64/${isDay ? 'day' : 'night'}/$iconFile';
-    print(
+    debugPrint(
         '🌤️ getWeatherIcon: code=$code, isDay=$isDay, iconFile=$iconFile, url=$url');
     return url;
   }
@@ -203,3 +204,4 @@ class WMOWeatherCode {
     }
   }
 }
+

@@ -1,6 +1,7 @@
 // lib/services/favorites_service.dart
 
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class FavoriteLocation {
@@ -69,7 +70,7 @@ class FavoritesService {
       final List<dynamic> decoded = jsonDecode(favoritesJson);
       return decoded.map((e) => FavoriteLocation.fromJson(e)).toList();
     } catch (e) {
-      print('Error parsing favorites: $e');
+      debugPrint('Error parsing favorites: $e');
       return [];
     }
   }
@@ -134,3 +135,4 @@ class FavoritesService {
     await prefs.remove(_favoritesKey);
   }
 }
+

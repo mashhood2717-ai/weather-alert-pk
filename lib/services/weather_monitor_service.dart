@@ -2,6 +2,7 @@
 // Local weather monitoring - checks conditions and triggers alerts without Cloud Functions
 
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/weather_alert.dart';
 import '../metar_service.dart';
@@ -141,14 +142,14 @@ class WeatherMonitorService {
       checkWeatherConditions();
     });
 
-    print('Weather monitoring started (45 min interval)');
+    debugPrint('Weather monitoring started (45 min interval)');
   }
 
   /// Stop monitoring
   void stopMonitoring() {
     _monitorTimer?.cancel();
     _monitorTimer = null;
-    print('Weather monitoring stopped');
+    debugPrint('Weather monitoring stopped');
   }
 
   /// Check weather for all subscribed cities
@@ -157,17 +158,17 @@ class WeatherMonitorService {
     final subscribedCities = _getSubscribedCities(prefs);
 
     if (subscribedCities.isEmpty) {
-      print('No cities subscribed for monitoring');
+      debugPrint('No cities subscribed for monitoring');
       return;
     }
 
-    print('Checking weather for: ${subscribedCities.join(", ")}');
+    debugPrint('Checking weather for: ${subscribedCities.join(", ")}');
 
     for (final city in subscribedCities) {
       try {
         await _checkCityWeather(city, prefs);
       } catch (e) {
-        print('Error checking weather for $city: $e');
+        debugPrint('Error checking weather for $city: $e');
       }
     }
   }
@@ -188,8 +189,8 @@ class WeatherMonitorService {
     final visibilityThreshold =
         prefs.getDouble('threshold_visibility') ?? defaultVisibilityThreshold;
 
-    print('=== Checking $city ===');
-    print(
+    debugPrint('=== Checking $city ===');
+    debugPrint(
         'Thresholds - Heat: >$tempHighThreshold°C, Cold: <$tempLowThreshold°C, Wind: >$windSpeedThreshold km/h');
 
     // Fetch current weather
@@ -197,18 +198,18 @@ class WeatherMonitorService {
     final current = _weatherController.current.value;
 
     if (current == null) {
-      print('No weather data for $city');
+      debugPrint('No weather data for $city');
       return;
     }
 
-    print(
+    debugPrint(
         'Current temp in $city: ${current.tempC}°C, Wind: ${current.windKph} km/h');
 
     final alerts = <Map<String, dynamic>>[];
 
     // Check extreme heat
     if (current.tempC >= tempHighThreshold) {
-      print(
+      debugPrint(
           '🔥 ALERT: Heat threshold exceeded! ${current.tempC} >= $tempHighThreshold');
       alerts.add({
         'type': 'extreme_heat',
@@ -221,7 +222,7 @@ class WeatherMonitorService {
 
     // Check cold weather
     if (current.tempC <= tempLowThreshold) {
-      print(
+      debugPrint(
           '❄️ ALERT: Cold threshold met! ${current.tempC} <= $tempLowThreshold');
       alerts.add({
         'type': 'cold',
@@ -305,18 +306,18 @@ class WeatherMonitorService {
     // Get ICAO code for the city
     final icao = _cityToIcao[city.toLowerCase()];
     if (icao == null) {
-      print('No ICAO code for $city - skipping METAR check');
+      debugPrint('No ICAO code for $city - skipping METAR check');
       return;
     }
 
     try {
       final metar = await fetchMetar(icao);
       if (metar == null) {
-        print('No METAR data for $icao');
+        debugPrint('No METAR data for $icao');
         return;
       }
 
-      print(
+      debugPrint(
           'METAR for $city ($icao): ${metar['condition_code']} - ${metar['raw_text']}');
 
       // Check METAR condition code for severe weather
@@ -379,7 +380,7 @@ class WeatherMonitorService {
         }
       }
     } catch (e) {
-      print('Error fetching METAR for $city: $e');
+      debugPrint('Error fetching METAR for $city: $e');
     }
   }
 
@@ -398,7 +399,7 @@ class WeatherMonitorService {
     if (lastAlertTime != null) {
       final elapsed = Duration(milliseconds: now - lastAlertTime);
       if (elapsed < _alertCooldown) {
-        print(
+        debugPrint(
             'Skipping $alertType for $city (cooldown: ${_alertCooldown.inHours - elapsed.inHours}h remaining)');
         return;
       }
@@ -426,7 +427,7 @@ class WeatherMonitorService {
 
     // Update last alert time
     await prefs.setInt(key, now);
-    print('Sent alert: ${alertData['title']}');
+    debugPrint('Sent alert: ${alertData['title']}');
   }
 
   /// Manually trigger a check (e.g., on app open or pull-to-refresh)
@@ -434,3 +435,4 @@ class WeatherMonitorService {
     await checkWeatherConditions();
   }
 }
+

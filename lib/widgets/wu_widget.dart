@@ -35,7 +35,7 @@ class _WuWidgetState extends State<WuWidget> {
   bool _loading = false;
   String? _error;
   // Store station info with location for dropdown display
-  Map<String, Map<String, dynamic>> _stationInfo = {};
+  final Map<String, Map<String, dynamic>> _stationInfo = {};
   // Track if user is within 5km radius of a station
   bool _isWithinRadius = false;
   // ignore: unused_field
@@ -196,8 +196,9 @@ class _WuWidgetState extends State<WuWidget> {
   /// Check if user is within 5km of any loaded station
   void _checkProximityToStation(
       String stationId, Map<String, dynamic>? stationData) {
-    if (widget.userLat == null || widget.userLon == null || stationData == null)
+    if (widget.userLat == null || widget.userLon == null || stationData == null) {
       return;
+    }
 
     final stationLat = stationData['lat'] as num?;
     final stationLon = stationData['lon'] as num?;
@@ -348,7 +349,7 @@ class _WuWidgetState extends State<WuWidget> {
       bool isDay) {
     final fg = foregroundForCard(isDay);
     return DropdownButtonFormField<String>(
-      value: value,
+      initialValue: value,
       decoration: InputDecoration(
         labelText: label,
         labelStyle: TextStyle(color: fg, fontSize: 14),

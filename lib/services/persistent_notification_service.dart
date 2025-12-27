@@ -1,6 +1,7 @@
 // lib/services/persistent_notification_service.dart
 
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -96,7 +97,7 @@ class PersistentNotificationService {
 
       return _isRunning;
     } on PlatformException catch (e) {
-      print('Failed to start persistent notification: ${e.message}');
+      debugPrint('Failed to start persistent notification: ${e.message}');
       return false;
     }
   }
@@ -116,7 +117,7 @@ class PersistentNotificationService {
 
       return !_isRunning;
     } on PlatformException catch (e) {
-      print('Failed to stop persistent notification: ${e.message}');
+      debugPrint('Failed to stop persistent notification: ${e.message}');
       return false;
     }
   }
@@ -150,7 +151,7 @@ class PersistentNotificationService {
         'lastUpdated': _getTimeSinceUpdate(),
       });
     } on PlatformException catch (e) {
-      print('Failed to update notification: ${e.message}');
+      debugPrint('Failed to update notification: ${e.message}');
     }
   }
 
@@ -222,3 +223,4 @@ class PersistentNotificationService {
     _stopBackgroundUpdates();
   }
 }
+
