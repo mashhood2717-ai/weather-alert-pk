@@ -22,6 +22,7 @@ import '../services/manual_alert_service.dart';
 import '../services/user_service.dart';
 import '../utils/background_utils.dart';
 import '../utils/wind_utils.dart';
+import '../utils/feels_like_utils.dart';
 import '../widgets/current_weather_tile.dart';
 import '../widgets/hourly_tile.dart';
 import '../widgets/forecast_tile.dart';
@@ -461,9 +462,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final temp = _settings.convertTemperature(weather.tempC);
       final tempStr = '${temp.round()}${_settings.temperatureSymbol}';
 
-      // Get feels like with unit
-      final feelsLike =
-          _settings.convertTemperature(weather.feelsLikeC ?? weather.tempC);
+      // Calculate feels like using wind chill / heat index
+      // Rules: temp <= 15°C = wind chill, temp >= 25°C = heat index, else actual temp
+      final calculatedFeelsLikeC = calculateFeelsLike(
+        tempC: weather.tempC,
+        humidity: weather.humidity.toDouble(),
+        windKph: weather.windKph,
+      );
+      final feelsLike = _settings.convertTemperature(calculatedFeelsLikeC);
       final feelsLikeStr =
           'Feels like ${feelsLike.round()}${_settings.temperatureSymbol}';
 

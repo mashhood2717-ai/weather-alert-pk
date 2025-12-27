@@ -19,6 +19,7 @@ import '../services/notification_service.dart';
 import '../metar_service.dart';
 import '../services/weather_controller.dart';
 import '../utils/icon_mapper.dart';
+import '../utils/feels_like_utils.dart';
 
 class TravelWeatherScreen extends StatefulWidget {
   final bool isDay;
@@ -7583,7 +7584,12 @@ Shared via Weather Alert Pakistan
       }
     }
 
-    final feelsLike = temp; // Use METAR temp or fallback
+    // Calculate feels like using wind chill / heat index
+    final feelsLike = calculateFeelsLike(
+      tempC: temp.toDouble(),
+      humidity: humidity.toDouble(),
+      windKph: windKph.toDouble(),
+    ).round();
 
     return Container(
       padding: const EdgeInsets.all(12),

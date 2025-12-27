@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import '../services/weather_controller.dart';
 import '../services/settings_service.dart';
+import '../utils/feels_like_utils.dart';
 import 'param_tile.dart';
 
 /// Data class for a tile with icon
@@ -108,6 +109,8 @@ class TilesArea extends StatelessWidget {
 
       final dewC = parseDouble(m["dewpoint_c"]);
       final windKph = parseDouble(m["wind_kph"]);
+      final tempC = parseDouble(m["temp_c"]);
+      final humidity = parseDouble(m["humidity"]);
 
       final dewDisplay = dewC != null
           ? settings.convertTemperature(dewC).toStringAsFixed(1)
@@ -116,7 +119,33 @@ class TilesArea extends StatelessWidget {
           ? settings.convertWindSpeedHybrid(windKph).toStringAsFixed(0)
           : "--";
 
+      // Calculate feels like for METAR data
+      String feelsLikeDisplay = "--";
+      if (tempC != null) {
+        final calculatedFeelsLike = calculateFeelsLike(
+          tempC: tempC,
+          humidity: humidity ?? 50,
+          windKph: windKph ?? 0,
+        );
+        feelsLikeDisplay =
+            settings.convertTemperature(calculatedFeelsLike).toStringAsFixed(1);
+      }
+
+      // Extract cloud cover percentage from raw_text
+      final rawText = m["raw_text"]?.toString().toUpperCase() ?? "";
+      final cloudCoverPercent = _extractCloudCoverPercent(rawText);
+
+      // Get precipitation probability from today's forecast
+      final todayForecast =
+          controller.daily.isNotEmpty ? controller.daily.first : null;
+      final precipChance = todayForecast?.precipitationProbability ?? 0;
+
       return [
+        // Row 1: Feels Like | Humidity | Dew Point
+        TileData(
+            label: "Feels Like",
+            value: "$feelsLikeDisplay${settings.temperatureSymbol}",
+            icon: Icons.thermostat_outlined),
         TileData(
             label: "Humidity",
             value: "${m["humidity"] ?? "--"}%",
@@ -125,14 +154,7 @@ class TilesArea extends StatelessWidget {
             label: "Dew Point",
             value: "$dewDisplay${settings.temperatureSymbol}",
             icon: Icons.opacity),
-        TileData(
-            label: "Pressure",
-            value: "${m["pressure_hpa"] ?? "--"} hPa",
-            icon: Icons.speed_rounded),
-        TileData(
-            label: "Visibility",
-            value: "${m["visibility_km"] ?? "--"} km",
-            icon: Icons.visibility_outlined),
+        // Row 2: Wind Speed | Wind Dir | Pressure
         TileData(
             label: "Wind Speed",
             value: "$windDisplay ${settings.windSymbolHybrid}",
@@ -141,12 +163,35 @@ class TilesArea extends StatelessWidget {
             label: "Wind Dir",
             value: metarWindDir,
             icon: Icons.explore_outlined),
+        TileData(
+            label: "Pressure",
+            value: "${m["pressure_hpa"] ?? "--"} hPa",
+            icon: Icons.speed_rounded),
+        // Row 3: Visibility | Cloud Cover | Precip Chance
+        TileData(
+            label: "Visibility",
+            value: "${m["visibility_km"] ?? "--"} km",
+            icon: Icons.visibility_outlined),
+        TileData(
+            label: "Cloud Cover",
+            value: "$cloudCoverPercent%",
+            icon: Icons.cloud_outlined),
+        TileData(
+            label: "Precip Chance",
+            value: "$precipChance%",
+            icon: Icons.umbrella_outlined),
       ];
     }
 
-    final feelsLike = c.feelsLikeC != null
-        ? settings.convertTemperature(c.feelsLikeC!).toStringAsFixed(1)
-        : '--';
+    // Calculate feels like using wind chill / heat index
+    // Rules: temp <= 15°C = wind chill, temp >= 25°C = heat index, else actual temp
+    final calculatedFeelsLikeC = calculateFeelsLike(
+      tempC: c.tempC,
+      humidity: c.humidity.toDouble(),
+      windKph: c.windKph,
+    );
+    final feelsLike =
+        settings.convertTemperature(calculatedFeelsLikeC).toStringAsFixed(1);
     final dewPoint = c.dewpointC != null
         ? settings.convertTemperature(c.dewpointC!).toStringAsFixed(1)
         : '--';
@@ -216,5 +261,20 @@ class TilesArea extends StatelessWidget {
     ];
     final index = ((degrees + 11.25) / 22.5).floor() % 16;
     return directions[index];
+  }
+
+  /// Extract cloud cover percentage from METAR raw text
+  /// OVC = 100%, BKN = 75%, SCT = 50%, FEW = 25%, CLR/SKC = 0%
+  int _extractCloudCoverPercent(String rawText) {
+    // Cloud cover codes in order of priority (most coverage first)
+    if (rawText.contains("OVC")) return 100; // Overcast (8/8 oktas)
+    if (rawText.contains("BKN")) return 75; // Broken (5-7/8 oktas)
+    if (rawText.contains("SCT")) return 50; // Scattered (3-4/8 oktas)
+    if (rawText.contains("FEW")) return 25; // Few (1-2/8 oktas)
+    if (rawText.contains("SKC") || rawText.contains("CLR")) return 0; // Clear
+    if (rawText.contains("NSC")) return 0; // No significant clouds
+    if (rawText.contains("NCD")) return 0; // No clouds detected
+    if (rawText.contains("VV")) return 100; // Vertical visibility (fog/mist)
+    return 0;
   }
 }
